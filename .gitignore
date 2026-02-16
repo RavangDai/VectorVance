@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+outputs/
+test_videos/
+.env
+.vscode/
+.idea/
