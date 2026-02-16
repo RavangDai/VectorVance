@@ -1,18 +1,6 @@
 """
-controller.py - PID Controller for Autonomous Steering
--------------------------------------------------------
-Converts steering error (pixels) into motor speed adjustments.
-
-THEORY:
-PID = Proportional + Integral + Derivative control
-- P: React to current error
-- I: Correct accumulated drift
-- D: Smooth out changes
-
-OUTPUT:
-Motor speed adjustment: -1.0 to +1.0
-- Positive → Turn LEFT (slow left wheels)
-- Negative → Turn RIGHT (slow right wheels)
+controller.py - PID Controller
+Converts steering error into motor speed adjustments.
 """
 
 import time
@@ -21,266 +9,223 @@ import time
 class PIDController:
     """
     Discrete PID controller for differential drive steering.
-    
-    The controller calculates motor speed adjustments to minimize
-    steering error over time.
+    output = Kp*error + Ki*∫error*dt + Kd*d(error)/dt
     """
     
-    def __init__(self, Kp, Ki, Kd, output_limits=(-1.0, 1.0)):
-        """
-        Initialize PID controller with tuning parameters.
-        
-        Args:
-            Kp: Proportional gain (how aggressively to react)
-            Ki: Integral gain (correct accumulated error)
-            Kd: Derivative gain (dampen oscillations)
-            output_limits: Tuple of (min, max) output values
-        
-        TUNING STARTING POINTS:
-        - Kp: 0.01 (conservative) to 2.0 (aggressive)
-        - Ki: 0.001 (slow correction) to 0.1 (fast correction)
-        - Kd: 0.1 (light damping) to 1.0 (heavy damping)
-        """
+    def __init__(self, Kp, Ki, Kd, output_limits=(-1.0, 1.0), derivative_filter_size=5):
         self.Kp = Kp
         self.Ki = Ki
         self.Kd = Kd
         
         self.output_min, self.output_max = output_limits
         
-        # Internal state variables
-        self._integral = 0.0        # Accumulated error over time
-        self._previous_error = 0.0  # Error from last iteration
-        self._previous_time = None  # Timestamp of last update
+        self._integral = 0.0
+        self._previous_error = 0.0
+        self._previous_time = None
+        
+        # Moving average filter for derivative noise
+        from collections import deque
+        self.derivative_filter_size = derivative_filter_size
+        self.derivative_history = deque(maxlen=derivative_filter_size)
+        
+        self.last_P = 0.0
+        self.last_I = 0.0
+        self.last_D = 0.0
         
         print(f"🎛️  PID Controller Initialized")
-        print(f"   Kp={Kp} | Ki={Ki} | Kd={Kd}")
-        print(f"   Output range: [{self.output_min}, {self.output_max}]")
+        print(f"   Gains: Kp={Kp:.4f} | Ki={Ki:.4f} | Kd={Kd:.4f}")
+        print(f"   Output: [{self.output_min:+.2f}, {self.output_max:+.2f}]")
     
     def compute(self, error, current_time=None):
         """
-        Calculate PID output based on current error.
-        
-        ALGORITHM STEPS:
-        1. Calculate time delta (dt)
-        2. Proportional term: P = Kp × error
-        3. Integral term: I = I_prev + Ki × error × dt
-        4. Derivative term: D = Kd × (error - error_prev) / dt
-        5. Output = P + I + D (clamped to limits)
-        
-        Args:
-            error: Current steering error in pixels
-                   Positive → lane is LEFT of center
-                   Negative → lane is RIGHT of center
-            current_time: Current timestamp (auto-generated if None)
-        
-        Returns:
-            output: Motor adjustment value (-1.0 to +1.0)
-                   Positive → slow LEFT wheels (turn left)
-                   Negative → slow RIGHT wheels (turn right)
+        Calculate PID output for current error.
+        +ve error → lane LEFT → turn LEFT → +ve output → slow LEFT wheels
         """
-        # Get current time if not provided
         if current_time is None:
             current_time = time.time()
         
-        # Calculate time step (dt)
         if self._previous_time is None:
-            dt = 0.0  # First iteration, no time delta
+            dt = 0.02
         else:
             dt = current_time - self._previous_time
         
-        # Prevent division by zero
-        if dt <= 0.0:
-            dt = 0.01  # Assume 100Hz update rate
+        if dt <= 0.0 or dt > 1.0:
+            dt = 0.02
         
-        # ============================================
-        # P: PROPORTIONAL TERM
-        # ============================================
-        # Direct reaction to current error
-        # Large error → Large correction
+        # Proportional
         P = self.Kp * error
         
-        # ============================================
-        # I: INTEGRAL TERM
-        # ============================================
-        # Accumulate error over time
-        # Eliminates steady-state error (constant drift)
-        self._integral += error * dt
+        # Integral (with anti-windup)
+        was_saturated = (self.last_P + self.last_I + self.last_D) >= self.output_max or \
+                        (self.last_P + self.last_I + self.last_D) <= self.output_min
         
-        # Anti-windup: Prevent integral from growing too large
-        # WHY: If robot is stuck, integral keeps growing → huge overshoot when freed
-        integral_limit = 100.0 / (self.Ki + 0.001)  # Scale based on Ki
+        if not was_saturated or (error * self._integral < 0):
+            self._integral += error * dt
+        
+        integral_limit = 200.0
         self._integral = max(-integral_limit, min(integral_limit, self._integral))
         
         I = self.Ki * self._integral
         
-        # ============================================
-        # D: DERIVATIVE TERM
-        # ============================================
-        # Rate of change of error
-        # Dampens oscillations by predicting future error
+        # Derivative (with filtering)
         if dt > 0:
-            derivative = (error - self._previous_error) / dt
+            raw_derivative = (error - self._previous_error) / dt
         else:
-            derivative = 0.0
+            raw_derivative = 0.0
         
-        D = self.Kd * derivative
+        self.derivative_history.append(raw_derivative)
+        filtered_derivative = sum(self.derivative_history) / len(self.derivative_history)
         
-        # ============================================
-        # COMBINE TERMS
-        # ============================================
+        D = self.Kd * filtered_derivative
+        
+        # Combine and clamp
         output = P + I + D
-        
-        # Clamp output to limits
         output = max(self.output_min, min(self.output_max, output))
         
-        # Store state for next iteration
         self._previous_error = error
         self._previous_time = current_time
+        
+        self.last_P = P
+        self.last_I = I
+        self.last_D = D
         
         return output
     
     def reset(self):
-        """
-        Reset controller state.
-        
-        Call this when:
-        - Starting a new run
-        - Robot has been stopped for a while
-        - Switching between manual and autonomous mode
-        """
+        """Reset controller state."""
         self._integral = 0.0
         self._previous_error = 0.0
         self._previous_time = None
-        print("🔄 PID Controller reset")
+        self.derivative_history.clear()
+        
+        self.last_P = 0.0
+        self.last_I = 0.0
+        self.last_D = 0.0
+        
+        print("🔄 PID reset")
     
     def get_state(self):
-        """
-        Get current PID state for debugging/tuning.
-        
-        Returns:
-            Dictionary with P, I, D components and settings
-        """
+        """Get current PID state for debugging."""
         return {
             'Kp': self.Kp,
             'Ki': self.Ki,
             'Kd': self.Kd,
+            'P_term': self.last_P,
+            'I_term': self.last_I,
+            'D_term': self.last_D,
             'integral': self._integral,
             'previous_error': self._previous_error
         }
     
     def tune(self, Kp=None, Ki=None, Kd=None):
-        """
-        Adjust PID gains on-the-fly (useful for live tuning).
-        
-        Args:
-            Kp, Ki, Kd: New gain values (None = keep current)
-        """
+        """Adjust gains on-the-fly."""
         if Kp is not None:
             self.Kp = Kp
-            print(f"📊 Kp adjusted to {Kp}")
+            print(f"📊 Kp → {Kp:.4f}")
         
         if Ki is not None:
             self.Ki = Ki
-            print(f"📊 Ki adjusted to {Ki}")
+            self._integral = 0.0
+            print(f"📊 Ki → {Ki:.4f} (integral reset)")
         
         if Kd is not None:
             self.Kd = Kd
-            print(f"📊 Kd adjusted to {Kd}")
+            print(f"📊 Kd → {Kd:.4f}")
 
 
-# ============================================
-# TEST FUNCTION - Simulate PID with synthetic data
-# ============================================
-
-def test_pid_response():
-    """
-    Test PID controller with simulated steering errors.
-    
-    SIMULATION:
-    - Robot starts 100px off-center
-    - PID gradually corrects it
-    - We plot the response curve
-    """
+def test_pid_simulation():
+    """Simulate PID response with synthetic errors."""
     import matplotlib.pyplot as plt
     
-    # Create PID controller
-    # Starting with conservative gains
-    pid = PIDController(Kp=0.5, Ki=0.05, Kd=0.3)
+    pid = PIDController(Kp=0.003, Ki=0.0002, Kd=0.001)
     
-    # Simulation parameters
-    initial_error = 100  # pixels off-center
-    simulation_time = 5.0  # seconds
-    dt = 0.05  # 20 Hz update rate
+    initial_error = 80
+    duration = 5.0
+    dt = 0.05
     
-    # Data storage for plotting
     times = []
     errors = []
     outputs = []
+    p_terms = []
+    i_terms = []
+    d_terms = []
     
-    # Simulate robot behavior
     error = initial_error
     t = 0.0
     
-    print("\n🎮 Running PID Simulation...")
-    print("Initial error: 100px (robot is LEFT of center)")
-    print("-" * 50)
+    print("\n🎮 PID Simulation Running...")
+    print(f"Initial error: {initial_error}px")
+    print("-" * 60)
     
-    while t < simulation_time:
-        # Calculate PID output
+    while t < duration:
         output = pid.compute(error, current_time=t)
+        state = pid.get_state()
         
-        # Simulate robot response to control output
-        # In reality: output → motor speeds → robot moves → error changes
-        # Here: We fake it with a simple model
-        error -= output * 30  # Assume 30px correction per unit output
+        correction = output * 25
+        error -= correction
         
-        # Add some "noise" to simulate real world
         import random
-        error += random.uniform(-2, 2)
+        error += random.uniform(-1.5, 1.5)
         
-        # Store data
         times.append(t)
         errors.append(error)
         outputs.append(output)
+        p_terms.append(state['P_term'])
+        i_terms.append(state['I_term'])
+        d_terms.append(state['D_term'])
         
-        # Print every 0.5 seconds
-        if int(t * 10) % 5 == 0:
-            print(f"t={t:.1f}s | Error={error:+6.1f}px | Output={output:+5.2f}")
+        if int(t / 0.5) != int((t - dt) / 0.5):
+            print(f"t={t:.1f}s | Error={error:+6.1f}px | Output={output:+.3f} | "
+                  f"P={state['P_term']:+.3f} I={state['I_term']:+.3f} D={state['D_term']:+.3f}")
         
         t += dt
     
-    # Plot results
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
+    fig, axes = plt.subplots(3, 1, figsize=(12, 10))
     
-    # Plot error over time
-    ax1.plot(times, errors, 'b-', linewidth=2, label='Steering Error')
-    ax1.axhline(y=0, color='g', linestyle='--', label='Target (centered)')
-    ax1.set_xlabel('Time (seconds)')
-    ax1.set_ylabel('Error (pixels)')
-    ax1.set_title('PID Response: Error Over Time')
-    ax1.legend()
-    ax1.grid(True, alpha=0.3)
+    axes[0].plot(times, errors, 'b-', linewidth=2, label='Steering Error')
+    axes[0].axhline(y=0, color='g', linestyle='--', label='Target (centered)')
+    axes[0].fill_between(times, -5, 5, color='g', alpha=0.1, label='Acceptable range')
+    axes[0].set_xlabel('Time (s)')
+    axes[0].set_ylabel('Error (pixels)')
+    axes[0].set_title('PID Response: Error Convergence')
+    axes[0].legend()
+    axes[0].grid(True, alpha=0.3)
     
-    # Plot PID output over time
-    ax2.plot(times, outputs, 'r-', linewidth=2, label='PID Output')
-    ax2.axhline(y=0, color='k', linestyle='--', alpha=0.3)
-    ax2.set_xlabel('Time (seconds)')
-    ax2.set_ylabel('Control Output')
-    ax2.set_title('PID Controller Output')
-    ax2.legend()
-    ax2.grid(True, alpha=0.3)
+    axes[1].plot(times, outputs, 'r-', linewidth=2, label='Total Output')
+    axes[1].axhline(y=0, color='k', linestyle='--', alpha=0.3)
+    axes[1].set_xlabel('Time (s)')
+    axes[1].set_ylabel('Control Output')
+    axes[1].set_title('PID Controller Output')
+    axes[1].legend()
+    axes[1].grid(True, alpha=0.3)
+    
+    axes[2].plot(times, p_terms, 'b-', linewidth=1.5, label='P term', alpha=0.7)
+    axes[2].plot(times, i_terms, 'g-', linewidth=1.5, label='I term', alpha=0.7)
+    axes[2].plot(times, d_terms, 'r-', linewidth=1.5, label='D term', alpha=0.7)
+    axes[2].axhline(y=0, color='k', linestyle='--', alpha=0.3)
+    axes[2].set_xlabel('Time (s)')
+    axes[2].set_ylabel('Component Value')
+    axes[2].set_title('PID Components (P + I + D)')
+    axes[2].legend()
+    axes[2].grid(True, alpha=0.3)
     
     plt.tight_layout()
     
-    # Save plot
     output_path = "../outputs/pid_simulation.png"
     plt.savefig(output_path, dpi=150)
     print(f"\n✅ Simulation complete!")
-    print(f"📊 Plot saved to: {output_path}")
+    print(f"📊 Plot saved: {output_path}")
+    
+    settling_time = next((t for t, e in zip(times, errors) if abs(e) < 5), None)
+    final_error = errors[-1]
+    
+    print(f"\n📈 Performance Metrics:")
+    print(f"   Settling time (±5px): {settling_time:.2f}s" if settling_time else "   Did not settle")
+    print(f"   Final error: {final_error:+.1f}px")
+    print(f"   Max overshoot: {min(errors):+.1f}px")
     
     plt.show()
 
 
-# Entry point
 if __name__ == "__main__":
-    test_pid_response()
+    test_pid_simulation()
