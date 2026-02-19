@@ -1,96 +1,95 @@
 """
-controller.py - PID Controller
--------------------------------
-Final refined version.
+speed_controller.py - Adaptive Speed Controller
+-------------------------------------------------
+Maps steering error to target speed and provides
+a visual speed indicator overlay.
 """
 
-import time
-from collections import deque
+import cv2
 
 
-class PIDController:
-    def __init__(self, Kp, Ki, Kd, output_limits=(-1.0, 1.0), derivative_filter_size=5):
-        self.Kp = Kp
-        self.Ki = Ki
-        self.Kd = Kd
-        self.output_min, self.output_max = output_limits
-        
-        self._integral = 0.0
-        self._previous_error = 0.0
-        self._previous_time = None
-        
-        self.derivative_filter_size = derivative_filter_size
-        self.derivative_history = deque(maxlen=derivative_filter_size)
-        
-        self.last_P = 0.0
-        self.last_I = 0.0
-        self.last_D = 0.0
-        
-        print(f"🎛️  PID Controller Initialized")
-        print(f"   Gains: Kp={Kp:.4f} | Ki={Ki:.4f} | Kd={Kd:.4f}")
-        print(f"   Output: [{self.output_min:+.2f}, {self.output_max:+.2f}]")
-    
-    def compute(self, error, current_time=None):
-        if current_time is None:
-            current_time = time.time()
-        
-        if self._previous_time is None:
-            dt = 0.02
+class AdaptiveSpeedController:
+    # Error thresholds for speed categories
+    STRAIGHT_THRESHOLD = 30
+    GENTLE_THRESHOLD = 80
+    MODERATE_THRESHOLD = 150
+
+    # Speed multipliers per category
+    SPEED_MAP = {
+        "STRAIGHT":       1.0,
+        "GENTLE_CURVE":   0.75,
+        "MODERATE_CURVE":  0.5,
+        "SHARP_CURVE":    0.3,
+    }
+
+    def __init__(self, min_speed=0.2, max_speed=0.8):
+        self.min_speed = min_speed
+        self.max_speed = max_speed
+        self.target_speed = max_speed
+        self._current_category = "STRAIGHT"
+
+        print(f"🏎️  Adaptive Speed Controller Initialized")
+        print(f"   Speed range: [{min_speed:.2f}, {max_speed:.2f}]")
+
+    def get_speed_category(self, abs_error):
+        """Classify the steering error into a speed category."""
+        if abs_error < self.STRAIGHT_THRESHOLD:
+            return "STRAIGHT"
+        elif abs_error < self.GENTLE_THRESHOLD:
+            return "GENTLE_CURVE"
+        elif abs_error < self.MODERATE_THRESHOLD:
+            return "MODERATE_CURVE"
         else:
-            dt = current_time - self._previous_time
-        
-        if dt <= 0.0 or dt > 1.0:
-            dt = 0.02
-        
-        P = self.Kp * error
-        
-        was_saturated = (self.last_P + self.last_I + self.last_D) >= self.output_max or \
-                        (self.last_P + self.last_I + self.last_D) <= self.output_min
-        
-        if not was_saturated or (error * self._integral < 0):
-            self._integral += error * dt
-        
-        integral_limit = 200.0
-        self._integral = max(-integral_limit, min(integral_limit, self._integral))
-        I = self.Ki * self._integral
-        
-        if dt > 0:
-            raw_derivative = (error - self._previous_error) / dt
-        else:
-            raw_derivative = 0.0
-        
-        self.derivative_history.append(raw_derivative)
-        filtered_derivative = sum(self.derivative_history) / len(self.derivative_history)
-        D = self.Kd * filtered_derivative
-        
-        output = P + I + D
-        output = max(self.output_min, min(self.output_max, output))
-        
-        self._previous_error = error
-        self._previous_time = current_time
-        self.last_P = P
-        self.last_I = I
-        self.last_D = D
-        
-        return output
-    
+            return "SHARP_CURVE"
+
+    def calculate_speed(self, steering_error, obstacle_modifier=1.0):
+        """Return a target speed based on steering error and obstacle modifier."""
+        abs_error = abs(steering_error)
+        self._current_category = self.get_speed_category(abs_error)
+
+        multiplier = self.SPEED_MAP[self._current_category]
+        speed = self.max_speed * multiplier * obstacle_modifier
+        self.target_speed = max(self.min_speed, min(self.max_speed, speed))
+        return self.target_speed
+
     def reset(self):
-        self._integral = 0.0
-        self._previous_error = 0.0
-        self._previous_time = None
-        self.derivative_history.clear()
-        self.last_P = 0.0
-        self.last_I = 0.0
-        self.last_D = 0.0
-    
-    def get_state(self):
-        return {
-            'Kp': self.Kp,
-            'Ki': self.Ki,
-            'Kd': self.Kd,
-            'P_term': self.last_P,
-            'I_term': self.last_I,
-            'D_term': self.last_D,
-            'integral': self._integral,
-            'previous_error': self._previous_error
-        }
+        self.target_speed = self.max_speed
+        self._current_category = "STRAIGHT"
+
+
+def draw_speed_indicator(frame, current_speed, target_speed, category):
+    """Draw a compact speed indicator on the frame."""
+    h, w = frame.shape[:2]
+
+    # Position in the bottom-left area
+    x, y = 10, h - 80
+
+    # Color based on category
+    color_map = {
+        "STRAIGHT":      (0, 255, 0),
+        "GENTLE_CURVE":  (0, 255, 255),
+        "MODERATE_CURVE": (0, 165, 255),
+        "SHARP_CURVE":   (0, 0, 255),
+    }
+    color = color_map.get(category, (200, 200, 200))
+
+    # Speed bar background
+    bar_width = 200
+    bar_height = 20
+    cv2.rectangle(frame, (x, y), (x + bar_width, y + bar_height), (50, 50, 50), -1)
+
+    # Filled portion
+    fill = int(bar_width * current_speed)
+    cv2.rectangle(frame, (x, y), (x + fill, y + bar_height), color, -1)
+
+    # Target marker
+    target_x = x + int(bar_width * target_speed)
+    cv2.line(frame, (target_x, y - 3), (target_x, y + bar_height + 3), (255, 255, 255), 2)
+
+    # Labels
+    cv2.putText(frame, f"Speed: {current_speed*100:.0f}%",
+                (x, y - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+    cv2.putText(frame, category.replace("_", " "),
+                (x + bar_width + 10, y + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+
+    return frame

@@ -1,7 +1,10 @@
 """
 main.py - Complete Autonomous Vehicle System
 ---------------------------------------------
-FINAL REFINED VERSION with all bugs fixed.
+OPTIMIZED VERSION for pure lane-following testing
+- Obstacle detection: DISABLED (sim too sensitive to shadows)
+- Sign detection: DISABLED (false positives)
+- Focus: Lane detection + PID steering + Adaptive speed
 
 Video source: test2.mp4 (hardcoded)
 """
@@ -24,6 +27,8 @@ class AutonomousVehicle:
         self.perception = LaneDetector()
         self.steering = PIDController(Kp=0.003, Ki=0.0001, Kd=0.001)
         self.speed_control = AdaptiveSpeedController(min_speed=0.2, max_speed=max_speed)
+        
+        # Initialize but won't use for testing
         self.safety = ObstacleDetector(emergency_distance=20, warning_distance=50)
         self.sign_detector = TrafficSignDetector()
         
@@ -35,51 +40,57 @@ class AutonomousVehicle:
         self.total_error = 0
         
         print("\n✅ All systems initialized!")
+        print("   - Lane Detection: ACTIVE")
         print("=" * 70)
     
     def process_frame(self, frame):
         self.frame_count += 1
         
-        # STEP 1: Perception
+        # STEP 1: Perception (ACTIVE)
         steering_error, vision_frame = self.perception.process_frame(frame)
         self.total_error += abs(steering_error)
         
-        # STEP 2: Safety
-        self.safety.simulate_sensors(frame, steering_error)
-        obstacle_modifier = self.safety.get_speed_modifier()
+        # STEP 2: Safety (DISABLED - too sensitive to shadows in simulation)
+        # self.safety.simulate_sensors(frame, steering_error)
+        # obstacle_modifier = self.safety.get_speed_modifier()
+        obstacle_modifier = 1.0  # Full speed, no obstacle interference
         
-        # STEP 3: Traffic Signs
-        detected_signs = self.sign_detector.detect_signs(frame)
-        sign_action, sign_value = self.sign_detector.get_action()
+        # STEP 3: Traffic Signs (DISABLED - false positives on natural scenes)
+        # detected_signs = self.sign_detector.detect_signs(frame)
+        # sign_action, sign_value = self.sign_detector.get_action()
+        sign_action, sign_value = None, None
         
-        if sign_action == "STOP":
-            if self.stop_sign_timer == 0:
-                self.stop_sign_timer = 60
-        elif sign_action == "LIMIT" and sign_value:
-            if self.current_speed_limit != sign_value:
-                self.current_speed_limit = sign_value
-        elif sign_action == "SLOW":
-            obstacle_modifier = min(obstacle_modifier, 0.4)
+        # Skip sign logic (all disabled)
+        # if sign_action == "STOP":
+        #     if self.stop_sign_timer == 0:
+        #         self.stop_sign_timer = 60
+        # elif sign_action == "LIMIT" and sign_value:
+        #     if self.current_speed_limit != sign_value:
+        #         self.current_speed_limit = sign_value
+        # elif sign_action == "SLOW":
+        #     obstacle_modifier = min(obstacle_modifier, 0.4)
         
-        # STEP 4: Speed Control
+        # STEP 4: Speed Control (ACTIVE)
         if self.stop_sign_timer > 0:
             base_speed = 0.0
             self.stop_sign_timer -= 1
             status = "STOPPED (Stop Sign)"
-        elif self.safety.should_emergency_stop():
-            base_speed = 0.0
-            status = "EMERGENCY STOP (Obstacle)"
+        # Obstacle checks disabled
+        # elif self.safety.should_emergency_stop():
+        #     base_speed = 0.0
+        #     status = "EMERGENCY STOP (Obstacle)"
         else:
             base_speed = self.speed_control.calculate_speed(steering_error, obstacle_modifier)
             base_speed = min(base_speed, self.current_speed_limit)
             
-            if self.safety.should_slow_down():
-                status = "SLOWING (Obstacle Warning)"
-            else:
-                speed_category = self.speed_control.get_speed_category(abs(steering_error))
-                status = speed_category.replace("_", " ")
+            # Obstacle warnings disabled
+            # if self.safety.should_slow_down():
+            #     status = "SLOWING (Obstacle Warning)"
+            # else:
+            speed_category = self.speed_control.get_speed_category(abs(steering_error))
+            status = speed_category.replace("_", " ")
         
-        # STEP 5: Steering
+        # STEP 5: Steering (ACTIVE)
         if self.autonomous_enabled and base_speed > 0:
             pid_output = self.steering.compute(steering_error)
             left_speed = max(0.0, min(1.0, base_speed + pid_output))
@@ -89,7 +100,7 @@ class AutonomousVehicle:
             left_speed = 0.0
             right_speed = 0.0
         
-        # STEP 6: Visualization
+        # STEP 6: Visualization (ACTIVE)
         debug_frame = self._create_debug_frame(
             vision_frame, steering_error, pid_output,
             base_speed, left_speed, right_speed, status
@@ -103,8 +114,12 @@ class AutonomousVehicle:
         frame = vision_frame.copy()
         h, w = frame.shape[:2]
         
+        # Obstacle overlay disabled
         frame = self.safety.draw_overlay(frame)
+        
+        # Sign detection overlay disabled
         frame = self.sign_detector.draw_overlay(frame)
+        
         frame = self._draw_motor_bars(frame, left_speed, right_speed, pid_output)
         
         speed_category = self.speed_control.get_speed_category(abs(error))
@@ -240,9 +255,8 @@ class AutonomousVehicle:
 def main():
     vehicle = AutonomousVehicle(max_speed=0.8)
     
-    # HARDCODED VIDEO SOURCE - test2.mp4
-    video_source = "../test_videos/test2.mp4"
-    
+    # HARDCODED VIDEO SOURCE .mp4
+    video_source = "../test_videos/finalt.mp4"  
     vehicle.run(video_source)
 
 
