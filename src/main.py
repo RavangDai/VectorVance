@@ -1,12 +1,12 @@
 """
 main.py - Complete Autonomous Vehicle System
 ---------------------------------------------
-OPTIMIZED VERSION for pure lane-following testing
-- Obstacle detection: DISABLED (sim too sensitive to shadows)
-- Sign detection: DISABLED (false positives)
-- Focus: Lane detection + PID steering + Adaptive speed
+FIXED VERSION - Sign detection RE-ENABLED
+- Sign detection: ENABLED (with improved false positive filtering)
+- Obstacle detection: Still disabled (can enable if needed)
+- Focus: Lane detection + PID steering + Sign recognition
 
-Video source: test2.mp4 (hardcoded)
+Video source: configurable via command line or hardcoded
 """
 
 import cv2
@@ -21,76 +21,86 @@ from sign_detector import TrafficSignDetector
 class AutonomousVehicle:
     def __init__(self, max_speed=0.8):
         print("\n" + "=" * 70)
-        print("🚗 AUTONOMOUS VEHICLE SYSTEM")
+        print("🚗 AUTONOMOUS VEHICLE SYSTEM - VectorVance")
         print("=" * 70)
         
         self.perception = LaneDetector()
         self.steering = PIDController(Kp=0.003, Ki=0.0001, Kd=0.001)
         self.speed_control = AdaptiveSpeedController(min_speed=0.2, max_speed=max_speed)
         
-        # Initialize but won't use for testing
+        # Safety module (still disabled for sim testing)
         self.safety = ObstacleDetector(emergency_distance=20, warning_distance=50)
+        
+        # Sign detector - NOW ACTIVE!
         self.sign_detector = TrafficSignDetector()
         
         self.autonomous_enabled = True
         self.current_speed_limit = max_speed
         self.stop_sign_timer = 0
+        self.stop_sign_cooldown = 0  # Prevent retriggering same sign
         
         self.frame_count = 0
         self.total_error = 0
         
+        # Statistics tracking
+        self.stop_signs_detected = 0
+        
         print("\n✅ All systems initialized!")
         print("   - Lane Detection: ACTIVE")
+        print("   - STOP Sign Detection: ACTIVE ✓")
+        print("   - Obstacle Detection: DISABLED")
         print("=" * 70)
     
     def process_frame(self, frame):
         self.frame_count += 1
         
-        # STEP 1: Perception (ACTIVE)
+        # ══════════════════════════════════════════════════════════════
+        # STEP 1: Perception - Lane Detection
+        # ══════════════════════════════════════════════════════════════
         steering_error, vision_frame = self.perception.process_frame(frame)
         self.total_error += abs(steering_error)
         
-        # STEP 2: Safety (DISABLED - too sensitive to shadows in simulation)
+        # ══════════════════════════════════════════════════════════════
+        # STEP 2: Safety - Obstacle Detection (DISABLED)
+        # ══════════════════════════════════════════════════════════════
         # self.safety.simulate_sensors(frame, steering_error)
         # obstacle_modifier = self.safety.get_speed_modifier()
         obstacle_modifier = 1.0  # Full speed, no obstacle interference
         
-        # STEP 3: Traffic Signs (DISABLED - false positives on natural scenes)
-        # detected_signs = self.sign_detector.detect_signs(frame)
-        # sign_action, sign_value = self.sign_detector.get_action()
-        sign_action, sign_value = None, None
+        # ══════════════════════════════════════════════════════════════
+        # STEP 3: STOP Sign Detection
+        # ══════════════════════════════════════════════════════════════
+        detected_signs = self.sign_detector.detect_signs(frame)
+        sign_action, _ = self.sign_detector.get_action()
         
-        # Skip sign logic (all disabled)
-        # if sign_action == "STOP":
-        #     if self.stop_sign_timer == 0:
-        #         self.stop_sign_timer = 60
-        # elif sign_action == "LIMIT" and sign_value:
-        #     if self.current_speed_limit != sign_value:
-        #         self.current_speed_limit = sign_value
-        # elif sign_action == "SLOW":
-        #     obstacle_modifier = min(obstacle_modifier, 0.4)
+        # Decrement cooldown timer
+        if self.stop_sign_cooldown > 0:
+            self.stop_sign_cooldown -= 1
         
-        # STEP 4: Speed Control (ACTIVE)
+        # Handle STOP sign
+        if sign_action == "STOP" and self.stop_sign_cooldown == 0:
+            if self.stop_sign_timer == 0:
+                self.stop_sign_timer = 60  # Stop for ~2 seconds
+                self.stop_sign_cooldown = 120  # Don't retrigger for 4 seconds
+                self.stop_signs_detected += 1
+                print(f"🛑 STOP SIGN DETECTED! Stopping for 2 seconds...")
+        
+        # ══════════════════════════════════════════════════════════════
+        # STEP 4: Speed Control
+        # ══════════════════════════════════════════════════════════════
         if self.stop_sign_timer > 0:
             base_speed = 0.0
             self.stop_sign_timer -= 1
-            status = "STOPPED (Stop Sign)"
-        # Obstacle checks disabled
-        # elif self.safety.should_emergency_stop():
-        #     base_speed = 0.0
-        #     status = "EMERGENCY STOP (Obstacle)"
+            status = f"STOPPED (Sign: {self.stop_sign_timer})"
         else:
             base_speed = self.speed_control.calculate_speed(steering_error, obstacle_modifier)
             base_speed = min(base_speed, self.current_speed_limit)
-            
-            # Obstacle warnings disabled
-            # if self.safety.should_slow_down():
-            #     status = "SLOWING (Obstacle Warning)"
-            # else:
             speed_category = self.speed_control.get_speed_category(abs(steering_error))
             status = speed_category.replace("_", " ")
         
-        # STEP 5: Steering (ACTIVE)
+        # ══════════════════════════════════════════════════════════════
+        # STEP 5: Steering Control
+        # ══════════════════════════════════════════════════════════════
         if self.autonomous_enabled and base_speed > 0:
             pid_output = self.steering.compute(steering_error)
             left_speed = max(0.0, min(1.0, base_speed + pid_output))
@@ -100,37 +110,53 @@ class AutonomousVehicle:
             left_speed = 0.0
             right_speed = 0.0
         
-        # STEP 6: Visualization (ACTIVE)
+        # ══════════════════════════════════════════════════════════════
+        # STEP 6: Visualization
+        # ══════════════════════════════════════════════════════════════
         debug_frame = self._create_debug_frame(
             vision_frame, steering_error, pid_output,
-            base_speed, left_speed, right_speed, status
+            base_speed, left_speed, right_speed, status, sign_action
         )
         
         motor_commands = (left_speed, right_speed, status)
         return debug_frame, motor_commands
     
     def _create_debug_frame(self, vision_frame, error, pid_output,
-                           base_speed, left_speed, right_speed, status):
+                           base_speed, left_speed, right_speed, status, sign_action):
         frame = vision_frame.copy()
         h, w = frame.shape[:2]
         
-        # Obstacle overlay disabled
+        # Obstacle overlay (disabled but keep for interface consistency)
         frame = self.safety.draw_overlay(frame)
         
-        # Sign detection overlay disabled
+        # Sign detection overlay - NOW ACTIVE!
         frame = self.sign_detector.draw_overlay(frame)
         
+        # Motor bars
         frame = self._draw_motor_bars(frame, left_speed, right_speed, pid_output)
         
+        # Speed indicator
         speed_category = self.speed_control.get_speed_category(abs(error))
         target_speed = self.speed_control.target_speed
         frame = draw_speed_indicator(frame, base_speed, target_speed, speed_category)
         
+        # Status display
+        status_color = (255, 255, 255)
+        if "STOPPED" in status:
+            status_color = (0, 0, 255)  # Red when stopped
+            
         cv2.putText(frame, f"Status: {status}", 
-                   (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                   (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_color, 2)
         
-        cv2.putText(frame, f"Limit: {self.current_speed_limit*100:.0f}%", 
-                   (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+        # STOP sign detection status
+        if sign_action == "STOP":
+            sign_status = "STOP DETECTED!"
+            sign_color = (0, 0, 255)  # Red
+        else:
+            sign_status = "Scanning..."
+            sign_color = (150, 150, 150)
+        cv2.putText(frame, sign_status,
+                   (10, 175), cv2.FONT_HERSHEY_SIMPLEX, 0.45, sign_color, 1)
         
         return frame
     
@@ -143,11 +169,13 @@ class AutonomousVehicle:
         bar_x_right = w - 60
         bar_y = h - bar_height - 50
         
+        # Background
         cv2.rectangle(frame, (bar_x_left, bar_y), 
                      (bar_x_left + bar_width, bar_y + bar_height), (50, 50, 50), -1)
         cv2.rectangle(frame, (bar_x_right, bar_y), 
                      (bar_x_right + bar_width, bar_y + bar_height), (50, 50, 50), -1)
         
+        # Fill
         left_fill = int(bar_height * left_speed)
         right_fill = int(bar_height * right_speed)
         
@@ -159,6 +187,7 @@ class AutonomousVehicle:
         cv2.rectangle(frame, (bar_x_right, bar_y + bar_height - right_fill), 
                      (bar_x_right + bar_width, bar_y + bar_height), right_color, -1)
         
+        # Labels
         cv2.putText(frame, "L", (bar_x_left + 12, bar_y - 5), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
         cv2.putText(frame, "R", (bar_x_right + 12, bar_y - 5), 
@@ -176,7 +205,7 @@ class AutonomousVehicle:
         
         if not cap.isOpened():
             print(f"❌ Cannot open video: {video_source}")
-            print("📌 Make sure test2.mp4 is in test_videos folder!")
+            print("📌 Make sure the video file exists!")
             return
         
         print("\n🎬 AUTONOMOUS SYSTEM ACTIVE")
@@ -186,6 +215,7 @@ class AutonomousVehicle:
         print("  [SPACE] Toggle Autonomous Mode")
         print("  [R] Reset all systems")
         print("  [S] Save snapshot")
+        print("  [D] Debug: Print sign detector state")
         print("=" * 70)
         
         start_time = time.time()
@@ -202,6 +232,7 @@ class AutonomousVehicle:
                           ("ENABLED" if self.autonomous_enabled else "DISABLED")
             cv2.imshow(window_title, debug_frame)
             
+            # Periodic status output
             if self.frame_count % 30 == 0:
                 fps = self.frame_count / (time.time() - start_time)
                 avg_error = self.total_error / self.frame_count
@@ -226,11 +257,21 @@ class AutonomousVehicle:
                 self.speed_control.reset()
                 self.safety.reset()
                 self.perception.reset_smoothing()
+                self.sign_detector.reset()
+                self.current_speed_limit = 0.8
+                self.stop_sign_timer = 0
                 print("\n🔄 All systems reset")
             elif key == ord('s'):
                 filename = f"../outputs/autonomous_{self.frame_count:04d}.jpg"
                 cv2.imwrite(filename, debug_frame)
                 print(f"\n💾 Saved: {filename}")
+            elif key == ord('d'):
+                # Debug: print sign detector state
+                print(f"\n🔍 SIGN DETECTOR DEBUG:")
+                print(f"   Raw detections: {len(self.sign_detector.detected_signs)}")
+                print(f"   Confirmed signs: {len(self.sign_detector.confirmed_signs)}")
+                for s in self.sign_detector.confirmed_signs:
+                    print(f"      → {s[0].value} at {s[1]} conf={s[2]:.2f}")
         
         cap.release()
         cv2.destroyAllWindows()
@@ -248,6 +289,7 @@ class AutonomousVehicle:
         print(f"Frames:          {self.frame_count}")
         print(f"Average FPS:     {fps:.1f}")
         print(f"Average error:   {avg_error:.1f}px")
+        print("\n🛑 STOP SIGNS DETECTED:", self.stop_signs_detected)
         print("=" * 70)
         print("\n✅ System shutdown complete\n")
 
@@ -255,8 +297,8 @@ class AutonomousVehicle:
 def main():
     vehicle = AutonomousVehicle(max_speed=0.8)
     
-    # HARDCODED VIDEO SOURCE .mp4
-    video_source = "../test_videos/finalt.mp4"  
+    # Video source - change this to your test video
+    video_source = "../test_videos/test4.mp4"
     vehicle.run(video_source)
 
 
