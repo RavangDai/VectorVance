@@ -1,24 +1,22 @@
 """
-speed_controller.py - Adaptive Speed Controller
--------------------------------------------------
-Maps steering error to target speed and provides
-a visual speed indicator overlay.
+speed_controller.py - Adaptive speed based on steering error.
+
+Slows down proportionally to how sharp the upcoming turn is,
+so the car doesn't overshoot curves at full throttle.
 """
 
 import cv2
 
 
 class AdaptiveSpeedController:
-    # Error thresholds for speed categories
-    STRAIGHT_THRESHOLD = 30
-    GENTLE_THRESHOLD = 80
-    MODERATE_THRESHOLD = 150
+    STRAIGHT_THRESHOLD  = 30
+    GENTLE_THRESHOLD    = 80
+    MODERATE_THRESHOLD  = 150
 
-    # Speed multipliers per category
     SPEED_MAP = {
         "STRAIGHT":       1.0,
         "GENTLE_CURVE":   0.75,
-        "MODERATE_CURVE":  0.5,
+        "MODERATE_CURVE": 0.5,
         "SHARP_CURVE":    0.3,
     }
 
@@ -28,11 +26,7 @@ class AdaptiveSpeedController:
         self.target_speed = max_speed
         self._current_category = "STRAIGHT"
 
-        print(f"🏎️  Adaptive Speed Controller Initialized")
-        print(f"   Speed range: [{min_speed:.2f}, {max_speed:.2f}]")
-
     def get_speed_category(self, abs_error):
-        """Classify the steering error into a speed category."""
         if abs_error < self.STRAIGHT_THRESHOLD:
             return "STRAIGHT"
         elif abs_error < self.GENTLE_THRESHOLD:
@@ -43,7 +37,6 @@ class AdaptiveSpeedController:
             return "SHARP_CURVE"
 
     def calculate_speed(self, steering_error, obstacle_modifier=1.0):
-        """Return a target speed based on steering error and obstacle modifier."""
         abs_error = abs(steering_error)
         self._current_category = self.get_speed_category(abs_error)
 
@@ -58,35 +51,29 @@ class AdaptiveSpeedController:
 
 
 def draw_speed_indicator(frame, current_speed, target_speed, category):
-    """Draw a compact speed indicator on the frame."""
+    """Draw a compact speed bar in the bottom-left of the frame."""
     h, w = frame.shape[:2]
-
-    # Position in the bottom-left area
     x, y = 10, h - 80
 
-    # Color based on category
     color_map = {
-        "STRAIGHT":      (0, 255, 0),
-        "GENTLE_CURVE":  (0, 255, 255),
+        "STRAIGHT":       (0, 255, 0),
+        "GENTLE_CURVE":   (0, 255, 255),
         "MODERATE_CURVE": (0, 165, 255),
-        "SHARP_CURVE":   (0, 0, 255),
+        "SHARP_CURVE":    (0, 0, 255),
     }
     color = color_map.get(category, (200, 200, 200))
 
-    # Speed bar background
-    bar_width = 200
+    bar_width  = 200
     bar_height = 20
     cv2.rectangle(frame, (x, y), (x + bar_width, y + bar_height), (50, 50, 50), -1)
 
-    # Filled portion
     fill = int(bar_width * current_speed)
     cv2.rectangle(frame, (x, y), (x + fill, y + bar_height), color, -1)
 
-    # Target marker
+    # marker showing the target speed
     target_x = x + int(bar_width * target_speed)
     cv2.line(frame, (target_x, y - 3), (target_x, y + bar_height + 3), (255, 255, 255), 2)
 
-    # Labels
     cv2.putText(frame, f"Speed: {current_speed*100:.0f}%",
                 (x, y - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
     cv2.putText(frame, category.replace("_", " "),
