@@ -221,7 +221,7 @@ class AutonomousVehicle:
 
 def main():
     vehicle = AutonomousVehicle(max_speed=0.8)
-    vehicle.run("../test_videos/test6.mp4")
+    vehicle.run("../test_videos/challenge.mp4")
 
 
 if __name__ == "__main__":
