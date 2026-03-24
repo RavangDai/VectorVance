@@ -1,12 +1,13 @@
 """
-main.py - Simulation entry point (no hardware).
+main.py - VectorVance Autonomous Car
+Live camera dashboard on Raspberry Pi using picamera2.
 
 Lane detection + PID steering + adaptive speed + STOP sign detection.
-Obstacle detection is disabled here; enable it if needed for testing.
 """
 
 import cv2
 import time
+from picamera2 import Picamera2
 from perception import LaneDetector
 from controller import PIDController
 from speed_controller import AdaptiveSpeedController, draw_speed_indicator
@@ -20,7 +21,7 @@ class AutonomousVehicle:
         self.steering = PIDController(Kp=0.003, Ki=0.0001, Kd=0.001)
         self.speed_control = AdaptiveSpeedController(min_speed=0.2, max_speed=max_speed)
 
-        # kept alive so draw_overlay still works, but simulate_sensors is never called
+        # kept alive so draw_overlay still works
         self.safety = ObstacleDetector(emergency_distance=20, warning_distance=50)
 
         self.sign_detector = TrafficSignDetector()
@@ -40,7 +41,7 @@ class AutonomousVehicle:
         steering_error, vision_frame = self.perception.process_frame(frame)
         self.total_error += abs(steering_error)
 
-        # obstacle detection disabled in sim - always full speed modifier
+        # obstacle detection disabled - always full speed modifier
         obstacle_modifier = 1.0
 
         detected_signs = self.sign_detector.detect_signs(frame)
@@ -51,8 +52,8 @@ class AutonomousVehicle:
 
         if sign_action == "STOP" and self.stop_sign_cooldown == 0:
             if self.stop_sign_timer == 0:
-                self.stop_sign_timer = 60      # ~2 seconds at 30fps
-                self.stop_sign_cooldown = 120  # don't retrigger for 4 seconds
+                self.stop_sign_timer = 60       # ~2 seconds at 30fps
+                self.stop_sign_cooldown = 120   # don't retrigger for 4 seconds
                 self.stop_signs_detected += 1
                 print("STOP SIGN - stopping for 2 seconds")
 
@@ -83,9 +84,8 @@ class AutonomousVehicle:
         return debug_frame, (left_speed, right_speed, status)
 
     def _create_debug_frame(self, vision_frame, error, pid_output,
-                           base_speed, left_speed, right_speed, status, sign_action):
+                            base_speed, left_speed, right_speed, status, sign_action):
         frame = vision_frame.copy()
-        h, w = frame.shape[:2]
 
         frame = self.safety.draw_overlay(frame)
         frame = self.sign_detector.draw_overlay(frame)
@@ -97,14 +97,14 @@ class AutonomousVehicle:
 
         status_color = (0, 0, 255) if "STOPPED" in status else (255, 255, 255)
         cv2.putText(frame, f"Status: {status}",
-                   (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_color, 2)
+                    (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_color, 2)
 
         if sign_action == "STOP":
             cv2.putText(frame, "STOP DETECTED!",
-                       (10, 175), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 1)
+                        (10, 175), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 1)
         else:
             cv2.putText(frame, "Scanning...",
-                       (10, 175), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (150, 150, 150), 1)
+                        (10, 175), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (150, 150, 150), 1)
 
         return frame
 
@@ -118,9 +118,9 @@ class AutonomousVehicle:
         bar_y = h - bar_height - 50
 
         cv2.rectangle(frame, (bar_x_left, bar_y),
-                     (bar_x_left + bar_width, bar_y + bar_height), (50, 50, 50), -1)
+                      (bar_x_left + bar_width, bar_y + bar_height), (50, 50, 50), -1)
         cv2.rectangle(frame, (bar_x_right, bar_y),
-                     (bar_x_right + bar_width, bar_y + bar_height), (50, 50, 50), -1)
+                      (bar_x_right + bar_width, bar_y + bar_height), (50, 50, 50), -1)
 
         left_fill = int(bar_height * left_speed)
         right_fill = int(bar_height * right_speed)
@@ -128,44 +128,46 @@ class AutonomousVehicle:
         bar_color = (0, 255, 0) if abs(pid_output) < 0.1 else (0, 165, 255)
 
         cv2.rectangle(frame, (bar_x_left, bar_y + bar_height - left_fill),
-                     (bar_x_left + bar_width, bar_y + bar_height), bar_color, -1)
+                      (bar_x_left + bar_width, bar_y + bar_height), bar_color, -1)
         cv2.rectangle(frame, (bar_x_right, bar_y + bar_height - right_fill),
-                     (bar_x_right + bar_width, bar_y + bar_height), bar_color, -1)
+                      (bar_x_right + bar_width, bar_y + bar_height), bar_color, -1)
 
         cv2.putText(frame, "L", (bar_x_left + 12, bar_y - 5),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
         cv2.putText(frame, "R", (bar_x_right + 12, bar_y - 5),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
         cv2.putText(frame, f"{left_speed:.2f}", (bar_x_left, bar_y + bar_height + 20),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
         cv2.putText(frame, f"{right_speed:.2f}", (bar_x_right, bar_y + bar_height + 20),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
         return frame
 
-    def run(self, video_source):
-        cap = cv2.VideoCapture(video_source)
-
-        if not cap.isOpened():
-            print(f"Cannot open video: {video_source}")
-            return
-
+    def run(self):
+        # ── Pi Camera setup ───────────────────────────────────────────────────
+        picam2 = Picamera2()
+        config = picam2.create_preview_configuration(
+            main={"format": "RGB888", "size": (640, 480)}
+        )
+        picam2.configure(config)
+        picam2.start()
+        time.sleep(1)  # let camera warm up
+        print("Camera started!")
         print("Controls: [Q] Quit  [SPACE] Toggle auto  [R] Reset  [S] Snapshot  [D] Debug signs")
 
         start_time = time.time()
 
         while True:
-            ret, frame = cap.read()
-            if not ret:
-                print("End of video")
-                break
+            # capture frame from Pi camera
+            frame = picam2.capture_array()
 
             debug_frame, (left, right, status) = self.process_frame(frame)
 
-            window_title = "AUTONOMOUS VEHICLE - " + \
-                          ("ENABLED" if self.autonomous_enabled else "DISABLED")
+            window_title = "VectorVance - " + \
+                           ("AUTONOMOUS" if self.autonomous_enabled else "MANUAL")
             cv2.imshow(window_title, debug_frame)
 
+            # print stats every 30 frames
             if self.frame_count % 30 == 0:
                 fps = self.frame_count / (time.time() - start_time)
                 avg_error = self.total_error / self.frame_count
@@ -175,7 +177,7 @@ class AutonomousVehicle:
                       f"FPS:{fps:.1f} | "
                       f"AvgErr:{avg_error:.1f}px")
 
-            key = cv2.waitKey(30) & 0xFF
+            key = cv2.waitKey(1) & 0xFF
 
             if key == ord('q'):
                 break
@@ -192,16 +194,17 @@ class AutonomousVehicle:
                 self.stop_sign_timer = 0
                 print("All systems reset")
             elif key == ord('s'):
-                filename = f"../outputs/autonomous_{self.frame_count:04d}.jpg"
+                filename = f"/home/pi/test/snapshot_{self.frame_count:04d}.jpg"
                 cv2.imwrite(filename, debug_frame)
-                print(f"Saved: {filename}")
+                print(f"Snapshot saved: {filename}")
             elif key == ord('d'):
                 print(f"Sign detector: {len(self.sign_detector.detected_signs)} raw, "
                       f"{len(self.sign_detector.confirmed_signs)} confirmed")
                 for s in self.sign_detector.confirmed_signs:
                     print(f"  {s[0].value} at {s[1]} conf={s[2]:.2f}")
 
-        cap.release()
+        # cleanup
+        picam2.stop()
         cv2.destroyAllWindows()
         self._print_statistics(start_time)
 
@@ -221,7 +224,7 @@ class AutonomousVehicle:
 
 def main():
     vehicle = AutonomousVehicle(max_speed=0.8)
-    vehicle.run("../test_videos/challenge.mp4")
+    vehicle.run()
 
 
 if __name__ == "__main__":
