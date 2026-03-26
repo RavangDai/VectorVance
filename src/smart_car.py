@@ -6,13 +6,13 @@ GPIO.setmode(GPIO.BCM)
 
 # Motor Driver 1 — front left, front right
 IN1, IN2 = 25, 27
-IN3, IN4 = 5, 13
+IN3, IN4 = 5, 15
 
 # Motor Driver 2 — rear left, rear right
 IN5, IN6 = 26, 20
 IN7, IN8 = 16, 6
 
-# Ultrasonic sensor
+# Ultrasonic sensor (mounted on BACK of car)
 TRIG, ECHO = 4, 17
 
 STOP_DISTANCE = 30     # cm — stop if object closer than this
@@ -34,6 +34,13 @@ def forward():
     GPIO.output(IN3, GPIO.HIGH); GPIO.output(IN4, GPIO.LOW)
     GPIO.output(IN5, GPIO.HIGH); GPIO.output(IN6, GPIO.LOW)
     GPIO.output(IN7, GPIO.HIGH); GPIO.output(IN8, GPIO.LOW)
+
+def backward():
+    # sensor is on back — this is the main driving direction
+    GPIO.output(IN1, GPIO.LOW); GPIO.output(IN2, GPIO.HIGH)
+    GPIO.output(IN3, GPIO.LOW); GPIO.output(IN4, GPIO.HIGH)
+    GPIO.output(IN5, GPIO.LOW); GPIO.output(IN6, GPIO.HIGH)
+    GPIO.output(IN7, GPIO.LOW); GPIO.output(IN8, GPIO.HIGH)
 
 def stop_all():
     for p in ALL:
@@ -66,6 +73,7 @@ def get_distance():
 # ── Main loop ───────────────────────────────────────────
 
 print("Smart car started. Press Ctrl+C to stop.")
+print(f"Sensor on BACK — driving backward as main direction")
 print(f"Stop distance: {STOP_DISTANCE} cm")
 
 try:
@@ -74,6 +82,7 @@ try:
         print(f"Distance: {dist} cm")
 
         if dist < STOP_DISTANCE:
+            # obstacle behind — stop and wait
             stop_all()
             print("OBSTACLE DETECTED — waiting for path to clear...")
             while get_distance() < STOP_DISTANCE:
@@ -81,7 +90,8 @@ try:
                 time.sleep(0.3)
             print("Path clear — resuming!")
         else:
-            forward()
+            # no obstacle behind — drive backward (sensor direction)
+            backward()
 
         time.sleep(0.1)
 

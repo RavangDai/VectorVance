@@ -1,9 +1,6 @@
 """
 perception.py - Lane detection optimized for Raspberry Pi 3.
-
-Runs at 480x360 to keep CPU usage reasonable on the Pi.
-Uses separate left/right line fitting instead of a single median,
-with a memory fallback when one side drops out mid-curve.
+Wider ROI and higher resolution for better lane coverage.
 """
 
 import cv2
@@ -12,16 +9,16 @@ from collections import deque
 
 
 class LaneDetector:
-    def __init__(self, width=480, height=360, smoothing_window=5):
+    def __init__(self, width=640, height=480, smoothing_window=5):
         self.width = width
         self.height = height
         self.smoothing_window = smoothing_window
         self.error_history = deque(maxlen=smoothing_window)
 
-        # trapezoid ROI - wider top than a simple triangle to catch curves
+        # WIDER trapezoid ROI — covers more of the road left and right
         roi_bottom = height
-        roi_top = int(height * 0.55)
-        roi_top_width_fraction = 0.55
+        roi_top = int(height * 0.45)        # higher up = sees further ahead
+        roi_top_width_fraction = 0.55      # wider top (was 0.25)
 
         self.roi_vertices = np.array([[
             (0, roi_bottom),
@@ -30,12 +27,12 @@ class LaneDetector:
             (width, roi_bottom)
         ]], dtype=np.int32)
 
-        self.canny_low = 50
-        self.canny_high = 150
-        self.hough_threshold = 30
-        self.hough_min_line_length = 40
-        self.hough_max_line_gap = 150
-        self.min_segment_length = 30
+        self.canny_low = 40                 # lower = detects more edges
+        self.canny_high = 120
+        self.hough_threshold = 25           # lower = detects more lines
+        self.hough_min_line_length = 30     # shorter lines detected
+        self.hough_max_line_gap = 200       # bigger gap allowed
+        self.min_segment_length = 20
 
         # last known lane positions - used as fallback when detection fails
         self.left_lane_memory  = deque(maxlen=8)
@@ -46,6 +43,9 @@ class LaneDetector:
 
     def process_frame(self, frame):
         frame = cv2.resize(frame, (self.width, self.height))
+
+        # flip frame 180 degrees
+        frame = cv2.rotate(frame, cv2.ROTATE_180)
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (5, 5), 0)
@@ -80,11 +80,6 @@ class LaneDetector:
         return cv2.bitwise_and(edges, mask)
 
     def _separate_lanes(self, lines):
-        """
-        Split detected lines into left/right by slope and position.
-        Angle filter is 20-80 degrees - relaxed from the original 45 cap
-        so gentle curves aren't thrown away.
-        """
         left_lines  = []
         right_lines = []
 
@@ -96,16 +91,16 @@ class LaneDetector:
         for line in lines:
             x1, y1, x2, y2 = line[0]
             if x2 == x1:
-                continue  # vertical line, skip
+                continue
 
             seg_len = np.hypot(x2 - x1, y2 - y1)
             if seg_len < self.min_segment_length:
-                continue  # too short, probably noise
+                continue
 
             slope = (y2 - y1) / (x2 - x1)
             angle = abs(np.degrees(np.arctan(slope)))
 
-            if angle < 20 or angle > 80:
+            if angle < 15 or angle > 85:   # relaxed angle range
                 continue
 
             mid_x = (x1 + x2) / 2
@@ -120,7 +115,6 @@ class LaneDetector:
         return left_fit, right_fit
 
     def _fit_lane(self, line_segments):
-        """Fit a single line to a set of segments. Returns (slope, intercept) or None."""
         if not line_segments:
             return None
         pts = []
@@ -129,17 +123,12 @@ class LaneDetector:
         xs = np.array([p[0] for p in pts], dtype=np.float32)
         ys = np.array([p[1] for p in pts], dtype=np.float32)
         try:
-            # fit x = f(y) rather than y = f(x) - more numerically stable for near-vertical lines
             fit = np.polyfit(ys, xs, 1)
             return fit
         except np.linalg.LinAlgError:
             return None
 
     def _compute_center(self, left_fit, right_fit):
-        """
-        Compute lane center from fitted lines.
-        Falls back to memory when one side is missing.
-        """
         y_eval = int(self.height * 0.75)
 
         left_x  = self._eval_fit(left_fit,  y_eval)
@@ -165,17 +154,15 @@ class LaneDetector:
         if left_x is not None and right_x is not None:
             center = (left_x + right_x) // 2
         elif left_x is not None:
-            # only left lane visible - estimate right side assuming ~250px lane width
-            center = left_x + 125
+            center = left_x + 160   # wider lane estimate (was 125)
         elif right_x is not None:
-            center = right_x - 125
+            center = right_x - 160
         else:
             center = None
 
         return center, left_x, right_x
 
     def _eval_fit(self, fit, y):
-        """Evaluate x = slope*y + intercept. Returns None if fit is None or result is out of frame."""
         if fit is None:
             return None
         x = int(fit[0] * y + fit[1])
@@ -184,11 +171,10 @@ class LaneDetector:
         return x
 
     def _make_lane_points(self, fit):
-        """Return (x_bottom, x_top) for drawing a fitted lane line."""
         if fit is None:
             return None
         y_bottom = self.height
-        y_top = int(self.height * 0.55)
+        y_top = int(self.height * 0.45)
         x_bottom = int(fit[0] * y_bottom + fit[1])
         x_top    = int(fit[0] * y_top    + fit[1])
         return (x_bottom, y_bottom), (x_top, y_top)
@@ -201,9 +187,9 @@ class LaneDetector:
         right_pts = self._make_lane_points(right_fit)
 
         if left_pts:
-            cv2.line(debug, left_pts[0], left_pts[1], (0, 255, 255), 4)   # cyan
+            cv2.line(debug, left_pts[0], left_pts[1], (0, 255, 255), 4)
         if right_pts:
-            cv2.line(debug, right_pts[0], right_pts[1], (255, 128, 0), 4) # orange
+            cv2.line(debug, right_pts[0], right_pts[1], (255, 128, 0), 4)
 
         if left_pts and right_pts:
             poly = np.array([
@@ -239,7 +225,6 @@ class LaneDetector:
 
         self._draw_confidence_bars(debug)
 
-        # small edge preview in top-left corner
         edges_colored = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
         edges_small   = cv2.resize(edges_colored, (120, 90))
         debug[10:100, 10:130] = edges_small
