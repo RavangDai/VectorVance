@@ -18,41 +18,41 @@
 @keyframes orbitSpin { to { transform: rotate(360deg) } }
 @keyframes slideIn { from { opacity: 0; transform: translateX(30px) } to { opacity: 1; transform: translateX(0) } }
 @keyframes statusPulse { 0%, 100% { box-shadow: 0 0 0 0 var(--pulse-c) } 50% { box-shadow: 0 0 20px 4px var(--pulse-c) } }
-
-/* Car Intro Animations */
 @keyframes carDrive {
-    0% { transform: translateX(-120vw) skewX(-10deg); filter: drop-shadow(0 0 10px var(--neon-b)); }
-    40% { transform: translateX(-10vw) skewX(0); filter: drop-shadow(0 0 30px var(--neon-b)); }
-    60% { transform: translateX(10vw) scale(1.05); filter: drop-shadow(0 0 40px var(--neon-g)); }
-    100% { transform: translateX(120vw) skewX(15deg); filter: drop-shadow(0 0 10px var(--neon-g)); }
+    0%   { transform: translateX(-120vw) skewX(-10deg); filter: drop-shadow(0 0 10px var(--neon-b)); }
+    40%  { transform: translateX(-10vw)  skewX(0);      filter: drop-shadow(0 0 30px var(--neon-b)); }
+    60%  { transform: translateX(10vw)   scale(1.05);   filter: drop-shadow(0 0 40px var(--neon-g)); }
+    100% { transform: translateX(120vw)  skewX(15deg);  filter: drop-shadow(0 0 10px var(--neon-g)); }
 }
 @keyframes fadeOutIntro { to { opacity: 0; visibility: hidden; } }
-@keyframes pulseGlow { from { opacity: 0.4; text-shadow: 0 0 10px var(--neon-b); } to { opacity: 1; text-shadow: 0 0 25px var(--neon-b); } }
-
-/* Scanner Animations */
+@keyframes pulseGlow { from { opacity: .4; text-shadow: 0 0 10px var(--neon-b); } to { opacity: 1; text-shadow: 0 0 25px var(--neon-b); } }
 @keyframes scanDown {
-    0% { transform: translateY(0); opacity: 0; }
-    10% { opacity: 1; }
-    90% { opacity: 1; }
+    0%   { transform: translateY(0);    opacity: 0; }
+    10%  { opacity: 1; }
+    90%  { opacity: 1; }
     100% { transform: translateY(600px); opacity: 0; }
 }
+@keyframes stepSlideIn { from { opacity:0; transform:translateX(-12px); } to { opacity:1; transform:translateX(0); } }
+@keyframes spinRing { to { transform: rotate(360deg); } }
+@keyframes modalFadeIn  { from { opacity:0; } to { opacity:1; } }
+@keyframes modalSlideUp { from { opacity:0; transform:translateY(32px) scale(0.97); } to { opacity:1; transform:translateY(0) scale(1); } }
 
 :root {
-    --void: #030509;
-    --abyss: #070b14;
+    --void:       #030509;
+    --abyss:      #070b14;
     --panel-glass: rgba(13, 22, 40, 0.45);
     --panel-hover: rgba(20, 32, 56, 0.6);
-    --line: rgba(150, 180, 255, 0.1);
-    --lineHover: rgba(150, 180, 255, 0.25);
-    --dim: #4a628a;
-    --muted: #6e8bb5;
-    --txt: #d4e0f2;
-    --bright: #f0f4fa;
-    --neon-g: #00ff88;
-    --neon-b: #3b9dff;
-    --amber: #ffaa22;
-    --purple: #b46eff;
-    --red: #ff4466;
+    --line:       rgba(150, 180, 255, 0.1);
+    --lineHover:  rgba(150, 180, 255, 0.25);
+    --dim:        #4a628a;
+    --muted:      #6e8bb5;
+    --txt:        #d4e0f2;
+    --bright:     #f0f4fa;
+    --neon-g:     #00ff88;
+    --neon-b:     #3b9dff;
+    --amber:      #ffaa22;
+    --purple:     #b46eff;
+    --red:        #ff4466;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -60,156 +60,210 @@ html { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 body { background: var(--void); color: var(--txt); font-family: 'Outfit', sans-serif; overflow: hidden; }
 canvas#bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
 
-/* Intro Screen */
+/* ── Intro ─────────────────────────────────────────────────────────── */
 #intro-screen {
     position: fixed; inset: 0; z-index: 9999; background: var(--void);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
 }
-.intro-car-wrapper {
-    width: 280px; animation: carDrive 2.2s cubic-bezier(0.25, 1, 0.3, 1) forwards;
-}
+.intro-car-wrapper { width: 280px; animation: carDrive 2.2s cubic-bezier(0.25, 1, 0.3, 1) forwards; }
 .intro-text {
     margin-top: 24px; font-family: 'IBM Plex Mono', monospace; font-size: 14px;
     color: var(--neon-b); letter-spacing: 0.4em; opacity: 0;
     animation: pulseGlow 1.5s infinite alternate;
 }
 
-/* Layout */
+/* ── Scan Progress Modal ────────────────────────────────────────────── */
+#scan-modal {
+    position: fixed; inset: 0; z-index: 8000;
+    background: rgba(3, 5, 9, 0.88);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    display: none; align-items: center; justify-content: center;
+    animation: modalFadeIn .25s ease;
+}
+#scan-modal.active { display: flex; }
+
+.scan-card {
+    width: 420px; border-radius: 28px; padding: 36px 40px;
+    background: var(--panel-glass);
+    border: 1px solid var(--line);
+    box-shadow: 0 30px 80px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05);
+    animation: modalSlideUp .35s cubic-bezier(0.2,0.9,0.3,1) forwards;
+}
+.scan-card-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; font-weight: 700; letter-spacing: .2em;
+    color: var(--neon-b); text-transform: uppercase; margin-bottom: 28px;
+    display: flex; align-items: center; gap: 12px;
+}
+.scan-spinner {
+    width: 16px; height: 16px; border-radius: 50%;
+    border: 2px solid rgba(59,157,255,0.2);
+    border-top-color: var(--neon-b);
+    animation: spinRing .7s linear infinite;
+    flex-shrink: 0;
+}
+
+.scan-steps { display: flex; flex-direction: column; gap: 0; }
+
+.scan-step {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line);
+    opacity: 0.25;
+    transition: opacity .4s ease;
+}
+.scan-step:last-child { border-bottom: none; }
+.scan-step.active { opacity: 1; animation: stepSlideIn .3s ease forwards; }
+.scan-step.done   { opacity: 0.6; }
+
+.step-icon {
+    width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(59,157,255,0.08);
+    border: 1px solid rgba(59,157,255,0.2);
+    font-size: 14px; transition: all .3s;
+}
+.scan-step.active .step-icon { background: rgba(59,157,255,0.15); border-color: var(--neon-b); box-shadow: 0 0 12px rgba(59,157,255,0.3); }
+.scan-step.done   .step-icon { background: rgba(0,255,136,0.08);  border-color: var(--neon-g);  color: var(--neon-g); }
+
+.step-info {}
+.step-label { font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; letter-spacing: .08em; color: var(--bright); }
+.step-desc  { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+.scan-step.active .step-label { color: var(--neon-b); }
+.scan-step.done   .step-label { color: var(--neon-g); }
+
+.scan-result-box {
+    margin-top: 24px; padding: 16px 20px; border-radius: 16px;
+    background: rgba(0,0,0,0.25); border: 1px solid var(--line);
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+    color: var(--muted); text-align: center; min-height: 50px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all .4s;
+}
+.scan-result-box.success { border-color: var(--neon-g); color: var(--neon-g); background: rgba(0,255,136,0.06); }
+.scan-result-box.error   { border-color: var(--red);    color: var(--red);    background: rgba(255,68,102,0.06); }
+
+/* ── Layout ─────────────────────────────────────────────────────────── */
 .shell { position: relative; z-index: 1; height: 100vh; display: flex; flex-direction: column; }
 
-/* Header */
-.header { 
-    margin: 16px 24px; padding: 8px 20px; height: 60px; border-radius: 99px; 
+.header {
+    margin: 16px 24px; padding: 8px 20px; height: 60px; border-radius: 99px;
     display: flex; align-items: center; gap: 16px; flex-shrink: 0;
     backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
     background: var(--panel-glass); border: 1px solid var(--line);
     box-shadow: 0 10px 30px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
-    opacity: 0; 
+    opacity: 0;
 }
+.logo-mark { width: 36px; height: 36px; border-radius: 50%; position: relative; overflow: hidden; background: linear-gradient(135deg,rgba(0,255,136,.1),rgba(59,157,255,.1)); display: flex; align-items: center; justify-content: center; box-shadow: inset 0 0 12px rgba(255,255,255,0.05); }
+.logo-mark::after { content:''; position:absolute; inset:0; border-radius:50%; background:conic-gradient(from 0deg,transparent 0%,var(--neon-g) 25%,transparent 50%,var(--neon-b) 75%,transparent 100%); opacity:.2; animation:orbitSpin 6s linear infinite; }
+.logo-mark svg { width:18px; height:18px; position:relative; z-index:1; }
+.brand-wrapper { display:flex; flex-direction:column; justify-content:center; }
+.brand { font-family:'Outfit',sans-serif; font-weight:800; font-size:16px; letter-spacing:.1em; color:var(--bright); line-height:1; }
+.brand-sub { font-family:'IBM Plex Mono',monospace; font-size:9px; color:var(--neon-b); letter-spacing:.2em; text-transform:uppercase; margin-top:4px; opacity:0.8; }
+.hdr-badge { display:none; align-items:center; gap:8px; padding:8px 20px; border-radius:99px; font-family:'IBM Plex Mono',monospace; font-size:10px; font-weight:600; letter-spacing:.08em; animation:statusPulse 2s ease-in-out infinite; }
+.hdr-badge .indicator { width:6px; height:6px; border-radius:50%; animation:breathe 2s ease-in-out infinite; }
 
-.logo-mark { width: 36px; height: 36px; border-radius: 50%; position: relative; overflow: hidden; background: linear-gradient(135deg, rgba(0,255,136,.1), rgba(59,157,255,.1)); display: flex; align-items: center; justify-content: center; box-shadow: inset 0 0 12px rgba(255,255,255,0.05); }
-.logo-mark::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0%, var(--neon-g) 25%, transparent 50%, var(--neon-b) 75%, transparent 100%); opacity: .2; animation: orbitSpin 6s linear infinite; }
-.logo-mark svg { width: 18px; height: 18px; position: relative; z-index: 1; }
+/* ── Grid ───────────────────────────────────────────────────────────── */
+.layout { display:grid; grid-template-columns:1fr 340px; gap:20px; padding:0 24px 24px; min-height:0; flex:1; opacity:0; }
+.map-panel { display:flex; flex-direction:column; opacity:0; height:100%; min-height:0; }
+.side-panel { display:flex; flex-direction:column; gap:16px; opacity:0; height:100%; overflow-y:auto; padding-right:8px; }
+.section-label { font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--muted); letter-spacing:.16em; text-transform:uppercase; margin-bottom:12px; display:flex; align-items:center; gap:12px; padding-left:12px; flex-shrink:0; }
+.section-label::before { content:''; width:20px; height:2px; border-radius:2px; background:var(--neon-b); opacity:0.5; }
 
-.brand-wrapper { display: flex; flex-direction: column; justify-content: center; }
-.brand { font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 16px; letter-spacing: .1em; color: var(--bright); line-height: 1; }
-.brand-sub { font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: var(--neon-b); letter-spacing: .2em; text-transform: uppercase; margin-top: 4px; opacity: 0.8; }
-
-.hdr-badge { display: none; align-items: center; gap: 8px; padding: 8px 20px; border-radius: 99px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; letter-spacing: .08em; animation: statusPulse 2s ease-in-out infinite; }
-.hdr-badge .indicator { width: 6px; height: 6px; border-radius: 50%; animation: breathe 2s ease-in-out infinite; }
-
-/* Fluid Grid */
-.layout { 
-    display: grid; grid-template-columns: 1fr 340px; gap: 20px; 
-    padding: 0 24px 24px 24px; min-height: 0; flex: 1; opacity: 0; 
+/* ── Map ────────────────────────────────────────────────────────────── */
+.map-frame {
+    flex:1; border-radius:32px; overflow:hidden; position:relative;
+    background:var(--panel-glass); backdrop-filter:blur(20px); border:1px solid var(--line);
+    box-shadow:0 15px 40px rgba(0,0,0,0.5), inset 0 2px 0 rgba(255,255,255,0.03);
+    display:flex; align-items:center; justify-content:center;
 }
+.map-frame::before { content:''; position:absolute; top:-10%; left:0; right:0; height:4px; background:linear-gradient(90deg,transparent,var(--neon-g),var(--neon-b),transparent); animation:scanLine 5s ease-in-out infinite alternate; z-index:2; opacity:.3; filter:blur(4px); pointer-events:none; }
 
-.map-panel { display: flex; flex-direction: column; opacity: 0; height: 100%; min-height: 0; }
-.side-panel { display: flex; flex-direction: column; gap: 16px; opacity: 0; height: 100%; overflow-y: auto; padding-right: 8px; }
+#track-bg-img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:0; z-index:0; transition:opacity 0.5s; filter:grayscale(100%) contrast(120%) brightness(50%); }
 
-.section-label { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--muted); letter-spacing: .16em; text-transform: uppercase; margin-bottom: 12px; display: flex; align-items: center; gap: 12px; padding-left: 12px; flex-shrink: 0; }
-.section-label::before { content: ''; width: 20px; height: 2px; border-radius: 2px; background: var(--neon-b); opacity: 0.5; }
+.scanner-laser { position:absolute; top:0; left:0; width:100%; height:4px; background:var(--neon-g); box-shadow:0 0 20px 4px var(--neon-g); z-index:10; opacity:0; pointer-events:none; }
+.is-scanning .scanner-laser { animation:scanDown 1.5s ease-in-out infinite alternate; }
 
-/* Map Frame & Scanner Features */
-.map-frame { 
-    flex: 1; border-radius: 32px; overflow: hidden; position: relative; 
-    background: var(--panel-glass); backdrop-filter: blur(20px); border: 1px solid var(--line); 
-    box-shadow: 0 15px 40px rgba(0,0,0,0.5), inset 0 2px 0 rgba(255,255,255,0.03); 
-    display: flex; align-items: center; justify-content: center; 
+/* Node-type tooltip hint */
+.node-hint {
+    position: absolute; top: 14px; right: 14px; z-index: 20;
+    padding: 7px 14px; border-radius: 99px;
+    background: rgba(10,16,32,0.8); border: 1px solid var(--line);
+    font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: var(--muted);
+    letter-spacing: .08em; opacity: 0; transition: opacity .4s;
+    pointer-events: none;
 }
-.map-frame::before { content: ''; position: absolute; top: -10%; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, transparent, var(--neon-g), var(--neon-b), transparent); animation: scanLine 5s ease-in-out infinite alternate; z-index: 2; opacity: .3; filter: blur(4px); pointer-events: none; }
+.node-hint.visible { opacity: 1; }
 
-#track-bg-img {
-    position: absolute; inset: 0; width: 100%; height: 100%;
-    object-fit: cover; opacity: 0; z-index: 0; transition: opacity 0.5s;
-    filter: grayscale(100%) contrast(120%) brightness(50%); /* Dim radar look */
-}
+.map-overlay { position:absolute; bottom:20px; left:20px; z-index:20; padding:12px 20px; border-radius:99px; background:rgba(10,16,32,0.8); border:1px solid var(--line); backdrop-filter:blur(10px); display:flex; align-items:center; gap:16px; box-shadow:0 10px 20px rgba(0,0,0,0.4); opacity:0; transition:opacity 0.3s; }
+.map-overlay.active { opacity:1; }
+.mo-dist { color:var(--neon-g); font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:12px; }
+.mo-path { color:var(--bright); font-family:'IBM Plex Mono',monospace; font-size:9px; opacity:0.8; }
 
-.scanner-laser {
-    position: absolute; top: 0; left: 0; width: 100%; height: 4px;
-    background: var(--neon-g); box-shadow: 0 0 20px 4px var(--neon-g);
-    z-index: 10; opacity: 0; pointer-events: none;
-}
-.is-scanning .scanner-laser { animation: scanDown 1.5s ease-in-out infinite alternate; }
-
-.map-overlay {
-    position: absolute; bottom: 20px; left: 20px; z-index: 20;
-    padding: 12px 20px; border-radius: 99px; background: rgba(10,16,32,0.8);
-    border: 1px solid var(--line); backdrop-filter: blur(10px);
-    display: flex; align-items: center; gap: 16px;
-    box-shadow: 0 10px 20px rgba(0,0,0,0.4);
-    opacity: 0; transition: opacity 0.3s;
-}
-.map-overlay.active { opacity: 1; }
-.mo-dist { color: var(--neon-g); font-family: 'IBM Plex Mono', monospace; font-weight: 700; font-size: 12px; }
-.mo-path { color: var(--bright); font-family: 'IBM Plex Mono', monospace; font-size: 9px; opacity: 0.8; }
-
-/* Side Panel Cards & Buttons */
+/* ── Side Panel ─────────────────────────────────────────────────────── */
 .scan-btn {
-    width: 100%; padding: 14px; border-radius: 16px; border: 1px dashed var(--neon-b);
-    background: rgba(59, 157, 255, 0.05); color: var(--neon-b);
-    font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700;
-    cursor: pointer; letter-spacing: .1em; transition: all .3s;
-    display: flex; align-items: center; justify-content: center; gap: 10px;
-    flex-shrink: 0;
+    width:100%; padding:14px; border-radius:16px; border:1px dashed var(--neon-b);
+    background:rgba(59,157,255,0.05); color:var(--neon-b);
+    font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:700;
+    cursor:pointer; letter-spacing:.1em; transition:all .3s;
+    display:flex; align-items:center; justify-content:center; gap:10px; flex-shrink:0;
 }
-.scan-btn:hover { background: rgba(59, 157, 255, 0.15); box-shadow: 0 0 15px rgba(59, 157, 255, 0.2); border-style: solid; }
+.scan-btn:hover { background:rgba(59,157,255,0.15); box-shadow:0 0 15px rgba(59,157,255,0.2); border-style:solid; }
 
-.card { border-radius: 24px; padding: 20px; position: relative; overflow: hidden; background: var(--panel-glass); backdrop-filter: blur(20px); border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.04); transition: transform 0.3s; flex-shrink: 0; }
-.card:hover { background: var(--panel-hover); }
+.card { border-radius:24px; padding:20px; position:relative; overflow:hidden; background:var(--panel-glass); backdrop-filter:blur(20px); border:1px solid var(--line); box-shadow:0 10px 30px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.04); transition:transform 0.3s; flex-shrink:0; }
+.card:hover { background:var(--panel-hover); }
+.card-label { font-family:'IBM Plex Mono',monospace; font-size:9px; color:var(--bright); letter-spacing:.2em; text-transform:uppercase; margin-bottom:16px; display:flex; align-items:center; gap:8px; opacity:0.9; }
+.card-label .dot { width:5px; height:5px; border-radius:50%; background:var(--neon-b); box-shadow:0 0 10px var(--neon-b); }
 
-.card-label { font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: var(--bright); letter-spacing: .2em; text-transform: uppercase; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; opacity: 0.9; }
-.card-label .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--neon-b); box-shadow: 0 0 10px var(--neon-b); }
+.edge-row { display:flex; align-items:center; gap:8px; padding:8px 12px; border-radius:12px; transition:background .3s; }
+.edge-row:hover { background:rgba(255,255,255,0.03); }
+.edge-from-to { font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--txt); width:85px; flex-shrink:0; font-weight:500; }
+.edge-dist { width:56px; background:rgba(0,0,0,0.3); border:1px solid transparent; border-radius:8px; color:var(--bright); padding:6px 8px; font-size:11px; font-family:'IBM Plex Mono',monospace; text-align:center; box-shadow:inset 0 2px 4px rgba(0,0,0,0.2); }
+.edge-dist:focus { outline:none; border-color:var(--neon-b); background:rgba(59,157,255,0.05); }
 
-.edge-row { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 12px; transition: background .3s; }
-.edge-row:hover { background: rgba(255,255,255,0.03); }
-.edge-from-to { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--txt); width: 85px; flex-shrink: 0; font-weight: 500; }
-.edge-dist { width: 56px; background: rgba(0,0,0,0.3); border: 1px solid transparent; border-radius: 8px; color: var(--bright); padding: 6px 8px; font-size: 11px; font-family: 'IBM Plex Mono', monospace; text-align: center; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2); }
-.edge-dist:focus { outline: none; border-color: var(--neon-b); background: rgba(59,157,255,0.05); }
+.sign-btn { width:24px; height:24px; border-radius:50%; cursor:pointer; border:2px solid var(--line); background:transparent; opacity:.4; transition:all .3s; }
+.sign-btn:hover { opacity:1; transform:scale(1.15); border-color:currentColor; }
+.sign-btn.active { opacity:1; transform:scale(1.1); box-shadow:0 0 15px currentColor; }
 
-.sign-btn { width: 24px; height: 24px; border-radius: 50%; cursor: pointer; border: 2px solid var(--line); background: transparent; opacity: .4; transition: all .3s; }
-.sign-btn:hover { opacity: 1; transform: scale(1.15); border-color: currentColor; }
-.sign-btn.active { opacity: 1; transform: scale(1.1); box-shadow: 0 0 15px currentColor; }
+.route-card { padding:12px 16px; margin-bottom:8px; border-radius:16px; border:1px solid var(--line); background:rgba(0,0,0,0.2); transition:all .3s; cursor:default; }
+.route-card:hover { background:rgba(255,255,255,0.02); transform:translateX(4px); }
+.route-card.best { border:none; box-shadow:inset 0 0 0 1px var(--neon-g), 0 8px 20px rgba(0,255,136,0.1); background:linear-gradient(135deg,rgba(0,255,136,0.05),transparent); }
+.route-dist { font-family:'Outfit',sans-serif; font-size:18px; font-weight:700; display:flex; align-items:baseline; gap:4px; }
+.route-tag { font-family:'IBM Plex Mono',monospace; font-size:8px; padding:3px 8px; border-radius:99px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; }
+.route-path { font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--muted); margin-top:6px; line-height:1.4; }
 
-.route-card { padding: 12px 16px; margin-bottom: 8px; border-radius: 16px; border: 1px solid var(--line); background: rgba(0,0,0,0.2); transition: all .3s; cursor: default; }
-.route-card:hover { background: rgba(255,255,255,0.02); transform: translateX(4px); }
-.route-card.best { border: none; box-shadow: inset 0 0 0 1px var(--neon-g), 0 8px 20px rgba(0,255,136,0.1); background: linear-gradient(135deg, rgba(0,255,136,0.05), transparent); }
+.pi-input { flex:1; background:rgba(0,0,0,0.3); border:1px solid transparent; border-radius:99px; color:var(--bright); padding:10px 16px; font-size:11px; font-family:'IBM Plex Mono',monospace; transition:all .3s; }
+.pi-input:focus { outline:none; border-color:var(--neon-b); }
 
-.route-dist { font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; display: flex; align-items: baseline; gap: 4px; }
-.route-tag { font-family: 'IBM Plex Mono', monospace; font-size: 8px; padding: 3px 8px; border-radius: 99px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
-.route-path { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
+.send-btn { width:100%; padding:14px; border-radius:99px; border:none; font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:700; cursor:pointer; letter-spacing:.12em; transition:all .3s; position:relative; overflow:hidden; background:rgba(255,255,255,0.05); color:var(--dim); }
+.send-btn:hover:not(:disabled) { transform:translateY(-2px); box-shadow:0 10px 25px rgba(0,0,0,0.4); filter:brightness(1.2); }
+.send-btn:active:not(:disabled) { transform:translateY(1px) scale(0.98); }
 
-.pi-input { flex: 1; background: rgba(0,0,0,0.3); border: 1px solid transparent; border-radius: 99px; color: var(--bright); padding: 10px 16px; font-size: 11px; font-family: 'IBM Plex Mono', monospace; transition: all .3s; }
-.pi-input:focus { outline: none; border-color: var(--neon-b); }
+.legend-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:4px; }
+.legend-item { display:flex; align-items:center; gap:10px; font-size:10px; font-weight:500; color:var(--txt); }
+.legend-dot { width:10px; height:10px; border-radius:50%; box-shadow:0 0 8px currentColor; }
+.legend-hint { font-family:'IBM Plex Mono',monospace; font-size:9px; color:var(--dim); margin-top:12px; text-align:center; letter-spacing:.06em; border-top:1px solid var(--line); padding-top:10px; }
 
-.send-btn { width: 100%; padding: 14px; border-radius: 99px; border: none; font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700; cursor: pointer; letter-spacing: .12em; transition: all .3s; position: relative; overflow: hidden; background: rgba(255,255,255,0.05); color: var(--dim); }
-.send-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0,0,0,0.4); filter: brightness(1.2); }
-.send-btn:active:not(:disabled) { transform: translateY(1px) scale(0.98); }
+.side-panel::-webkit-scrollbar { width:4px; }
+.side-panel::-webkit-scrollbar-thumb { background:var(--lineHover); border-radius:4px; }
 
-.legend-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 4px; }
-.legend-item { display: flex; align-items: center; gap: 10px; font-size: 10px; font-weight: 500; color: var(--txt); }
-.legend-dot { width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
-
-.side-panel::-webkit-scrollbar { width: 4px; }
-.side-panel::-webkit-scrollbar-thumb { background: var(--lineHover); border-radius: 4px; }
-
-@media(max-width: 1024px) { 
-    .layout { grid-template-columns: 1fr; overflow-y: auto; } 
-    .shell { height: auto; overflow: visible; }
-    .map-panel { height: 400px; flex-shrink: 0; }
-    .side-panel { height: auto; overflow: visible; }
+@media(max-width:1024px) {
+    .layout { grid-template-columns:1fr; overflow-y:auto; }
+    .shell { height:auto; overflow:visible; }
+    .map-panel { height:400px; flex-shrink:0; }
+    .side-panel { height:auto; overflow:visible; }
 }
 </style>
 </head>
 <body>
 
+<!-- ── Intro ────────────────────────────────────────────────────────── -->
 <div id="intro-screen">
     <div class="intro-car-wrapper">
         <svg viewBox="0 0 240 70" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-                <filter id="glow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-            </defs>
-            <path d="M15 55 L35 40 L70 30 L110 20 L170 24 L215 40 L225 55 Z" stroke="var(--neon-b)" stroke-width="2" fill="rgba(59, 157, 255, 0.08)"/>
+            <defs><filter id="glow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+            <path d="M15 55 L35 40 L70 30 L110 20 L170 24 L215 40 L225 55 Z" stroke="var(--neon-b)" stroke-width="2" fill="rgba(59,157,255,0.08)"/>
             <path d="M110 20 L135 35 L170 24" stroke="var(--neon-b)" stroke-width="1.5"/>
             <circle cx="55" cy="55" r="12" stroke="var(--neon-g)" stroke-width="2.5" fill="var(--void)"/>
             <circle cx="185" cy="55" r="12" stroke="var(--neon-g)" stroke-width="2.5" fill="var(--void)"/>
@@ -222,10 +276,57 @@ canvas#bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index
     <div class="intro-text">INITIALIZING SYSTEMS</div>
 </div>
 
+<!-- ── Scan Progress Modal ──────────────────────────────────────────── -->
+<div id="scan-modal">
+    <div class="scan-card">
+        <div class="scan-card-title">
+            <div class="scan-spinner" id="scan-spinner"></div>
+            SCANNING TRACK TOPOLOGY
+        </div>
+
+        <div class="scan-steps">
+            <div class="scan-step" id="step-0">
+                <div class="step-icon">🖼</div>
+                <div class="step-info">
+                    <div class="step-label">PREPROCESSING</div>
+                    <div class="step-desc">Threshold · denoise · isolate track body</div>
+                </div>
+            </div>
+            <div class="scan-step" id="step-1">
+                <div class="step-icon">🦴</div>
+                <div class="step-info">
+                    <div class="step-label">SKELETONIZATION</div>
+                    <div class="step-desc">Zhang-Suen thinning → 1-pixel centerline</div>
+                </div>
+            </div>
+            <div class="scan-step" id="step-2">
+                <div class="step-icon">🔍</div>
+                <div class="step-info">
+                    <div class="step-label">NODE DETECTION</div>
+                    <div class="step-desc">Find junctions (≥3 neighbors) &amp; endpoints</div>
+                </div>
+            </div>
+            <div class="scan-step" id="step-3">
+                <div class="step-icon">🕸</div>
+                <div class="step-info">
+                    <div class="step-label">GRAPH EXTRACTION</div>
+                    <div class="step-desc">Trace edge paths · prune noise · map coords</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="scan-result-box" id="scan-result-box">
+            Awaiting server response…
+        </div>
+    </div>
+</div>
+
+<!-- ── Background Canvas ────────────────────────────────────────────── -->
 <canvas id="bg"></canvas>
 
-<div class="shell" style="opacity:0; transition: opacity 0.5s;" id="main-shell">
-    
+<!-- ── Main Shell ───────────────────────────────────────────────────── -->
+<div class="shell" style="opacity:0; transition:opacity 0.5s;" id="main-shell">
+
 <div class="header">
     <div class="logo-mark">
         <svg viewBox="0 0 24 24" fill="none" stroke="var(--bright)" stroke-width="2.5" stroke-linecap="round"><path d="M12 2L2 19h20L12 2z"/><line x1="12" y1="8" x2="12" y2="14"/><circle cx="12" cy="17" r="1" fill="var(--bright)"/></svg>
@@ -241,32 +342,35 @@ canvas#bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index
 <div class="layout">
     <div class="map-panel">
         <div class="section-label">Operational Theater</div>
-        
+
         <div class="map-frame" id="map-frame-container">
             <img id="track-bg-img" src="" alt="Track View">
             <div class="scanner-laser"></div>
+            <div class="node-hint" id="node-hint">DBL-CLICK NODE TO CYCLE TYPE</div>
 
-            <svg id="map-svg" viewBox="0 0 620 600" width="100%" height="100%" style="display:block; position:relative; z-index:5;">
-            <defs>
-                <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                    <circle cx="0" cy="0" r="1" fill="var(--lineHover)" opacity="0.4"/>
-                    <circle cx="20" cy="20" r="0.8" fill="var(--lineHover)" opacity="0.15"/>
-                </pattern>
-                <filter id="glw"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-            </defs>
-            <rect width="100%" height="100%" fill="transparent"/>
-            <rect width="100%" height="100%" fill="url(#grid)"/>
-            <g id="edges-g"></g><g id="nodes-g"></g>
+            <svg id="map-svg" viewBox="0 0 620 600" width="100%" height="100%"
+                 style="display:block; position:relative; z-index:5;">
+                <defs>
+                    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                        <circle cx="0"  cy="0"  r="1"   fill="var(--lineHover)" opacity="0.4"/>
+                        <circle cx="20" cy="20" r="0.8" fill="var(--lineHover)" opacity="0.15"/>
+                    </pattern>
+                    <filter id="glw"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+                </defs>
+                <rect width="100%" height="100%" fill="transparent"/>
+                <rect width="100%" height="100%" fill="url(#grid)"/>
+                <g id="edges-g"></g>
+                <g id="nodes-g"></g>
             </svg>
-            
+
             <div class="map-overlay" id="map-info"></div>
         </div>
     </div>
-    
+
     <div class="side-panel">
-        
+
         <input type="file" id="track-upload" accept="image/*" hidden>
-        <button class="scan-btn" onclick="document.getElementById('track-upload').click()">
+        <button class="scan-btn" id="scan-btn-el" onclick="document.getElementById('track-upload').click()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             UPLOAD BIRD'S EYE VIEW
         </button>
@@ -275,19 +379,22 @@ canvas#bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index
             <div class="card-label"><div class="dot"></div>Network Edges</div>
             <div id="edges-list"></div>
         </div>
+
         <div class="card">
             <div class="card-label"><div class="dot"></div>Route Analysis</div>
             <div id="routes-list"></div>
         </div>
+
         <div class="card">
             <div class="card-label"><div class="dot"></div>Uplink Command</div>
             <div style="display:flex;gap:10px;margin-bottom:12px">
-                <input class="pi-input" id="pi-ip" value="192.168.1.100" placeholder="Target IP">
-                <input class="pi-input" id="pi-port" value="5000" placeholder="Port" style="width:64px;text-align:center">
+                <input class="pi-input" id="pi-ip"   value="192.168.1.100" placeholder="Target IP">
+                <input class="pi-input" id="pi-port" value="5000"          placeholder="Port" style="width:64px;text-align:center">
             </div>
             <button class="send-btn" id="send-btn" disabled>AWAITING ROUTE</button>
             <div id="send-info" style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);margin-top:12px;text-align:center;letter-spacing:.06em"></div>
         </div>
+
         <div class="card" style="padding:16px 20px">
             <div class="legend-grid">
                 <div class="legend-item"><div class="legend-dot" style="background:var(--neon-g);color:var(--neon-g)"></div>Origin Node</div>
@@ -295,222 +402,385 @@ canvas#bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index
                 <div class="legend-item"><div class="legend-dot" style="background:var(--amber);color:var(--amber)"></div>Junction</div>
                 <div class="legend-item"><div class="legend-dot" style="background:var(--muted);color:var(--muted)"></div>Waypoint</div>
             </div>
+            <div class="legend-hint">Double-click any node to cycle its type</div>
         </div>
     </div>
 </div>
 </div>
 
 <script>
-// --- Intro Sequence Logic ---
+// ── Intro ────────────────────────────────────────────────────────────
 window.addEventListener('load', () => {
     setTimeout(() => {
-        const intro = document.getElementById('intro-screen');
-        intro.style.animation = 'fadeOutIntro 0.5s forwards';
-        
+        document.getElementById('intro-screen').style.animation = 'fadeOutIntro 0.5s forwards';
         const shell = document.getElementById('main-shell');
         shell.style.opacity = '1';
-        
         setTimeout(() => {
             document.body.classList.add('loaded');
             document.querySelector('.layout').style.opacity = '1';
         }, 100);
-    }, 2200); 
+    }, 2200);
 });
 
-// --- Dashboard Logic ---
-const C={abyss:"transparent",panel:"rgba(13,22,40,0.8)",line:"rgba(150,180,255,0.15)",muted:"#6e8bb5",bright:"#f0f4fa",dim:"#4a628a",
-green:"#00ff88",greenBg:"rgba(0,255,136,0.1)",greenBd:"rgba(0,255,136,0.3)",
-blue:"#3b9dff",blueBg:"rgba(59,157,255,0.1)",blueBd:"rgba(59,157,255,0.3)",
-amber:"#ffaa22",purple:"#b46eff",red:"#ff4466"};
+// ── Colors ──────────────────────────────────────────────────────────
+const C = {
+    green:'#00ff88', greenBg:'rgba(0,255,136,0.1)',  greenBd:'rgba(0,255,136,0.3)',
+    blue :'#3b9dff', blueBg :'rgba(59,157,255,0.1)', blueBd :'rgba(59,157,255,0.3)',
+    amber:'#ffaa22', purple:'#b46eff', red:'#ff4466',
+    muted:'#6e8bb5', bright:'#f0f4fa', dim:'#4a628a',
+    panel:'rgba(13,22,40,0.8)', line:'rgba(150,180,255,0.15)'
+};
 
-let state=null,dragging=null;
-const cvs=document.getElementById("bg"),ctx=cvs.getContext("2d");let pts=[];
+// Node type cycle order (double-click to rotate)
+const TYPE_CYCLE = ['waypoint','fork','start','destination'];
 
-function initBg(){
-    cvs.width=window.innerWidth;cvs.height=window.innerHeight;
-    pts=Array.from({length:50},()=>({x:Math.random()*cvs.width,y:Math.random()*cvs.height,r:Math.random()*2+.5,dx:(Math.random()-.5)*.1,dy:(Math.random()-.5)*.1,a:Math.random()*.3+.05}));
+// ── Background particles ────────────────────────────────────────────
+const cvs = document.getElementById('bg');
+const ctx = cvs.getContext('2d');
+let pts = [];
+function initBg() {
+    cvs.width = window.innerWidth; cvs.height = window.innerHeight;
+    pts = Array.from({length:50}, () => ({
+        x:Math.random()*cvs.width, y:Math.random()*cvs.height,
+        r:Math.random()*2+.5, dx:(Math.random()-.5)*.1, dy:(Math.random()-.5)*.1, a:Math.random()*.3+.05
+    }));
 }
-function drawBg(){
+function drawBg() {
     ctx.clearRect(0,0,cvs.width,cvs.height);
-    pts.forEach(p=>{
-        p.x+=p.dx;p.y+=p.dy;
-        if(p.x<0)p.x=cvs.width;if(p.x>cvs.width)p.x=0;if(p.y<0)p.y=cvs.height;if(p.y>cvs.height)p.y=0;
-        ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle=`rgba(70,140,255,${p.a})`;ctx.fill();
+    pts.forEach(p => {
+        p.x+=p.dx; p.y+=p.dy;
+        if(p.x<0)p.x=cvs.width; if(p.x>cvs.width)p.x=0;
+        if(p.y<0)p.y=cvs.height; if(p.y>cvs.height)p.y=0;
+        ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+        ctx.fillStyle=`rgba(70,140,255,${p.a})`; ctx.fill();
     });
     requestAnimationFrame(drawBg);
 }
-initBg();drawBg();window.addEventListener("resize",initBg);
+initBg(); drawBg(); window.addEventListener('resize', initBg);
+
+// ── State & dummy fallback ───────────────────────────────────────────
+let state = null, dragging = null;
 
 const dummyState = {
-    chosen_sign: "GREEN",
-    shortest: { distance: 125, path: ["START", "FORK", "DEST"], edges: [{from:"START",to:"FORK"},{from:"FORK",to:"DEST"}] },
-    routes: [
-        { distance: 125, path: ["START", "FORK", "DEST"], edges: [{sign:"GREEN"}] },
-        { distance: 150, path: ["START", "WP", "DEST"], edges: [{sign:"BLUE"}] }
+    chosen_sign:'GREEN',
+    shortest:{ distance:75, path:['START','FORK','WP_L','DEST'], edges:[{from:'START',to:'FORK'},{from:'FORK',to:'WP_L',sign:'GREEN'},{from:'WP_L',to:'DEST'}] },
+    routes:[
+        { distance:75,  path:['START','FORK','WP_L','DEST'], edges:[{sign:'GREEN'}] },
+        { distance:100, path:['START','FORK','WP_R','DEST'], edges:[{sign:'BLUE'}]  }
     ],
-    nodes: [
-        {id:"START", x:150, y:450, type:"start"},
-        {id:"FORK", x:250, y:250, type:"fork"},
-        {id:"WP", x:400, y:400, type:"waypoint"},
-        {id:"DEST", x:450, y:150, type:"destination"}
+    nodes:[
+        {id:'START',x:300,y:520,type:'start'},
+        {id:'FORK', x:300,y:340,type:'fork'},
+        {id:'WP_L', x:130,y:180,type:'waypoint'},
+        {id:'WP_R', x:480,y:220,type:'waypoint'},
+        {id:'DEST', x:130,y:60, type:'destination'},
     ],
-    edges: [
-        {from:"START", to:"FORK", dist: 50, sign:"GREEN"},
-        {from:"START", to:"WP", dist: 60, sign:"BLUE"},
-        {from:"FORK", to:"DEST", dist: 75, sign:null},
-        {from:"WP", to:"DEST", dist: 90, sign:null}
+    edges:[
+        {from:'START',to:'FORK', dist:30,sign:null},
+        {from:'FORK', to:'WP_L',dist:25,sign:'GREEN'},
+        {from:'FORK', to:'WP_R',dist:35,sign:'BLUE'},
+        {from:'WP_L', to:'DEST',dist:20,sign:null},
+        {from:'WP_R', to:'DEST',dist:35,sign:null},
     ]
 };
 
-async function load(){
-    try { const r=await fetch("/api/track"); state=await r.json(); } 
-    catch(e) { state = dummyState; } 
+async function load() {
+    try { const r = await fetch('/api/track'); state = await r.json(); }
+    catch(e) { state = dummyState; }
     render();
 }
 
-function render(){
-    if(!state)return;
-    const{nodes,edges,shortest,routes,chosen_sign}=state;
-    const cc=chosen_sign==="GREEN"?C.green:chosen_sign==="BLUE"?C.blue:null;
-    const ccBg=chosen_sign==="GREEN"?C.greenBg:chosen_sign==="BLUE"?C.blueBg:null;
-    const ccBd=chosen_sign==="GREEN"?C.greenBd:chosen_sign==="BLUE"?C.blueBd:null;
-    
-    const badge=document.getElementById("hdr-badge");
-    if(chosen_sign){
-        badge.style.display="flex";badge.style.background=ccBg;badge.style.border=`1px solid ${ccBd}`;badge.style.setProperty("--pulse-c",ccBg);
-        badge.innerHTML=`<div class="indicator" style="background:${cc}; box-shadow: 0 0 10px ${cc}"></div><span style="color:${cc}">TRANSMIT ${chosen_sign}</span>`;
-    } else badge.style.display="none";
+// ── Render ───────────────────────────────────────────────────────────
+function render() {
+    if (!state) return;
+    const { nodes, edges, shortest, routes, chosen_sign } = state;
+    const cc   = chosen_sign==='GREEN' ? C.green  : chosen_sign==='BLUE' ? C.blue  : null;
+    const ccBg = chosen_sign==='GREEN' ? C.greenBg: chosen_sign==='BLUE' ? C.blueBg: null;
+    const ccBd = chosen_sign==='GREEN' ? C.greenBd: chosen_sign==='BLUE' ? C.blueBd: null;
 
-    const eg=document.getElementById("edges-g");eg.innerHTML="";
-    edges.forEach(e=>{
-        const fn=nodes.find(n=>n.id===e.from),tn=nodes.find(n=>n.id===e.to);if(!fn||!tn)return;
-        const onPath=shortest?.edges.some(se=>(se.from===e.from&&se.to===e.to)||(se.to===e.from&&se.from===e.to));
-        const sc=e.sign==="GREEN"?C.green:e.sign==="BLUE"?C.blue:null;
-        const stroke=onPath?(sc||C.green):C.line;
-        const mx=(fn.x+tn.x)/2,my=(fn.y+tn.y)/2;
-        
-        if(onPath){
-            eg.innerHTML+=`<line x1="${fn.x}" y1="${fn.y}" x2="${tn.x}" y2="${tn.y}" stroke="${stroke}" stroke-width="6" opacity=".15" stroke-linecap="round"/>
+    // Header badge
+    const badge = document.getElementById('hdr-badge');
+    if (chosen_sign) {
+        badge.style.display='flex'; badge.style.background=ccBg;
+        badge.style.border=`1px solid ${ccBd}`; badge.style.setProperty('--pulse-c',ccBg);
+        badge.innerHTML=`<div class="indicator" style="background:${cc};box-shadow:0 0 10px ${cc}"></div><span style="color:${cc}">TRANSMIT ${chosen_sign}</span>`;
+    } else { badge.style.display='none'; }
+
+    // ── Edges SVG ────────────────────────────────────────────────────
+    const eg = document.getElementById('edges-g'); eg.innerHTML='';
+    edges.forEach(e => {
+        const fn=nodes.find(n=>n.id===e.from), tn=nodes.find(n=>n.id===e.to);
+        if(!fn||!tn) return;
+        const onPath = shortest?.edges.some(se=>(se.from===e.from&&se.to===e.to)||(se.to===e.from&&se.from===e.to));
+        const sc = e.sign==='GREEN'?C.green:e.sign==='BLUE'?C.blue:null;
+        const stroke = onPath ? (sc||C.green) : C.line;
+        const mx=(fn.x+tn.x)/2, my=(fn.y+tn.y)/2;
+
+        if (onPath) {
+            eg.innerHTML+=`
+            <line x1="${fn.x}" y1="${fn.y}" x2="${tn.x}" y2="${tn.y}" stroke="${stroke}" stroke-width="6" opacity=".15" stroke-linecap="round"/>
             <line x1="${fn.x}" y1="${fn.y}" x2="${tn.x}" y2="${tn.y}" stroke="${stroke}" stroke-width="2.5" opacity=".9" stroke-linecap="round" filter="url(#glw)"/>
             <line x1="${fn.x}" y1="${fn.y}" x2="${tn.x}" y2="${tn.y}" stroke="${C.bright}" stroke-width="1.5" opacity=".5" stroke-linecap="round" stroke-dasharray="4 12" style="animation:dashFlow 1.5s linear infinite"/>`;
         } else {
             eg.innerHTML+=`<line x1="${fn.x}" y1="${fn.y}" x2="${tn.x}" y2="${tn.y}" stroke="${C.muted}" stroke-width="1" opacity=".3" stroke-linecap="round" stroke-dasharray="3 8"/>`;
         }
-        
-        const pw=42,ph=22;
-        eg.innerHTML+=`<rect x="${mx-pw/2}" y="${my-ph/2}" width="${pw}" height="${ph}" rx="${ph/2}" fill="${onPath?'rgba(0,0,0,.7)':C.panel}" stroke="${onPath?stroke:C.line}" stroke-width="1" opacity=".95"/>
+
+        const pw=42, ph=22;
+        eg.innerHTML+=`
+        <rect x="${mx-pw/2}" y="${my-ph/2}" width="${pw}" height="${ph}" rx="${ph/2}" fill="${onPath?'rgba(0,0,0,.7)':C.panel}" stroke="${onPath?stroke:C.line}" stroke-width="1" opacity=".95"/>
         <text x="${mx}" y="${my+1}" text-anchor="middle" dominant-baseline="central" fill="${onPath?stroke:C.bright}" font-size="10" font-family="'IBM Plex Mono',monospace" font-weight="600">${e.dist}cm</text>`;
-        
-        if(e.sign) eg.innerHTML+=`<circle cx="${mx}" cy="${my-ph/2-6}" r="3.5" fill="${sc}" filter="url(#glw)"/>`;
+
+        if (e.sign) eg.innerHTML+=`<circle cx="${mx}" cy="${my-ph/2-6}" r="3.5" fill="${sc}" filter="url(#glw)"/>`;
     });
 
-    const ng=document.getElementById("nodes-g");ng.innerHTML="";
-    nodes.forEach(n=>{
-        const fill=n.type==="start"?C.green:n.type==="destination"?C.purple:n.type==="fork"?C.amber:C.muted;
-        const letter=n.type==="start"?"A":n.type==="destination"?"B":n.type==="fork"?"F":"W";
-        const r=n.type==="fork"?18:15;
-        const isOn=shortest?.path.includes(n.id);
-        
-        if(isOn){
-            ng.innerHTML+=`<circle cx="${n.x}" cy="${n.y}" r="${r+12}" fill="none" stroke="${fill}" stroke-width="1" opacity=".3" stroke-dasharray="3 5" style="animation:orbitSpin 8s linear infinite;transform-origin:${n.x}px ${n.y}px"/>
+    // ── Nodes SVG ────────────────────────────────────────────────────
+    const ng = document.getElementById('nodes-g'); ng.innerHTML='';
+    nodes.forEach(n => {
+        const fill  = n.type==='start'?C.green:n.type==='destination'?C.purple:n.type==='fork'?C.amber:C.muted;
+        const letter= n.type==='start'?'A':n.type==='destination'?'B':n.type==='fork'?'F':'W';
+        const r     = n.type==='fork'?18:15;
+        const isOn  = shortest?.path.includes(n.id);
+
+        if (isOn) {
+            ng.innerHTML+=`
+            <circle cx="${n.x}" cy="${n.y}" r="${r+12}" fill="none" stroke="${fill}" stroke-width="1" opacity=".3" stroke-dasharray="3 5" style="animation:orbitSpin 8s linear infinite;transform-origin:${n.x}px ${n.y}px"/>
             <circle cx="${n.x}" cy="${n.y}" r="${r+6}" fill="${fill}" opacity=".08" filter="url(#glw)"/>`;
         }
-        ng.innerHTML+=`<g class="node-drag" data-id="${n.id}" style="cursor:grab">
-        <circle cx="${n.x}" cy="${n.y}" r="${r}" fill="rgba(10,16,32,0.95)" stroke="${fill}" stroke-width="${isOn?2.5:1.5}" opacity="${isOn?1:.8}"/>
-        <text x="${n.x}" y="${n.y+1}" text-anchor="middle" dominant-baseline="central" fill="${fill}" font-size="12" font-weight="700" font-family="'Outfit',sans-serif" opacity="${isOn?1:.8}">${letter}</text>
-        <rect x="${n.x-14}" y="${n.y-r-20}" width="28" height="14" rx="7" fill="rgba(0,0,0,0.6)" stroke="${C.line}" stroke-width="1"/>
-        <text x="${n.x}" y="${n.y-r-13}" text-anchor="middle" dominant-baseline="central" fill="${isOn?fill:C.bright}" font-size="8" font-family="'IBM Plex Mono',monospace" font-weight="600" letter-spacing=".05em">${n.id}</text></g>`;
+
+        ng.innerHTML+=`
+        <g class="node-drag" data-id="${n.id}" data-type="${n.type}" style="cursor:grab">
+            <circle cx="${n.x}" cy="${n.y}" r="${r}" fill="rgba(10,16,32,0.95)" stroke="${fill}" stroke-width="${isOn?2.5:1.5}" opacity="${isOn?1:.8}"/>
+            <text x="${n.x}" y="${n.y+1}" text-anchor="middle" dominant-baseline="central" fill="${fill}" font-size="12" font-weight="700" font-family="'Outfit',sans-serif" opacity="${isOn?1:.8}">${letter}</text>
+            <rect x="${n.x-14}" y="${n.y-r-20}" width="28" height="14" rx="7" fill="rgba(0,0,0,0.6)" stroke="${C.line}" stroke-width="1"/>
+            <text x="${n.x}" y="${n.y-r-13}" text-anchor="middle" dominant-baseline="central" fill="${isOn?fill:C.bright}" font-size="8" font-family="'IBM Plex Mono',monospace" font-weight="600" letter-spacing=".05em">${n.id}</text>
+        </g>`;
     });
 
-    const mo=document.getElementById("map-info");
-    if(shortest){
-        mo.className="map-overlay active";
-        mo.style.borderColor = cc || C.line;
-        mo.innerHTML=`<span class="mo-dist" style="color:${cc||C.green}">OPTIMAL ${shortest.distance}cm</span>
-                      <span class="mo-path">${shortest.path.join(" &rsaquo; ")}</span>`;
-    } else { mo.className="map-overlay"; }
+    // ── Map overlay ───────────────────────────────────────────────────
+    const mo = document.getElementById('map-info');
+    if (shortest) {
+        mo.className='map-overlay active'; mo.style.borderColor=cc||C.line;
+        mo.innerHTML=`<span class="mo-dist" style="color:${cc||C.green}">OPTIMAL ${shortest.distance}cm</span><span class="mo-path">${shortest.path.join(' &rsaquo; ')}</span>`;
+    } else { mo.className='map-overlay'; }
 
-    const el=document.getElementById("edges-list");el.innerHTML="";
-    edges.forEach((e,i)=>{
-        const row=document.createElement("div");row.className="edge-row";
-        row.innerHTML=`<span class="edge-from-to">${e.from} &rsaquo; ${e.to}</span>
+    // ── Edge list (sidebar) ───────────────────────────────────────────
+    const el = document.getElementById('edges-list'); el.innerHTML='';
+    edges.forEach((e,i) => {
+        const row = document.createElement('div'); row.className='edge-row';
+        row.innerHTML=`
+        <span class="edge-from-to">${e.from} &rsaquo; ${e.to}</span>
         <input class="edge-dist" type="number" value="${e.dist}" data-idx="${i}">
-        <span style="font-size:9px;color:var(--muted);font-weight:600">cm</span><div style="flex:1"></div>
+        <span style="font-size:9px;color:var(--muted);font-weight:600">cm</span>
+        <div style="flex:1"></div>
         <button class="sign-btn ${e.sign==='GREEN'?'active':''}" data-idx="${i}" data-sign="GREEN" style="color:${C.green};border-color:${e.sign==='GREEN'?C.green:C.line};background:${e.sign==='GREEN'?'rgba(0,255,136,0.1)':'transparent'}"></button>
-        <button class="sign-btn ${e.sign==='BLUE'?'active':''}" data-idx="${i}" data-sign="BLUE" style="color:${C.blue};border-color:${e.sign==='BLUE'?C.blue:C.line};background:${e.sign==='BLUE'?'rgba(59,157,255,0.1)':'transparent'}"></button>`;
+        <button class="sign-btn ${e.sign==='BLUE' ?'active':''}" data-idx="${i}" data-sign="BLUE"  style="color:${C.blue} ;border-color:${e.sign==='BLUE' ?C.blue :C.line};background:${e.sign==='BLUE' ?'rgba(59,157,255,0.1)':'transparent'}"></button>`;
         el.appendChild(row);
     });
-    
-    el.querySelectorAll(".edge-dist").forEach(inp=>inp.addEventListener("change",async ev=>{state.edges[parseInt(ev.target.dataset.idx)].dist=Math.max(1,parseInt(ev.target.value)||1);await saveTrack();}));
-    el.querySelectorAll(".sign-btn").forEach(btn=>btn.addEventListener("click",async ev=>{const i=parseInt(ev.target.dataset.idx),s=ev.target.dataset.sign;state.edges[i].sign=state.edges[i].sign===s?null:s;await saveTrack();}));
+    el.querySelectorAll('.edge-dist').forEach(inp=>inp.addEventListener('change',async ev=>{
+        state.edges[+ev.target.dataset.idx].dist=Math.max(1,parseInt(ev.target.value)||1);
+        await saveTrack();
+    }));
+    el.querySelectorAll('.sign-btn').forEach(btn=>btn.addEventListener('click',async ev=>{
+        const i=+ev.target.dataset.idx, s=ev.target.dataset.sign;
+        state.edges[i].sign = state.edges[i].sign===s ? null : s;
+        await saveTrack();
+    }));
 
-    const rl=document.getElementById("routes-list");rl.innerHTML="";
-    routes.forEach((r,i)=>{
-        const best=i===0,rsign=r.edges.find(e=>e.sign)?.sign;
-        const rc=rsign==="GREEN"?C.green:rsign==="BLUE"?C.blue:C.muted;
-        const d=document.createElement("div");d.className="route-card"+(best?" best":"");
-        if(!best) { d.style.borderColor = C.line; }
-        d.innerHTML=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
-        <span class="route-dist" style="color:${best?rc:C.bright}">${r.distance}<span style="font-size:10px;font-weight:500;color:var(--muted)">cm</span></span>
-        ${best?`<span class="route-tag" style="background:${rc};color:#000;box-shadow:0 0 8px ${rc}">OPTIMAL</span>`:""}
-        ${rsign?`<div style="width:8px;height:8px;border-radius:50%;background:${rc};margin-left:auto;box-shadow:0 0 10px ${rc}"></div>`:""}
-        </div><div class="route-path">${r.path.join(" &rsaquo; ")}</div>`;
+    // ── Route list ────────────────────────────────────────────────────
+    const rl = document.getElementById('routes-list'); rl.innerHTML='';
+    routes.forEach((r,i) => {
+        const best=i===0, rsign=r.edges.find(e=>e.sign)?.sign;
+        const rc=rsign==='GREEN'?C.green:rsign==='BLUE'?C.blue:C.muted;
+        const d=document.createElement('div'); d.className='route-card'+(best?' best':'');
+        if(!best) d.style.borderColor=C.line;
+        d.innerHTML=`
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <span class="route-dist" style="color:${best?rc:C.bright}">${r.distance}<span style="font-size:10px;font-weight:500;color:var(--muted)">cm</span></span>
+            ${best?`<span class="route-tag" style="background:${rc};color:#000;box-shadow:0 0 8px ${rc}">OPTIMAL</span>`:''}
+            ${rsign?`<div style="width:8px;height:8px;border-radius:50%;background:${rc};margin-left:auto;box-shadow:0 0 10px ${rc}"></div>`:''}
+        </div>
+        <div class="route-path">${r.path.join(' &rsaquo; ')}</div>`;
         rl.appendChild(d);
     });
 
-    const sb=document.getElementById("send-btn"),si=document.getElementById("send-info");
-    if(chosen_sign){
-        sb.disabled=false; sb.style.background=ccBg; sb.style.color=cc; sb.style.boxShadow=`0 0 15px ${ccBg}, inset 0 0 0 1px ${ccBd}`;
+    // ── Send button ───────────────────────────────────────────────────
+    const sb=document.getElementById('send-btn'), si=document.getElementById('send-info');
+    if (chosen_sign) {
+        sb.disabled=false; sb.style.background=ccBg; sb.style.color=cc; sb.style.boxShadow=`0 0 15px ${ccBg},inset 0 0 0 1px ${ccBd}`;
         sb.textContent=`TRANSMIT: ${chosen_sign} PATH`;
-        si.innerHTML=`POST <span style="color:${C.bright}">http://${document.getElementById("pi-ip").value}:${document.getElementById("pi-port").value}/command</span>`;
+        si.innerHTML=`POST <span style="color:${C.bright}">http://${document.getElementById('pi-ip').value}:${document.getElementById('pi-port').value}/command</span>`;
     } else {
-        sb.disabled=true; sb.style.background="rgba(255,255,255,0.03)"; sb.style.color=C.muted; sb.style.boxShadow="none";
-        sb.textContent="AWAITING ROUTE"; si.textContent="STANDBY FOR UPLINK";
+        sb.disabled=true; sb.style.background='rgba(255,255,255,0.03)'; sb.style.color=C.muted; sb.style.boxShadow='none';
+        sb.textContent='AWAITING ROUTE'; si.textContent='STANDBY FOR UPLINK';
     }
 }
 
-async function saveTrack(){
+// ── Save ─────────────────────────────────────────────────────────────
+async function saveTrack() {
     try {
-        await fetch("/api/track",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({nodes:state.nodes,edges:state.edges,pi_ip:document.getElementById("pi-ip").value,pi_port:document.getElementById("pi-port").value})});
+        await fetch('/api/track', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({ nodes:state.nodes, edges:state.edges,
+                                  pi_ip:document.getElementById('pi-ip').value,
+                                  pi_port:document.getElementById('pi-port').value })
+        });
     } catch(e) {}
     await load();
 }
 
-const svg=document.getElementById("map-svg");
-svg.addEventListener("mousedown",e=>{const g=e.target.closest(".node-drag");if(g){dragging=g.dataset.id;svg.style.cursor="grabbing";}});
-svg.addEventListener("mousemove",e=>{
-    if(!dragging||!state)return;
-    const pt=svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;
-    const p=pt.matrixTransform(svg.getScreenCTM().inverse());
-    const node=state.nodes.find(n=>n.id===dragging);
-    if(node){node.x=Math.round(Math.max(25,Math.min(595,p.x)));node.y=Math.round(Math.max(25,Math.min(575,p.y)));render();}
+// ── Drag ─────────────────────────────────────────────────────────────
+const svg = document.getElementById('map-svg');
+svg.addEventListener('mousedown', e => {
+    const g = e.target.closest('.node-drag');
+    if (g) { dragging = g.dataset.id; svg.style.cursor = 'grabbing'; }
 });
-window.addEventListener("mouseup",async()=>{if(dragging){dragging=null;svg.style.cursor="default";await saveTrack();}});
-document.getElementById("pi-ip").addEventListener("change",()=>render());
-document.getElementById("pi-port").addEventListener("change",()=>render());
+svg.addEventListener('mousemove', e => {
+    if (!dragging || !state) return;
+    const pt = svg.createSVGPoint(); pt.x=e.clientX; pt.y=e.clientY;
+    const p  = pt.matrixTransform(svg.getScreenCTM().inverse());
+    const node = state.nodes.find(n=>n.id===dragging);
+    if (node) {
+        node.x = Math.round(Math.max(25, Math.min(595, p.x)));
+        node.y = Math.round(Math.max(25, Math.min(575, p.y)));
+        render();
+    }
+});
+window.addEventListener('mouseup', async () => {
+    if (dragging) { dragging=null; svg.style.cursor='default'; await saveTrack(); }
+});
 
-// --- Scanner Logic ---
-document.getElementById('track-upload').addEventListener('change', function(e) {
+// ── Double-click → cycle node type ───────────────────────────────────
+let clickTimer = null;
+svg.addEventListener('click', e => {
+    const g = e.target.closest('.node-drag');
+    if (!g || !state) return;
+    if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; } // swallow first click
+
+    clickTimer = setTimeout(() => { clickTimer = null; }, 250);
+});
+
+svg.addEventListener('dblclick', async e => {
+    if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+    const g = e.target.closest('.node-drag');
+    if (!g || !state) return;
+
+    const node = state.nodes.find(n => n.id === g.dataset.id);
+    if (!node) return;
+
+    const cur = TYPE_CYCLE.indexOf(node.type);
+    node.type  = TYPE_CYCLE[(cur + 1) % TYPE_CYCLE.length];
+
+    // Show hint briefly
+    const hint = document.getElementById('node-hint');
+    hint.textContent = `${node.id} → ${node.type.toUpperCase()}`;
+    hint.classList.add('visible');
+    setTimeout(() => {
+        hint.textContent = 'DBL-CLICK NODE TO CYCLE TYPE';
+        hint.classList.remove('visible');
+    }, 1800);
+
+    await saveTrack();
+});
+
+document.getElementById('pi-ip').addEventListener('change',   ()=>render());
+document.getElementById('pi-port').addEventListener('change', ()=>render());
+
+// ── Scan Modal helpers ────────────────────────────────────────────────
+function openScanModal() {
+    const modal = document.getElementById('scan-modal');
+    const result= document.getElementById('scan-result-box');
+    modal.classList.add('active');
+    result.className = 'scan-result-box';
+    result.textContent = 'Awaiting server response…';
+    document.querySelectorAll('.scan-step').forEach(s => s.classList.remove('active','done'));
+}
+function closeScanModal() {
+    document.getElementById('scan-modal').classList.remove('active');
+}
+
+function advanceStep(idx) {
+    const steps = document.querySelectorAll('.scan-step');
+    // mark previous as done
+    for (let i = 0; i < idx; i++) {
+        steps[i].classList.remove('active');
+        steps[i].classList.add('done');
+        steps[i].querySelector('.step-icon').textContent = '✓';
+    }
+    if (idx < steps.length) steps[idx].classList.add('active');
+}
+
+// ── Scan Upload ───────────────────────────────────────────────────────
+document.getElementById('track-upload').addEventListener('change', async function(e) {
     const file = e.target.files[0];
     if (!file) return;
 
+    // Reset input so same file can be re-uploaded
+    this.value = '';
+
+    // Show image on map background
     const reader = new FileReader();
-    reader.onload = function(event) {
-        const img = document.getElementById('track-bg-img');
-        const container = document.getElementById('map-frame-container');
-        
-        img.src = event.target.result;
-        img.style.opacity = '0.4'; 
-        
+    const bgImg  = document.getElementById('track-bg-img');
+    const container = document.getElementById('map-frame-container');
+
+    reader.onload = ev => {
+        bgImg.src = ev.target.result;
+        bgImg.style.opacity = '0.35';
         container.classList.add('is-scanning');
-        
-        setTimeout(() => {
-            container.classList.remove('is-scanning');
-            alert("Scan Complete! Data ready to be parsed by OpenCV backend.");
-        }, 3000);
     };
     reader.readAsDataURL(file);
+
+    // Open modal and simulate step progression while server works
+    openScanModal();
+    advanceStep(0);
+
+    const stepDelay = 600;   // ms between step highlights
+    const stepTimers = [
+        setTimeout(() => advanceStep(1), stepDelay * 1),
+        setTimeout(() => advanceStep(2), stepDelay * 2),
+        setTimeout(() => advanceStep(3), stepDelay * 3),
+    ];
+
+    const formData = new FormData();
+    formData.append('image', file);
+
+    try {
+        const response = await fetch('/api/scan-track', { method:'POST', body:formData });
+        const result   = await response.json();
+
+        // Clear any pending step timers & mark all done
+        stepTimers.forEach(t => clearTimeout(t));
+        document.querySelectorAll('.scan-step').forEach((s,i) => {
+            s.classList.add('done'); s.classList.remove('active');
+            s.querySelector('.step-icon').textContent = '✓';
+        });
+
+        container.classList.remove('is-scanning');
+        const rb = document.getElementById('scan-result-box');
+
+        if (result.status === 'ok') {
+            rb.className = 'scan-result-box success';
+            rb.textContent = `✓ ${result.nodes_found} nodes · ${result.edges_found} edges detected (${result.method})`;
+            await load();
+            setTimeout(closeScanModal, 2000);
+        } else {
+            rb.className = 'scan-result-box error';
+            rb.textContent = '✗ ' + (result.error || 'Unknown error');
+            setTimeout(closeScanModal, 3500);
+        }
+
+    } catch (err) {
+        stepTimers.forEach(t => clearTimeout(t));
+        container.classList.remove('is-scanning');
+        const rb = document.getElementById('scan-result-box');
+        rb.className = 'scan-result-box error';
+        rb.textContent = '✗ Connection error — check terminal';
+        setTimeout(closeScanModal, 3500);
+    }
+});
+
+// Click outside modal to dismiss (only after scan completes)
+document.getElementById('scan-modal').addEventListener('click', e => {
+    if (e.target === document.getElementById('scan-modal')) closeScanModal();
 });
 
 load();
