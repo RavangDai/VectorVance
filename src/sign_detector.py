@@ -8,7 +8,7 @@ Requirements for detection:
   2. OCTAGON shape (7-9 sides)
   3. Square-ish aspect ratio (0.8 - 1.2)
   4. White text inside (>15% of interior is bright)
-  5. Must appear in 3+ consecutive frames
+  5. Must appear in 2+ consecutive frames
 """
 
 import cv2
@@ -19,30 +19,29 @@ from collections import deque
 class TrafficSignDetector:
     def __init__(self):
         # ── Red HSV (BALANCED - catches real signs, rejects noise) ────
-        # Lowered saturation to handle cloudy/overcast lighting
         self.red_lower1 = np.array([0,   50, 50])
         self.red_upper1 = np.array([10,  255, 255])
         self.red_lower2 = np.array([170, 50, 50])
         self.red_upper2 = np.array([180, 255, 255])
 
         # ── Thresholds ───────────────────────────────────────────────
-        self.min_sign_area  = 400      # allow smaller signs
+        self.min_sign_area  = 400
         self.max_sign_area  = 60000
-        self.min_confidence = 0.45     # slightly lower
+        self.min_confidence = 0.45
 
         # ── Temporal filtering ───────────────────────────────────────
         self.detection_history = deque(maxlen=8)
-        self.min_consecutive_detections = 2  # reduced from 3
+        self.min_consecutive_detections = 2
 
         self.detected_signs = []
         self.confirmed_signs = []
         self.debug_mask = None
 
         # ── ROI ──────────────────────────────────────────────────────
-        self.roi_top_fraction = 0.0     # include top
-        self.roi_bottom_fraction = 0.90  # include most of frame
+        self.roi_top_fraction = 0.0
+        self.roi_bottom_fraction = 0.90
 
-        print("🛑 STOP Sign Detector Initialized (STRICT MODE)")
+        print("🛑 STOP Sign Detector Initialized (STRICT MODE + ROTATED 180)")
         print("   Requires: Octagon + Red + White text")
 
     def detect_signs(self, frame):
@@ -53,24 +52,34 @@ class TrafficSignDetector:
         roi_top = int(h * self.roi_top_fraction)
         roi_bottom = int(h * self.roi_bottom_fraction)
         roi_frame = frame[roi_top:roi_bottom, :]
+        roi_h = roi_bottom - roi_top
         
-        hsv = cv2.cvtColor(roi_frame, cv2.COLOR_BGR2HSV)
+        # ── THE FIX: Rotate the ROI 180 degrees so the detector processes it right-side up ──
+        roi_frame_rotated = cv2.rotate(roi_frame, cv2.ROTATE_180)
+        hsv = cv2.cvtColor(roi_frame_rotated, cv2.COLOR_BGR2HSV)
         
-        # Store debug mask
+        # Store debug mask (this will display right-side up in your corner)
         self.debug_mask = self._get_red_mask(hsv)
         
-        # Detect candidates
-        candidates = self._detect_stop_candidates(roi_frame, hsv, roi_top)
-        self.detected_signs = candidates
+        # Detect candidates using the ROTATED frame
+        candidates = self._detect_stop_candidates(roi_frame_rotated, hsv)
+        
+        # ── Map the detected coordinates BACK to your upside-down video feed ──
+        mapped_candidates = []
+        for sign_type, (rx, ry, rw, rh), conf in candidates:
+            # Un-rotate the bounding box coordinates
+            orig_x = w - rx - rw
+            orig_y = roi_h - ry - rh + roi_top
+            mapped_candidates.append((sign_type, (orig_x, orig_y, rw, rh), conf))
+            
+        self.detected_signs = mapped_candidates
         
         # ── Temporal filtering ───────────────────────────────────────
-        # Track bounding box centers to ensure same sign persists
-        current_centers = [(x + w//2, y + h//2) for (_, (x, y, w, h), _) in candidates]
+        current_centers = [(x + w//2, y + h//2) for (_, (x, y, w, h), _) in self.detected_signs]
         self.detection_history.append(current_centers)
         
-        # Check if any candidate has been seen consistently
         self.confirmed_signs = []
-        for sign_type, (x, y, w, h), conf in candidates:
+        for sign_type, (x, y, w, h), conf in self.detected_signs:
             center = (x + w//2, y + h//2)
             consecutive = self._count_consecutive_near(center)
             
@@ -92,7 +101,7 @@ class TrafficSignDetector:
             if found:
                 count += 1
             else:
-                break  # Must be consecutive
+                break
         return count
 
     def _get_red_mask(self, hsv):
@@ -101,12 +110,10 @@ class TrafficSignDetector:
         mask2 = cv2.inRange(hsv, self.red_lower2, self.red_upper2)
         return cv2.bitwise_or(mask1, mask2)
 
-    def _detect_stop_candidates(self, frame, hsv, y_offset):
+    def _detect_stop_candidates(self, frame_rotated, hsv):
         """Detect STOP sign candidates with strict filtering."""
-        # Create red mask
         mask = self._get_red_mask(hsv)
 
-        # Clean mask - more aggressive morphology
         kernel = np.ones((5, 5), np.uint8)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
@@ -122,113 +129,69 @@ class TrafficSignDetector:
                 continue
 
             x, y, w, h = cv2.boundingRect(cnt)
-            y_actual = y + y_offset
 
-            # ══════════════════════════════════════════════════════════
             # STRICT CHECK 1: Aspect ratio must be nearly square
-            # ══════════════════════════════════════════════════════════
             aspect = w / max(h, 1)
             if not (0.75 < aspect < 1.35):
                 continue
 
-            # ══════════════════════════════════════════════════════════
             # STRICT CHECK 2: Must be octagon-like (6-12 sides)
-            # Real signs can appear with fewer/more sides due to resolution
-            # ══════════════════════════════════════════════════════════
             peri = cv2.arcLength(cnt, True)
             approx = cv2.approxPolyDP(cnt, 0.025 * peri, True)
             sides = len(approx)
             
             if not (6 <= sides <= 12):
-                continue  # Must be roughly octagon-ish
+                continue
 
-            # ══════════════════════════════════════════════════════════
             # STRICT CHECK 3: Solidity must be high (filled shape)
-            # ══════════════════════════════════════════════════════════
             hull = cv2.convexHull(cnt)
             hull_area = cv2.contourArea(hull)
             solidity = area / max(hull_area, 1)
             
             if solidity < 0.75:
-                continue  # Must be solid, not hollow or irregular
+                continue
 
-            # ══════════════════════════════════════════════════════════
             # STRICT CHECK 4: Must have white/bright interior (STOP text)
-            # ══════════════════════════════════════════════════════════
-            white_ratio = self._check_white_interior(frame, x, y, w, h)
+            white_ratio = self._check_white_interior(frame_rotated, x, y, w, h)
             
             if white_ratio < 0.05:
-                continue  # Must have some bright text
+                continue
 
-            # ══════════════════════════════════════════════════════════
             # STRICT CHECK 5: Circularity (octagon is fairly circular)
-            # ══════════════════════════════════════════════════════════
             circularity = (4 * np.pi * area) / max(peri * peri, 1)
             
             if circularity < 0.55:
-                continue  # Must be reasonably circular
+                continue
 
-            # ══════════════════════════════════════════════════════════
-            # All checks passed - calculate confidence
-            # ══════════════════════════════════════════════════════════
+            # Calculate confidence
             confidence = self._calculate_confidence(
                 sides, solidity, circularity, white_ratio, area
             )
             
             if confidence >= self.min_confidence:
-                detected.append(("STOP", (x, y_actual, w, h), confidence))
-
-        # Debug: print contour count
-        if len(contours) > 0 and len(detected) == 0:
-            # Find largest contour and report why it failed
-            if contours:
-                largest = max(contours, key=cv2.contourArea)
-                area = cv2.contourArea(largest)
-                if area > 200:
-                    x, y, w, h = cv2.boundingRect(largest)
-                    aspect = w / max(h, 1)
-                    peri = cv2.arcLength(largest, True)
-                    approx = cv2.approxPolyDP(largest, 0.025 * peri, True)
-                    sides = len(approx)
-                    hull = cv2.convexHull(largest)
-                    solidity = area / max(cv2.contourArea(hull), 1)
-                    circ = (4 * np.pi * area) / max(peri * peri, 1)
-                    white = self._check_white_interior(frame, x, y, w, h)
-                    
-                    # Only print occasionally to avoid spam
-                    import random
-                    if random.random() < 0.03:
-                        print(f"   [DEBUG] Largest red blob: area={area:.0f}, aspect={aspect:.2f}, "
-                              f"sides={sides}, solid={solidity:.2f}, circ={circ:.2f}, white={white:.2f}")
+                detected.append(("STOP", (x, y, w, h), confidence))
 
         return detected
 
-    def _check_white_interior(self, frame, x, y, w, h):
-        """
-        Check for white text inside the sign.
-        Returns the ratio of white pixels in the interior.
-        """
-        # Sample center 50% of the bounding box
+    def _check_white_interior(self, frame_rotated, x, y, w, h):
+        """Check for white text inside the sign."""
         margin_x = int(w * 0.25)
         margin_y = int(h * 0.25)
         
         x1 = max(0, x + margin_x)
         y1 = max(0, y + margin_y)
-        x2 = min(frame.shape[1], x + w - margin_x)
-        y2 = min(frame.shape[0], y + h - margin_y)
+        x2 = min(frame_rotated.shape[1], x + w - margin_x)
+        y2 = min(frame_rotated.shape[0], y + h - margin_y)
         
         if x2 <= x1 or y2 <= y1:
             return 0.0
             
-        center_region = frame[y1:y2, x1:x2]
+        center_region = frame_rotated[y1:y2, x1:x2]
         
         if center_region.size == 0:
             return 0.0
         
-        # Convert to grayscale
         gray = cv2.cvtColor(center_region, cv2.COLOR_BGR2GRAY)
-        
-        # Count bright pixels (white text) - lowered threshold for varied lighting
         white_pixels = np.sum(gray > 160)
         total_pixels = gray.size
         
@@ -236,19 +199,11 @@ class TrafficSignDetector:
 
     def _calculate_confidence(self, sides, solidity, circularity, white_ratio, area):
         """Calculate confidence score."""
-        # Side score: 8 is perfect
         side_score = max(0.0, 1.0 - abs(sides - 8) * 0.15)
-        
-        # Solidity score
         solidity_score = min(1.0, solidity / 0.9)
-        
-        # Circularity score
         circ_score = min(1.0, circularity / 0.8)
-        
-        # White ratio score (more white = more confident)
         white_score = min(1.0, white_ratio / 0.25)
         
-        # Area score (medium sized is best)
         if 1500 < area < 20000:
             area_score = 1.0
         else:
@@ -271,28 +226,29 @@ class TrafficSignDetector:
     def draw_overlay(self, frame):
         """Draw detection overlay."""
         h_frame = frame.shape[0]
+        w_frame = frame.shape[1]
         
-        # Debug: show red mask in corner
+        # Debug: show red mask in TOP RIGHT corner to avoid overlapping UI
         if self.debug_mask is not None:
             mask_small = cv2.resize(self.debug_mask, (100, 75))
             mask_colored = cv2.cvtColor(mask_small, cv2.COLOR_GRAY2BGR)
             mask_colored[:, :, 2] = mask_small
-            frame[h_frame-85:h_frame-10, 10:110] = mask_colored
-            cv2.putText(frame, "RED", (15, h_frame-88),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 255), 1)
+            
+            # Positioned in Top Right
+            frame[10:85, w_frame-110:w_frame-10] = mask_colored
+            cv2.putText(frame, "RED", (w_frame-105, 98),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1)
 
-        # Draw raw detections (thin yellow box) - candidates that passed checks
+        # Draw raw detections
         for sign_type, (x, y, w, h), conf in self.detected_signs:
             cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 255), 1)
             cv2.putText(frame, f"?{conf:.0%}", (x, y-5),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
 
-        # Draw CONFIRMED STOP signs (thick red box)
+        # Draw CONFIRMED STOP signs
         for sign_type, (x, y, w, h), conf in self.confirmed_signs:
-            # Thick red bounding box
             cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 4)
 
-            # Corner accents
             corner = 15
             for cx, cy in [(x, y), (x+w, y), (x, y+h), (x+w, y+h)]:
                 dx = corner if cx == x else -corner
@@ -300,7 +256,6 @@ class TrafficSignDetector:
                 cv2.line(frame, (cx, cy), (cx + dx, cy), (0, 0, 255), 4)
                 cv2.line(frame, (cx, cy), (cx, cy + dy), (0, 0, 255), 4)
 
-            # Label
             label = f"STOP {conf*100:.0f}%"
             ly = y - 15 if y > 40 else y + h + 25
             (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)

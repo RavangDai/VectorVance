@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VectorVance — Nav Control</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0a0e17; color:#e2e8f0; font-family:'JetBrains Mono','SF Mono',monospace; }
+
+.header { border-bottom:1px solid #1e2d3d; padding:14px 24px; display:flex; align-items:center; gap:14px; }
+.header .dot { width:8px; height:8px; border-radius:50%; }
+.header .title { font-size:15px; font-weight:700; letter-spacing:0.05em; }
+.header .sub { font-size:11px; color:#64748b; letter-spacing:0.1em; }
+.header .badge { display:flex; align-items:center; gap:8px; padding:6px 14px; border-radius:6px; font-size:12px; font-weight:600; }
+
+.layout { display:grid; grid-template-columns:1fr 330px; min-height:calc(100vh - 52px); }
+.map-panel { padding:24px; border-right:1px solid #1e2d3d; }
+.side-panel { padding:20px; overflow-y:auto; display:flex; flex-direction:column; gap:16px; }
+
+.label { font-size:11px; color:#64748b; letter-spacing:0.08em; margin-bottom:10px; }
+.card { background:#111827; border-radius:8px; border:1px solid #1e2d3d; padding:16px; }
+.map-wrap { background:#111827; border-radius:10px; border:1px solid #1e2d3d; overflow:hidden; }
+
+.edge-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; padding:6px 0; border-bottom:1px solid #1e2d3d; }
+.edge-row:last-child { border-bottom:none; margin-bottom:0; }
+.edge-label { font-size:10px; color:#64748b; width:90px; flex-shrink:0; }
+.edge-input { width:52px; background:#0a0e17; border:1px solid #1e2d3d; border-radius:4px; color:#e2e8f0;
+              padding:3px 6px; font-size:12px; font-family:monospace; text-align:center; }
+.edge-input:focus { outline:none; border-color:#2563eb; }
+.sign-btn { width:22px; height:15px; border-radius:3px; cursor:pointer; border:1.5px solid #1e2d3d; background:transparent; opacity:0.4; transition:all 0.15s; }
+.sign-btn.active { opacity:1; }
+.sign-btn:hover { opacity:0.8; }
+
+.route-item { padding:8px 10px; margin-bottom:6px; border-radius:6px; border:1px solid #1e2d3d; }
+.route-item.shortest { border-color:var(--rc); background:var(--rcbg); }
+.route-dist { font-size:13px; font-weight:600; }
+.route-tag { font-size:9px; padding:1px 6px; border-radius:3px; font-weight:700; color:#0a0e17; }
+.route-path { font-size:10px; color:#64748b; margin-top:4px; }
+
+.pi-input { flex:1; background:#0a0e17; border:1px solid #1e2d3d; border-radius:4px; color:#e2e8f0;
+            padding:6px 8px; font-size:12px; font-family:monospace; }
+.pi-input:focus { outline:none; border-color:#2563eb; }
+.send-btn { width:100%; padding:10px; border-radius:6px; font-family:monospace; font-size:13px; font-weight:700;
+            cursor:pointer; letter-spacing:0.05em; transition:all 0.2s; }
+.send-btn:hover:not(:disabled) { filter:brightness(1.2); }
+.send-btn:disabled { cursor:default; opacity:0.4; }
+
+.toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); padding:10px 20px;
+         border-radius:8px; font-size:12px; font-weight:600; z-index:99; opacity:0;
+         transition:opacity 0.3s; pointer-events:none; }
+.toast.show { opacity:1; }
+.toast.ok { background:#15803d; color:#dcfce7; }
+.toast.err { background:#991b1b; color:#fecaca; }
+
+.legend-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.legend-item { display:flex; align-items:center; gap:6px; font-size:10px; color:#64748b; }
+.legend-dot { width:8px; height:8px; border-radius:50%; }
+
+@media (max-width: 800px) {
+  .layout { grid-template-columns:1fr; }
+  .map-panel { border-right:none; border-bottom:1px solid #1e2d3d; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="dot" id="hdr-dot"></div>
+  <span class="title">VECTORVANCE</span>
+  <span class="sub">NAV CONTROL</span>
+  <div style="flex:1"></div>
+  <div class="badge" id="hdr-badge" style="display:none"></div>
+</div>
+
+<div class="layout">
+  <div class="map-panel">
+    <div class="label">TRACK MAP — drag nodes to reposition</div>
+    <div class="map-wrap">
+      <svg id="map-svg" viewBox="0 0 620 600" width="100%" style="display:block;cursor:default">
+        <rect width="620" height="600" fill="#111827"/>
+        <defs>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e2d3d" stroke-width="0.3" opacity="0.5"/>
+          </pattern>
+        </defs>
+        <rect width="620" height="600" fill="url(#grid)"/>
+        <g id="edges-g"></g>
+        <g id="nodes-g"></g>
+        <g id="info-g"></g>
+      </svg>
+    </div>
+  </div>
+
+  <div class="side-panel">
+    <div class="card">
+      <div class="label">EDGES</div>
+      <div id="edges-list"></div>
+    </div>
+    <div class="card">
+      <div class="label">ALL ROUTES</div>
+      <div id="routes-list"></div>
+    </div>
+    <div class="card">
+      <div class="label">SEND TO PI</div>
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <input class="pi-input" id="pi-ip" value="192.168.1.100" placeholder="Pi IP">
+        <input class="pi-input" id="pi-port" value="5000" placeholder="Port" style="width:55px;text-align:center">
+      </div>
+      <button class="send-btn" id="send-btn" disabled>NO ROUTE</button>
+      <div id="send-info" style="font-size:10px;color:#64748b;margin-top:8px;text-align:center"></div>
+    </div>
+    <div class="card">
+      <div class="label">LEGEND</div>
+      <div class="legend-grid">
+        <div class="legend-item"><div class="legend-dot" style="background:#22c55e"></div>Start</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#a855f7"></div>Destination</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div>Fork</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#64748b"></div>Waypoint</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const C = {
+  bg:"#0a0e17", surface:"#111827", border:"#1e2d3d",
+  text:"#e2e8f0", muted:"#64748b",
+  green:"#22c55e", greenDk:"#15803d", greenGlow:"rgba(34,197,94,0.15)",
+  blue:"#3b82f6", blueDk:"#1d4ed8", blueGlow:"rgba(59,130,246,0.15)",
+  amber:"#f59e0b", purple:"#a855f7"
+};
+
+let state = null;
+let dragging = null;
+
+async function load() {
+  const r = await fetch("/api/track");
+  state = await r.json();
+  render();
+}
+
+function render() {
+  if (!state) return;
+  const { nodes, edges, shortest, routes, chosen_sign } = state;
+  const cc = chosen_sign === "GREEN" ? C.green : chosen_sign === "BLUE" ? C.blue : null;
+
+  // Header
+  const dot = document.getElementById("hdr-dot");
+  dot.style.background = cc || C.muted;
+  dot.style.boxShadow = cc ? `0 0 8px ${cc}` : "none";
+
+  const badge = document.getElementById("hdr-badge");
+  if (chosen_sign) {
+    badge.style.display = "flex";
+    badge.style.background = chosen_sign === "GREEN" ? C.greenGlow : C.blueGlow;
+    badge.style.border = `1px solid ${cc}40`;
+    badge.innerHTML = `<div style="width:10px;height:10px;border-radius:2px;background:${cc}"></div>
+      <span style="color:${cc}">FOLLOW ${chosen_sign}</span>`;
+  } else badge.style.display = "none";
+
+  // Map edges
+  const eg = document.getElementById("edges-g");
+  eg.innerHTML = "";
+  edges.forEach((e, i) => {
+    const fn = nodes.find(n => n.id === e.from);
+    const tn = nodes.find(n => n.id === e.to);
+    if (!fn || !tn) return;
+    const onPath = shortest && shortest.edges.some(se => (se.from===e.from && se.to===e.to) || (se.to===e.from && se.from===e.to));
+    const sc = e.sign === "GREEN" ? C.green : e.sign === "BLUE" ? C.blue : null;
+    const stroke = onPath ? (sc || C.green) : C.border;
+    const w = onPath ? 3 : 1.5;
+    const op = onPath ? 0.9 : 0.4;
+    const mx = (fn.x + tn.x) / 2, my = (fn.y + tn.y) / 2;
+
+    eg.innerHTML += `<line x1="${fn.x}" y1="${fn.y}" x2="${tn.x}" y2="${tn.y}" stroke="${stroke}" stroke-width="${w}" opacity="${op}" stroke-linecap="round"/>
+      <rect x="${mx-18}" y="${my-10}" width="36" height="20" rx="4" fill="${C.surface}" stroke="${stroke}" stroke-width="0.5" opacity="0.9"/>
+      <text x="${mx}" y="${my+1}" text-anchor="middle" dominant-baseline="central" fill="${onPath?stroke:C.muted}" font-size="10" font-family="monospace" font-weight="500">${e.dist}cm</text>
+      ${e.sign ? `<rect x="${mx-6}" y="${my-22}" width="12" height="8" rx="2" fill="${sc}" opacity="0.9"/>` : ""}`;
+  });
+
+  // Map nodes
+  const ng = document.getElementById("nodes-g");
+  ng.innerHTML = "";
+  nodes.forEach(n => {
+    const r = n.type === "fork" ? 18 : 16;
+    const fill = n.type==="start"?C.green : n.type==="destination"?C.purple : n.type==="fork"?C.amber : C.muted;
+    const letter = n.type==="start"?"A" : n.type==="destination"?"B" : n.type==="fork"?"F" : "W";
+    ng.innerHTML += `<g class="node-drag" data-id="${n.id}" style="cursor:grab">
+      <circle cx="${n.x}" cy="${n.y}" r="${r}" fill="${C.surface}" stroke="${fill}" stroke-width="1.5"/>
+      <text x="${n.x}" y="${n.y+1}" text-anchor="middle" dominant-baseline="central" fill="${fill}" font-size="11" font-weight="600" font-family="monospace">${letter}</text>
+      <text x="${n.x}" y="${n.y-26}" text-anchor="middle" fill="${C.muted}" font-size="9" font-family="monospace" letter-spacing="0.05em">${n.id}</text>
+    </g>`;
+  });
+
+  // Info box
+  const ig = document.getElementById("info-g");
+  ig.innerHTML = "";
+  if (shortest) {
+    ig.innerHTML = `<rect x="10" y="555" width="240" height="36" rx="6" fill="${C.bg}" stroke="${cc||C.border}" stroke-width="0.5" opacity="0.95"/>
+      <text x="20" y="577" fill="${cc||C.green}" font-size="12" font-family="monospace" font-weight="600">Shortest: ${shortest.distance}cm  ${shortest.path.join(" > ")}</text>`;
+  }
+
+  // Edge editor
+  const el = document.getElementById("edges-list");
+  el.innerHTML = "";
+  edges.forEach((e, i) => {
+    const row = document.createElement("div");
+    row.className = "edge-row";
+    row.innerHTML = `<span class="edge-label">${e.from} > ${e.to}</span>
+      <input class="edge-input" type="number" value="${e.dist}" data-idx="${i}">
+      <span style="font-size:9px;color:${C.muted}">cm</span>
+      <div style="flex:1"></div>
+      <button class="sign-btn ${e.sign==='GREEN'?'active':''}" data-idx="${i}" data-sign="GREEN" style="background:${e.sign==='GREEN'?C.green:'transparent'};border-color:${e.sign==='GREEN'?C.green:C.border}"></button>
+      <button class="sign-btn ${e.sign==='BLUE'?'active':''}" data-idx="${i}" data-sign="BLUE" style="background:${e.sign==='BLUE'?C.blue:'transparent'};border-color:${e.sign==='BLUE'?C.blue:C.border}"></button>`;
+    el.appendChild(row);
+  });
+
+  el.querySelectorAll(".edge-input").forEach(inp => {
+    inp.addEventListener("change", async ev => {
+      const idx = parseInt(ev.target.dataset.idx);
+      state.edges[idx].dist = Math.max(1, parseInt(ev.target.value) || 1);
+      await saveTrack();
+    });
+  });
+
+  el.querySelectorAll(".sign-btn").forEach(btn => {
+    btn.addEventListener("click", async ev => {
+      const idx = parseInt(ev.target.dataset.idx);
+      const sign = ev.target.dataset.sign;
+      state.edges[idx].sign = state.edges[idx].sign === sign ? null : sign;
+      await saveTrack();
+    });
+  });
+
+  // Routes list
+  const rl = document.getElementById("routes-list");
+  rl.innerHTML = "";
+  if (routes.length === 0) {
+    rl.innerHTML = `<div style="font-size:11px;color:${C.muted}">No routes found</div>`;
+  }
+  routes.forEach((r, i) => {
+    const isShortest = i === 0;
+    const rsign = r.edges.find(e => e.sign)?.sign;
+    const rc = rsign==="GREEN"?C.green : rsign==="BLUE"?C.blue : C.muted;
+    const div = document.createElement("div");
+    div.className = "route-item" + (isShortest ? " shortest" : "");
+    div.style.setProperty("--rc", rc + "40");
+    div.style.setProperty("--rcbg", rc.replace(")", ",0.08)").replace("rgb","rgba"));
+    if (isShortest) { div.style.borderColor = rc + "40"; div.style.background = rc + "10"; }
+    div.innerHTML = `<div style="display:flex;align-items:center;gap:8px">
+      <span class="route-dist" style="color:${isShortest?rc:C.text}">${r.distance}cm</span>
+      ${isShortest ? `<span class="route-tag" style="background:${rc}">SHORTEST</span>` : ""}
+      ${rsign ? `<div style="width:10px;height:10px;border-radius:2px;background:${rc};margin-left:auto"></div>` : ""}
+    </div><div class="route-path">${r.path.join(" → ")}</div>`;
+    rl.appendChild(div);
+  });
+
+  // Send button
+  const sb = document.getElementById("send-btn");
+  const si = document.getElementById("send-info");
+  if (chosen_sign) {
+    sb.disabled = false;
+    sb.style.border = `1.5px solid ${cc}`;
+    sb.style.background = `${cc}20`;
+    sb.style.color = cc;
+    sb.textContent = `SEND: FOLLOW ${chosen_sign}`;
+    si.textContent = `POST http://${document.getElementById("pi-ip").value}:${document.getElementById("pi-port").value}/command`;
+  } else {
+    sb.disabled = true;
+    sb.style.border = `1.5px solid ${C.border}`;
+    sb.style.background = "transparent";
+    sb.style.color = C.muted;
+    sb.textContent = "NO ROUTE";
+    si.textContent = "";
+  }
+}
+
+async function saveTrack() {
+  await fetch("/api/track", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      nodes: state.nodes,
+      edges: state.edges,
+      pi_ip: document.getElementById("pi-ip").value,
+      pi_port: document.getElementById("pi-port").value,
+    })
+  });
+  await load();
+}
+
+function toast(msg, ok) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "toast show " + (ok ? "ok" : "err");
+  setTimeout(() => t.className = "toast", 3000);
+}
+
+// Send to Pi
+document.getElementById("send-btn").addEventListener("click", async () => {
+  if (!state?.chosen_sign) return;
+  const btn = document.getElementById("send-btn");
+  btn.textContent = "SENDING...";
+
+  try {
+    const r = await fetch("/api/send", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ color: state.chosen_sign, route: state.shortest?.path || [] })
+    });
+    const data = await r.json();
+    if (data.status === "sent") {
+      toast("Command sent to Pi!", true);
+      btn.textContent = "SENT ✓";
+    } else {
+      toast(data.message || "Failed to reach Pi", false);
+      btn.textContent = "FAILED — RETRY";
+    }
+  } catch(e) {
+    toast("Network error: " + e.message, false);
+    btn.textContent = "FAILED — RETRY";
+  }
+  setTimeout(() => render(), 2000);
+});
+
+// Drag nodes on SVG
+const svg = document.getElementById("map-svg");
+svg.addEventListener("mousedown", e => {
+  const g = e.target.closest(".node-drag");
+  if (!g) return;
+  dragging = g.dataset.id;
+  svg.style.cursor = "grabbing";
+});
+
+svg.addEventListener("mousemove", e => {
+  if (!dragging || !state) return;
+  const pt = svg.createSVGPoint();
+  pt.x = e.clientX; pt.y = e.clientY;
+  const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+  const node = state.nodes.find(n => n.id === dragging);
+  if (node) {
+    node.x = Math.round(Math.max(20, Math.min(600, p.x)));
+    node.y = Math.round(Math.max(20, Math.min(580, p.y)));
+    render();
+  }
+});
+
+window.addEventListener("mouseup", async () => {
+  if (dragging) {
+    dragging = null;
+    svg.style.cursor = "default";
+    await saveTrack();
+  }
+});
+
+// Pi IP/port changes
+document.getElementById("pi-ip").addEventListener("change", () => render());
+document.getElementById("pi-port").addEventListener("change", () => render());
+
+// Initial load
+load();
+</script>
+</body>
+</html>
