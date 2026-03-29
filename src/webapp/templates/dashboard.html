@@ -3,365 +3,516 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VectorVance — Nav Control</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<title>VectorVance — Mission Control</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-* { margin:0; padding:0; box-sizing:border-box; }
-body { background:#0a0e17; color:#e2e8f0; font-family:'JetBrains Mono','SF Mono',monospace; }
+/* Dashboard Entry Animations */
+.loaded .header { animation: fadeUp .6s ease-out forwards; }
+.loaded .map-panel { animation: fadeUp .6s ease-out .1s forwards; }
+.loaded .side-panel { animation: slideIn .6s ease-out .2s forwards; }
 
-.header { border-bottom:1px solid #1e2d3d; padding:14px 24px; display:flex; align-items:center; gap:14px; }
-.header .dot { width:8px; height:8px; border-radius:50%; }
-.header .title { font-size:15px; font-weight:700; letter-spacing:0.05em; }
-.header .sub { font-size:11px; color:#64748b; letter-spacing:0.1em; }
-.header .badge { display:flex; align-items:center; gap:8px; padding:6px 14px; border-radius:6px; font-size:12px; font-weight:600; }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(20px) } to { opacity: 1; transform: translateY(0) } }
+@keyframes scanLine { 0% { top: -10% } 100% { top: 110% } }
+@keyframes breathe { 0%, 100% { transform: scale(1) } 50% { transform: scale(1.15) } }
+@keyframes dashFlow { to { stroke-dashoffset: -24 } }
+@keyframes orbitSpin { to { transform: rotate(360deg) } }
+@keyframes slideIn { from { opacity: 0; transform: translateX(30px) } to { opacity: 1; transform: translateX(0) } }
+@keyframes statusPulse { 0%, 100% { box-shadow: 0 0 0 0 var(--pulse-c) } 50% { box-shadow: 0 0 20px 4px var(--pulse-c) } }
 
-.layout { display:grid; grid-template-columns:1fr 330px; min-height:calc(100vh - 52px); }
-.map-panel { padding:24px; border-right:1px solid #1e2d3d; }
-.side-panel { padding:20px; overflow-y:auto; display:flex; flex-direction:column; gap:16px; }
+/* Car Intro Animations */
+@keyframes carDrive {
+    0% { transform: translateX(-120vw) skewX(-10deg); filter: drop-shadow(0 0 10px var(--neon-b)); }
+    40% { transform: translateX(-10vw) skewX(0); filter: drop-shadow(0 0 30px var(--neon-b)); }
+    60% { transform: translateX(10vw) scale(1.05); filter: drop-shadow(0 0 40px var(--neon-g)); }
+    100% { transform: translateX(120vw) skewX(15deg); filter: drop-shadow(0 0 10px var(--neon-g)); }
+}
+@keyframes fadeOutIntro { to { opacity: 0; visibility: hidden; } }
+@keyframes pulseGlow { from { opacity: 0.4; text-shadow: 0 0 10px var(--neon-b); } to { opacity: 1; text-shadow: 0 0 25px var(--neon-b); } }
 
-.label { font-size:11px; color:#64748b; letter-spacing:0.08em; margin-bottom:10px; }
-.card { background:#111827; border-radius:8px; border:1px solid #1e2d3d; padding:16px; }
-.map-wrap { background:#111827; border-radius:10px; border:1px solid #1e2d3d; overflow:hidden; }
+/* Scanner Animations */
+@keyframes scanDown {
+    0% { transform: translateY(0); opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { transform: translateY(600px); opacity: 0; }
+}
 
-.edge-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; padding:6px 0; border-bottom:1px solid #1e2d3d; }
-.edge-row:last-child { border-bottom:none; margin-bottom:0; }
-.edge-label { font-size:10px; color:#64748b; width:90px; flex-shrink:0; }
-.edge-input { width:52px; background:#0a0e17; border:1px solid #1e2d3d; border-radius:4px; color:#e2e8f0;
-              padding:3px 6px; font-size:12px; font-family:monospace; text-align:center; }
-.edge-input:focus { outline:none; border-color:#2563eb; }
-.sign-btn { width:22px; height:15px; border-radius:3px; cursor:pointer; border:1.5px solid #1e2d3d; background:transparent; opacity:0.4; transition:all 0.15s; }
-.sign-btn.active { opacity:1; }
-.sign-btn:hover { opacity:0.8; }
+:root {
+    --void: #030509;
+    --abyss: #070b14;
+    --panel-glass: rgba(13, 22, 40, 0.45);
+    --panel-hover: rgba(20, 32, 56, 0.6);
+    --line: rgba(150, 180, 255, 0.1);
+    --lineHover: rgba(150, 180, 255, 0.25);
+    --dim: #4a628a;
+    --muted: #6e8bb5;
+    --txt: #d4e0f2;
+    --bright: #f0f4fa;
+    --neon-g: #00ff88;
+    --neon-b: #3b9dff;
+    --amber: #ffaa22;
+    --purple: #b46eff;
+    --red: #ff4466;
+}
 
-.route-item { padding:8px 10px; margin-bottom:6px; border-radius:6px; border:1px solid #1e2d3d; }
-.route-item.shortest { border-color:var(--rc); background:var(--rcbg); }
-.route-dist { font-size:13px; font-weight:600; }
-.route-tag { font-size:9px; padding:1px 6px; border-radius:3px; font-weight:700; color:#0a0e17; }
-.route-path { font-size:10px; color:#64748b; margin-top:4px; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+body { background: var(--void); color: var(--txt); font-family: 'Outfit', sans-serif; overflow: hidden; }
+canvas#bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
 
-.pi-input { flex:1; background:#0a0e17; border:1px solid #1e2d3d; border-radius:4px; color:#e2e8f0;
-            padding:6px 8px; font-size:12px; font-family:monospace; }
-.pi-input:focus { outline:none; border-color:#2563eb; }
-.send-btn { width:100%; padding:10px; border-radius:6px; font-family:monospace; font-size:13px; font-weight:700;
-            cursor:pointer; letter-spacing:0.05em; transition:all 0.2s; }
-.send-btn:hover:not(:disabled) { filter:brightness(1.2); }
-.send-btn:disabled { cursor:default; opacity:0.4; }
+/* Intro Screen */
+#intro-screen {
+    position: fixed; inset: 0; z-index: 9999; background: var(--void);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.intro-car-wrapper {
+    width: 280px; animation: carDrive 2.2s cubic-bezier(0.25, 1, 0.3, 1) forwards;
+}
+.intro-text {
+    margin-top: 24px; font-family: 'IBM Plex Mono', monospace; font-size: 14px;
+    color: var(--neon-b); letter-spacing: 0.4em; opacity: 0;
+    animation: pulseGlow 1.5s infinite alternate;
+}
 
-.toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); padding:10px 20px;
-         border-radius:8px; font-size:12px; font-weight:600; z-index:99; opacity:0;
-         transition:opacity 0.3s; pointer-events:none; }
-.toast.show { opacity:1; }
-.toast.ok { background:#15803d; color:#dcfce7; }
-.toast.err { background:#991b1b; color:#fecaca; }
+/* Layout */
+.shell { position: relative; z-index: 1; height: 100vh; display: flex; flex-direction: column; }
 
-.legend-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
-.legend-item { display:flex; align-items:center; gap:6px; font-size:10px; color:#64748b; }
-.legend-dot { width:8px; height:8px; border-radius:50%; }
+/* Header */
+.header { 
+    margin: 16px 24px; padding: 8px 20px; height: 60px; border-radius: 99px; 
+    display: flex; align-items: center; gap: 16px; flex-shrink: 0;
+    backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+    background: var(--panel-glass); border: 1px solid var(--line);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
+    opacity: 0; 
+}
 
-@media (max-width: 800px) {
-  .layout { grid-template-columns:1fr; }
-  .map-panel { border-right:none; border-bottom:1px solid #1e2d3d; }
+.logo-mark { width: 36px; height: 36px; border-radius: 50%; position: relative; overflow: hidden; background: linear-gradient(135deg, rgba(0,255,136,.1), rgba(59,157,255,.1)); display: flex; align-items: center; justify-content: center; box-shadow: inset 0 0 12px rgba(255,255,255,0.05); }
+.logo-mark::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0%, var(--neon-g) 25%, transparent 50%, var(--neon-b) 75%, transparent 100%); opacity: .2; animation: orbitSpin 6s linear infinite; }
+.logo-mark svg { width: 18px; height: 18px; position: relative; z-index: 1; }
+
+.brand-wrapper { display: flex; flex-direction: column; justify-content: center; }
+.brand { font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 16px; letter-spacing: .1em; color: var(--bright); line-height: 1; }
+.brand-sub { font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: var(--neon-b); letter-spacing: .2em; text-transform: uppercase; margin-top: 4px; opacity: 0.8; }
+
+.hdr-badge { display: none; align-items: center; gap: 8px; padding: 8px 20px; border-radius: 99px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; letter-spacing: .08em; animation: statusPulse 2s ease-in-out infinite; }
+.hdr-badge .indicator { width: 6px; height: 6px; border-radius: 50%; animation: breathe 2s ease-in-out infinite; }
+
+/* Fluid Grid */
+.layout { 
+    display: grid; grid-template-columns: 1fr 340px; gap: 20px; 
+    padding: 0 24px 24px 24px; min-height: 0; flex: 1; opacity: 0; 
+}
+
+.map-panel { display: flex; flex-direction: column; opacity: 0; height: 100%; min-height: 0; }
+.side-panel { display: flex; flex-direction: column; gap: 16px; opacity: 0; height: 100%; overflow-y: auto; padding-right: 8px; }
+
+.section-label { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--muted); letter-spacing: .16em; text-transform: uppercase; margin-bottom: 12px; display: flex; align-items: center; gap: 12px; padding-left: 12px; flex-shrink: 0; }
+.section-label::before { content: ''; width: 20px; height: 2px; border-radius: 2px; background: var(--neon-b); opacity: 0.5; }
+
+/* Map Frame & Scanner Features */
+.map-frame { 
+    flex: 1; border-radius: 32px; overflow: hidden; position: relative; 
+    background: var(--panel-glass); backdrop-filter: blur(20px); border: 1px solid var(--line); 
+    box-shadow: 0 15px 40px rgba(0,0,0,0.5), inset 0 2px 0 rgba(255,255,255,0.03); 
+    display: flex; align-items: center; justify-content: center; 
+}
+.map-frame::before { content: ''; position: absolute; top: -10%; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, transparent, var(--neon-g), var(--neon-b), transparent); animation: scanLine 5s ease-in-out infinite alternate; z-index: 2; opacity: .3; filter: blur(4px); pointer-events: none; }
+
+#track-bg-img {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; opacity: 0; z-index: 0; transition: opacity 0.5s;
+    filter: grayscale(100%) contrast(120%) brightness(50%); /* Dim radar look */
+}
+
+.scanner-laser {
+    position: absolute; top: 0; left: 0; width: 100%; height: 4px;
+    background: var(--neon-g); box-shadow: 0 0 20px 4px var(--neon-g);
+    z-index: 10; opacity: 0; pointer-events: none;
+}
+.is-scanning .scanner-laser { animation: scanDown 1.5s ease-in-out infinite alternate; }
+
+.map-overlay {
+    position: absolute; bottom: 20px; left: 20px; z-index: 20;
+    padding: 12px 20px; border-radius: 99px; background: rgba(10,16,32,0.8);
+    border: 1px solid var(--line); backdrop-filter: blur(10px);
+    display: flex; align-items: center; gap: 16px;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.4);
+    opacity: 0; transition: opacity 0.3s;
+}
+.map-overlay.active { opacity: 1; }
+.mo-dist { color: var(--neon-g); font-family: 'IBM Plex Mono', monospace; font-weight: 700; font-size: 12px; }
+.mo-path { color: var(--bright); font-family: 'IBM Plex Mono', monospace; font-size: 9px; opacity: 0.8; }
+
+/* Side Panel Cards & Buttons */
+.scan-btn {
+    width: 100%; padding: 14px; border-radius: 16px; border: 1px dashed var(--neon-b);
+    background: rgba(59, 157, 255, 0.05); color: var(--neon-b);
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700;
+    cursor: pointer; letter-spacing: .1em; transition: all .3s;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    flex-shrink: 0;
+}
+.scan-btn:hover { background: rgba(59, 157, 255, 0.15); box-shadow: 0 0 15px rgba(59, 157, 255, 0.2); border-style: solid; }
+
+.card { border-radius: 24px; padding: 20px; position: relative; overflow: hidden; background: var(--panel-glass); backdrop-filter: blur(20px); border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.04); transition: transform 0.3s; flex-shrink: 0; }
+.card:hover { background: var(--panel-hover); }
+
+.card-label { font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: var(--bright); letter-spacing: .2em; text-transform: uppercase; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; opacity: 0.9; }
+.card-label .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--neon-b); box-shadow: 0 0 10px var(--neon-b); }
+
+.edge-row { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 12px; transition: background .3s; }
+.edge-row:hover { background: rgba(255,255,255,0.03); }
+.edge-from-to { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--txt); width: 85px; flex-shrink: 0; font-weight: 500; }
+.edge-dist { width: 56px; background: rgba(0,0,0,0.3); border: 1px solid transparent; border-radius: 8px; color: var(--bright); padding: 6px 8px; font-size: 11px; font-family: 'IBM Plex Mono', monospace; text-align: center; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2); }
+.edge-dist:focus { outline: none; border-color: var(--neon-b); background: rgba(59,157,255,0.05); }
+
+.sign-btn { width: 24px; height: 24px; border-radius: 50%; cursor: pointer; border: 2px solid var(--line); background: transparent; opacity: .4; transition: all .3s; }
+.sign-btn:hover { opacity: 1; transform: scale(1.15); border-color: currentColor; }
+.sign-btn.active { opacity: 1; transform: scale(1.1); box-shadow: 0 0 15px currentColor; }
+
+.route-card { padding: 12px 16px; margin-bottom: 8px; border-radius: 16px; border: 1px solid var(--line); background: rgba(0,0,0,0.2); transition: all .3s; cursor: default; }
+.route-card:hover { background: rgba(255,255,255,0.02); transform: translateX(4px); }
+.route-card.best { border: none; box-shadow: inset 0 0 0 1px var(--neon-g), 0 8px 20px rgba(0,255,136,0.1); background: linear-gradient(135deg, rgba(0,255,136,0.05), transparent); }
+
+.route-dist { font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; display: flex; align-items: baseline; gap: 4px; }
+.route-tag { font-family: 'IBM Plex Mono', monospace; font-size: 8px; padding: 3px 8px; border-radius: 99px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.route-path { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
+
+.pi-input { flex: 1; background: rgba(0,0,0,0.3); border: 1px solid transparent; border-radius: 99px; color: var(--bright); padding: 10px 16px; font-size: 11px; font-family: 'IBM Plex Mono', monospace; transition: all .3s; }
+.pi-input:focus { outline: none; border-color: var(--neon-b); }
+
+.send-btn { width: 100%; padding: 14px; border-radius: 99px; border: none; font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700; cursor: pointer; letter-spacing: .12em; transition: all .3s; position: relative; overflow: hidden; background: rgba(255,255,255,0.05); color: var(--dim); }
+.send-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0,0,0,0.4); filter: brightness(1.2); }
+.send-btn:active:not(:disabled) { transform: translateY(1px) scale(0.98); }
+
+.legend-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 4px; }
+.legend-item { display: flex; align-items: center; gap: 10px; font-size: 10px; font-weight: 500; color: var(--txt); }
+.legend-dot { width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
+
+.side-panel::-webkit-scrollbar { width: 4px; }
+.side-panel::-webkit-scrollbar-thumb { background: var(--lineHover); border-radius: 4px; }
+
+@media(max-width: 1024px) { 
+    .layout { grid-template-columns: 1fr; overflow-y: auto; } 
+    .shell { height: auto; overflow: visible; }
+    .map-panel { height: 400px; flex-shrink: 0; }
+    .side-panel { height: auto; overflow: visible; }
 }
 </style>
 </head>
 <body>
 
+<div id="intro-screen">
+    <div class="intro-car-wrapper">
+        <svg viewBox="0 0 240 70" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <filter id="glow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+            </defs>
+            <path d="M15 55 L35 40 L70 30 L110 20 L170 24 L215 40 L225 55 Z" stroke="var(--neon-b)" stroke-width="2" fill="rgba(59, 157, 255, 0.08)"/>
+            <path d="M110 20 L135 35 L170 24" stroke="var(--neon-b)" stroke-width="1.5"/>
+            <circle cx="55" cy="55" r="12" stroke="var(--neon-g)" stroke-width="2.5" fill="var(--void)"/>
+            <circle cx="185" cy="55" r="12" stroke="var(--neon-g)" stroke-width="2.5" fill="var(--void)"/>
+            <circle cx="55" cy="55" r="4" fill="var(--neon-g)"/>
+            <circle cx="185" cy="55" r="4" fill="var(--neon-g)"/>
+            <line x1="0" y1="50" x2="25" y2="50" stroke="var(--red)" stroke-width="4" stroke-linecap="round" filter="url(#glow)"/>
+            <line x1="220" y1="52" x2="240" y2="52" stroke="var(--bright)" stroke-width="3" stroke-linecap="round" filter="url(#glow)"/>
+        </svg>
+    </div>
+    <div class="intro-text">INITIALIZING SYSTEMS</div>
+</div>
+
+<canvas id="bg"></canvas>
+
+<div class="shell" style="opacity:0; transition: opacity 0.5s;" id="main-shell">
+    
 <div class="header">
-  <div class="dot" id="hdr-dot"></div>
-  <span class="title">VECTORVANCE</span>
-  <span class="sub">NAV CONTROL</span>
-  <div style="flex:1"></div>
-  <div class="badge" id="hdr-badge" style="display:none"></div>
+    <div class="logo-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--bright)" stroke-width="2.5" stroke-linecap="round"><path d="M12 2L2 19h20L12 2z"/><line x1="12" y1="8" x2="12" y2="14"/><circle cx="12" cy="17" r="1" fill="var(--bright)"/></svg>
+    </div>
+    <div class="brand-wrapper">
+        <span class="brand">VECTORVANCE</span>
+        <span class="brand-sub">Mission Control</span>
+    </div>
+    <div style="flex:1"></div>
+    <div class="hdr-badge" id="hdr-badge"></div>
 </div>
 
 <div class="layout">
-  <div class="map-panel">
-    <div class="label">TRACK MAP — drag nodes to reposition</div>
-    <div class="map-wrap">
-      <svg id="map-svg" viewBox="0 0 620 600" width="100%" style="display:block;cursor:default">
-        <rect width="620" height="600" fill="#111827"/>
-        <defs>
-          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e2d3d" stroke-width="0.3" opacity="0.5"/>
-          </pattern>
-        </defs>
-        <rect width="620" height="600" fill="url(#grid)"/>
-        <g id="edges-g"></g>
-        <g id="nodes-g"></g>
-        <g id="info-g"></g>
-      </svg>
-    </div>
-  </div>
+    <div class="map-panel">
+        <div class="section-label">Operational Theater</div>
+        
+        <div class="map-frame" id="map-frame-container">
+            <img id="track-bg-img" src="" alt="Track View">
+            <div class="scanner-laser"></div>
 
-  <div class="side-panel">
-    <div class="card">
-      <div class="label">EDGES</div>
-      <div id="edges-list"></div>
+            <svg id="map-svg" viewBox="0 0 620 600" width="100%" height="100%" style="display:block; position:relative; z-index:5;">
+            <defs>
+                <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                    <circle cx="0" cy="0" r="1" fill="var(--lineHover)" opacity="0.4"/>
+                    <circle cx="20" cy="20" r="0.8" fill="var(--lineHover)" opacity="0.15"/>
+                </pattern>
+                <filter id="glw"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+            </defs>
+            <rect width="100%" height="100%" fill="transparent"/>
+            <rect width="100%" height="100%" fill="url(#grid)"/>
+            <g id="edges-g"></g><g id="nodes-g"></g>
+            </svg>
+            
+            <div class="map-overlay" id="map-info"></div>
+        </div>
     </div>
-    <div class="card">
-      <div class="label">ALL ROUTES</div>
-      <div id="routes-list"></div>
+    
+    <div class="side-panel">
+        
+        <input type="file" id="track-upload" accept="image/*" hidden>
+        <button class="scan-btn" onclick="document.getElementById('track-upload').click()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            UPLOAD BIRD'S EYE VIEW
+        </button>
+
+        <div class="card">
+            <div class="card-label"><div class="dot"></div>Network Edges</div>
+            <div id="edges-list"></div>
+        </div>
+        <div class="card">
+            <div class="card-label"><div class="dot"></div>Route Analysis</div>
+            <div id="routes-list"></div>
+        </div>
+        <div class="card">
+            <div class="card-label"><div class="dot"></div>Uplink Command</div>
+            <div style="display:flex;gap:10px;margin-bottom:12px">
+                <input class="pi-input" id="pi-ip" value="192.168.1.100" placeholder="Target IP">
+                <input class="pi-input" id="pi-port" value="5000" placeholder="Port" style="width:64px;text-align:center">
+            </div>
+            <button class="send-btn" id="send-btn" disabled>AWAITING ROUTE</button>
+            <div id="send-info" style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);margin-top:12px;text-align:center;letter-spacing:.06em"></div>
+        </div>
+        <div class="card" style="padding:16px 20px">
+            <div class="legend-grid">
+                <div class="legend-item"><div class="legend-dot" style="background:var(--neon-g);color:var(--neon-g)"></div>Origin Node</div>
+                <div class="legend-item"><div class="legend-dot" style="background:var(--purple);color:var(--purple)"></div>Target Node</div>
+                <div class="legend-item"><div class="legend-dot" style="background:var(--amber);color:var(--amber)"></div>Junction</div>
+                <div class="legend-item"><div class="legend-dot" style="background:var(--muted);color:var(--muted)"></div>Waypoint</div>
+            </div>
+        </div>
     </div>
-    <div class="card">
-      <div class="label">SEND TO PI</div>
-      <div style="display:flex;gap:6px;margin-bottom:10px">
-        <input class="pi-input" id="pi-ip" value="192.168.1.100" placeholder="Pi IP">
-        <input class="pi-input" id="pi-port" value="5000" placeholder="Port" style="width:55px;text-align:center">
-      </div>
-      <button class="send-btn" id="send-btn" disabled>NO ROUTE</button>
-      <div id="send-info" style="font-size:10px;color:#64748b;margin-top:8px;text-align:center"></div>
-    </div>
-    <div class="card">
-      <div class="label">LEGEND</div>
-      <div class="legend-grid">
-        <div class="legend-item"><div class="legend-dot" style="background:#22c55e"></div>Start</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#a855f7"></div>Destination</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div>Fork</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#64748b"></div>Waypoint</div>
-      </div>
-    </div>
-  </div>
+</div>
 </div>
 
-<div class="toast" id="toast"></div>
-
 <script>
-const C = {
-  bg:"#0a0e17", surface:"#111827", border:"#1e2d3d",
-  text:"#e2e8f0", muted:"#64748b",
-  green:"#22c55e", greenDk:"#15803d", greenGlow:"rgba(34,197,94,0.15)",
-  blue:"#3b82f6", blueDk:"#1d4ed8", blueGlow:"rgba(59,130,246,0.15)",
-  amber:"#f59e0b", purple:"#a855f7"
+// --- Intro Sequence Logic ---
+window.addEventListener('load', () => {
+    setTimeout(() => {
+        const intro = document.getElementById('intro-screen');
+        intro.style.animation = 'fadeOutIntro 0.5s forwards';
+        
+        const shell = document.getElementById('main-shell');
+        shell.style.opacity = '1';
+        
+        setTimeout(() => {
+            document.body.classList.add('loaded');
+            document.querySelector('.layout').style.opacity = '1';
+        }, 100);
+    }, 2200); 
+});
+
+// --- Dashboard Logic ---
+const C={abyss:"transparent",panel:"rgba(13,22,40,0.8)",line:"rgba(150,180,255,0.15)",muted:"#6e8bb5",bright:"#f0f4fa",dim:"#4a628a",
+green:"#00ff88",greenBg:"rgba(0,255,136,0.1)",greenBd:"rgba(0,255,136,0.3)",
+blue:"#3b9dff",blueBg:"rgba(59,157,255,0.1)",blueBd:"rgba(59,157,255,0.3)",
+amber:"#ffaa22",purple:"#b46eff",red:"#ff4466"};
+
+let state=null,dragging=null;
+const cvs=document.getElementById("bg"),ctx=cvs.getContext("2d");let pts=[];
+
+function initBg(){
+    cvs.width=window.innerWidth;cvs.height=window.innerHeight;
+    pts=Array.from({length:50},()=>({x:Math.random()*cvs.width,y:Math.random()*cvs.height,r:Math.random()*2+.5,dx:(Math.random()-.5)*.1,dy:(Math.random()-.5)*.1,a:Math.random()*.3+.05}));
+}
+function drawBg(){
+    ctx.clearRect(0,0,cvs.width,cvs.height);
+    pts.forEach(p=>{
+        p.x+=p.dx;p.y+=p.dy;
+        if(p.x<0)p.x=cvs.width;if(p.x>cvs.width)p.x=0;if(p.y<0)p.y=cvs.height;if(p.y>cvs.height)p.y=0;
+        ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle=`rgba(70,140,255,${p.a})`;ctx.fill();
+    });
+    requestAnimationFrame(drawBg);
+}
+initBg();drawBg();window.addEventListener("resize",initBg);
+
+const dummyState = {
+    chosen_sign: "GREEN",
+    shortest: { distance: 125, path: ["START", "FORK", "DEST"], edges: [{from:"START",to:"FORK"},{from:"FORK",to:"DEST"}] },
+    routes: [
+        { distance: 125, path: ["START", "FORK", "DEST"], edges: [{sign:"GREEN"}] },
+        { distance: 150, path: ["START", "WP", "DEST"], edges: [{sign:"BLUE"}] }
+    ],
+    nodes: [
+        {id:"START", x:150, y:450, type:"start"},
+        {id:"FORK", x:250, y:250, type:"fork"},
+        {id:"WP", x:400, y:400, type:"waypoint"},
+        {id:"DEST", x:450, y:150, type:"destination"}
+    ],
+    edges: [
+        {from:"START", to:"FORK", dist: 50, sign:"GREEN"},
+        {from:"START", to:"WP", dist: 60, sign:"BLUE"},
+        {from:"FORK", to:"DEST", dist: 75, sign:null},
+        {from:"WP", to:"DEST", dist: 90, sign:null}
+    ]
 };
 
-let state = null;
-let dragging = null;
-
-async function load() {
-  const r = await fetch("/api/track");
-  state = await r.json();
-  render();
-}
-
-function render() {
-  if (!state) return;
-  const { nodes, edges, shortest, routes, chosen_sign } = state;
-  const cc = chosen_sign === "GREEN" ? C.green : chosen_sign === "BLUE" ? C.blue : null;
-
-  // Header
-  const dot = document.getElementById("hdr-dot");
-  dot.style.background = cc || C.muted;
-  dot.style.boxShadow = cc ? `0 0 8px ${cc}` : "none";
-
-  const badge = document.getElementById("hdr-badge");
-  if (chosen_sign) {
-    badge.style.display = "flex";
-    badge.style.background = chosen_sign === "GREEN" ? C.greenGlow : C.blueGlow;
-    badge.style.border = `1px solid ${cc}40`;
-    badge.innerHTML = `<div style="width:10px;height:10px;border-radius:2px;background:${cc}"></div>
-      <span style="color:${cc}">FOLLOW ${chosen_sign}</span>`;
-  } else badge.style.display = "none";
-
-  // Map edges
-  const eg = document.getElementById("edges-g");
-  eg.innerHTML = "";
-  edges.forEach((e, i) => {
-    const fn = nodes.find(n => n.id === e.from);
-    const tn = nodes.find(n => n.id === e.to);
-    if (!fn || !tn) return;
-    const onPath = shortest && shortest.edges.some(se => (se.from===e.from && se.to===e.to) || (se.to===e.from && se.from===e.to));
-    const sc = e.sign === "GREEN" ? C.green : e.sign === "BLUE" ? C.blue : null;
-    const stroke = onPath ? (sc || C.green) : C.border;
-    const w = onPath ? 3 : 1.5;
-    const op = onPath ? 0.9 : 0.4;
-    const mx = (fn.x + tn.x) / 2, my = (fn.y + tn.y) / 2;
-
-    eg.innerHTML += `<line x1="${fn.x}" y1="${fn.y}" x2="${tn.x}" y2="${tn.y}" stroke="${stroke}" stroke-width="${w}" opacity="${op}" stroke-linecap="round"/>
-      <rect x="${mx-18}" y="${my-10}" width="36" height="20" rx="4" fill="${C.surface}" stroke="${stroke}" stroke-width="0.5" opacity="0.9"/>
-      <text x="${mx}" y="${my+1}" text-anchor="middle" dominant-baseline="central" fill="${onPath?stroke:C.muted}" font-size="10" font-family="monospace" font-weight="500">${e.dist}cm</text>
-      ${e.sign ? `<rect x="${mx-6}" y="${my-22}" width="12" height="8" rx="2" fill="${sc}" opacity="0.9"/>` : ""}`;
-  });
-
-  // Map nodes
-  const ng = document.getElementById("nodes-g");
-  ng.innerHTML = "";
-  nodes.forEach(n => {
-    const r = n.type === "fork" ? 18 : 16;
-    const fill = n.type==="start"?C.green : n.type==="destination"?C.purple : n.type==="fork"?C.amber : C.muted;
-    const letter = n.type==="start"?"A" : n.type==="destination"?"B" : n.type==="fork"?"F" : "W";
-    ng.innerHTML += `<g class="node-drag" data-id="${n.id}" style="cursor:grab">
-      <circle cx="${n.x}" cy="${n.y}" r="${r}" fill="${C.surface}" stroke="${fill}" stroke-width="1.5"/>
-      <text x="${n.x}" y="${n.y+1}" text-anchor="middle" dominant-baseline="central" fill="${fill}" font-size="11" font-weight="600" font-family="monospace">${letter}</text>
-      <text x="${n.x}" y="${n.y-26}" text-anchor="middle" fill="${C.muted}" font-size="9" font-family="monospace" letter-spacing="0.05em">${n.id}</text>
-    </g>`;
-  });
-
-  // Info box
-  const ig = document.getElementById("info-g");
-  ig.innerHTML = "";
-  if (shortest) {
-    ig.innerHTML = `<rect x="10" y="555" width="240" height="36" rx="6" fill="${C.bg}" stroke="${cc||C.border}" stroke-width="0.5" opacity="0.95"/>
-      <text x="20" y="577" fill="${cc||C.green}" font-size="12" font-family="monospace" font-weight="600">Shortest: ${shortest.distance}cm  ${shortest.path.join(" > ")}</text>`;
-  }
-
-  // Edge editor
-  const el = document.getElementById("edges-list");
-  el.innerHTML = "";
-  edges.forEach((e, i) => {
-    const row = document.createElement("div");
-    row.className = "edge-row";
-    row.innerHTML = `<span class="edge-label">${e.from} > ${e.to}</span>
-      <input class="edge-input" type="number" value="${e.dist}" data-idx="${i}">
-      <span style="font-size:9px;color:${C.muted}">cm</span>
-      <div style="flex:1"></div>
-      <button class="sign-btn ${e.sign==='GREEN'?'active':''}" data-idx="${i}" data-sign="GREEN" style="background:${e.sign==='GREEN'?C.green:'transparent'};border-color:${e.sign==='GREEN'?C.green:C.border}"></button>
-      <button class="sign-btn ${e.sign==='BLUE'?'active':''}" data-idx="${i}" data-sign="BLUE" style="background:${e.sign==='BLUE'?C.blue:'transparent'};border-color:${e.sign==='BLUE'?C.blue:C.border}"></button>`;
-    el.appendChild(row);
-  });
-
-  el.querySelectorAll(".edge-input").forEach(inp => {
-    inp.addEventListener("change", async ev => {
-      const idx = parseInt(ev.target.dataset.idx);
-      state.edges[idx].dist = Math.max(1, parseInt(ev.target.value) || 1);
-      await saveTrack();
-    });
-  });
-
-  el.querySelectorAll(".sign-btn").forEach(btn => {
-    btn.addEventListener("click", async ev => {
-      const idx = parseInt(ev.target.dataset.idx);
-      const sign = ev.target.dataset.sign;
-      state.edges[idx].sign = state.edges[idx].sign === sign ? null : sign;
-      await saveTrack();
-    });
-  });
-
-  // Routes list
-  const rl = document.getElementById("routes-list");
-  rl.innerHTML = "";
-  if (routes.length === 0) {
-    rl.innerHTML = `<div style="font-size:11px;color:${C.muted}">No routes found</div>`;
-  }
-  routes.forEach((r, i) => {
-    const isShortest = i === 0;
-    const rsign = r.edges.find(e => e.sign)?.sign;
-    const rc = rsign==="GREEN"?C.green : rsign==="BLUE"?C.blue : C.muted;
-    const div = document.createElement("div");
-    div.className = "route-item" + (isShortest ? " shortest" : "");
-    div.style.setProperty("--rc", rc + "40");
-    div.style.setProperty("--rcbg", rc.replace(")", ",0.08)").replace("rgb","rgba"));
-    if (isShortest) { div.style.borderColor = rc + "40"; div.style.background = rc + "10"; }
-    div.innerHTML = `<div style="display:flex;align-items:center;gap:8px">
-      <span class="route-dist" style="color:${isShortest?rc:C.text}">${r.distance}cm</span>
-      ${isShortest ? `<span class="route-tag" style="background:${rc}">SHORTEST</span>` : ""}
-      ${rsign ? `<div style="width:10px;height:10px;border-radius:2px;background:${rc};margin-left:auto"></div>` : ""}
-    </div><div class="route-path">${r.path.join(" → ")}</div>`;
-    rl.appendChild(div);
-  });
-
-  // Send button
-  const sb = document.getElementById("send-btn");
-  const si = document.getElementById("send-info");
-  if (chosen_sign) {
-    sb.disabled = false;
-    sb.style.border = `1.5px solid ${cc}`;
-    sb.style.background = `${cc}20`;
-    sb.style.color = cc;
-    sb.textContent = `SEND: FOLLOW ${chosen_sign}`;
-    si.textContent = `POST http://${document.getElementById("pi-ip").value}:${document.getElementById("pi-port").value}/command`;
-  } else {
-    sb.disabled = true;
-    sb.style.border = `1.5px solid ${C.border}`;
-    sb.style.background = "transparent";
-    sb.style.color = C.muted;
-    sb.textContent = "NO ROUTE";
-    si.textContent = "";
-  }
-}
-
-async function saveTrack() {
-  await fetch("/api/track", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({
-      nodes: state.nodes,
-      edges: state.edges,
-      pi_ip: document.getElementById("pi-ip").value,
-      pi_port: document.getElementById("pi-port").value,
-    })
-  });
-  await load();
-}
-
-function toast(msg, ok) {
-  const t = document.getElementById("toast");
-  t.textContent = msg;
-  t.className = "toast show " + (ok ? "ok" : "err");
-  setTimeout(() => t.className = "toast", 3000);
-}
-
-// Send to Pi
-document.getElementById("send-btn").addEventListener("click", async () => {
-  if (!state?.chosen_sign) return;
-  const btn = document.getElementById("send-btn");
-  btn.textContent = "SENDING...";
-
-  try {
-    const r = await fetch("/api/send", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ color: state.chosen_sign, route: state.shortest?.path || [] })
-    });
-    const data = await r.json();
-    if (data.status === "sent") {
-      toast("Command sent to Pi!", true);
-      btn.textContent = "SENT ✓";
-    } else {
-      toast(data.message || "Failed to reach Pi", false);
-      btn.textContent = "FAILED — RETRY";
-    }
-  } catch(e) {
-    toast("Network error: " + e.message, false);
-    btn.textContent = "FAILED — RETRY";
-  }
-  setTimeout(() => render(), 2000);
-});
-
-// Drag nodes on SVG
-const svg = document.getElementById("map-svg");
-svg.addEventListener("mousedown", e => {
-  const g = e.target.closest(".node-drag");
-  if (!g) return;
-  dragging = g.dataset.id;
-  svg.style.cursor = "grabbing";
-});
-
-svg.addEventListener("mousemove", e => {
-  if (!dragging || !state) return;
-  const pt = svg.createSVGPoint();
-  pt.x = e.clientX; pt.y = e.clientY;
-  const p = pt.matrixTransform(svg.getScreenCTM().inverse());
-  const node = state.nodes.find(n => n.id === dragging);
-  if (node) {
-    node.x = Math.round(Math.max(20, Math.min(600, p.x)));
-    node.y = Math.round(Math.max(20, Math.min(580, p.y)));
+async function load(){
+    try { const r=await fetch("/api/track"); state=await r.json(); } 
+    catch(e) { state = dummyState; } 
     render();
-  }
+}
+
+function render(){
+    if(!state)return;
+    const{nodes,edges,shortest,routes,chosen_sign}=state;
+    const cc=chosen_sign==="GREEN"?C.green:chosen_sign==="BLUE"?C.blue:null;
+    const ccBg=chosen_sign==="GREEN"?C.greenBg:chosen_sign==="BLUE"?C.blueBg:null;
+    const ccBd=chosen_sign==="GREEN"?C.greenBd:chosen_sign==="BLUE"?C.blueBd:null;
+    
+    const badge=document.getElementById("hdr-badge");
+    if(chosen_sign){
+        badge.style.display="flex";badge.style.background=ccBg;badge.style.border=`1px solid ${ccBd}`;badge.style.setProperty("--pulse-c",ccBg);
+        badge.innerHTML=`<div class="indicator" style="background:${cc}; box-shadow: 0 0 10px ${cc}"></div><span style="color:${cc}">TRANSMIT ${chosen_sign}</span>`;
+    } else badge.style.display="none";
+
+    const eg=document.getElementById("edges-g");eg.innerHTML="";
+    edges.forEach(e=>{
+        const fn=nodes.find(n=>n.id===e.from),tn=nodes.find(n=>n.id===e.to);if(!fn||!tn)return;
+        const onPath=shortest?.edges.some(se=>(se.from===e.from&&se.to===e.to)||(se.to===e.from&&se.from===e.to));
+        const sc=e.sign==="GREEN"?C.green:e.sign==="BLUE"?C.blue:null;
+        const stroke=onPath?(sc||C.green):C.line;
+        const mx=(fn.x+tn.x)/2,my=(fn.y+tn.y)/2;
+        
+        if(onPath){
+            eg.innerHTML+=`<line x1="${fn.x}" y1="${fn.y}" x2="${tn.x}" y2="${tn.y}" stroke="${stroke}" stroke-width="6" opacity=".15" stroke-linecap="round"/>
+            <line x1="${fn.x}" y1="${fn.y}" x2="${tn.x}" y2="${tn.y}" stroke="${stroke}" stroke-width="2.5" opacity=".9" stroke-linecap="round" filter="url(#glw)"/>
+            <line x1="${fn.x}" y1="${fn.y}" x2="${tn.x}" y2="${tn.y}" stroke="${C.bright}" stroke-width="1.5" opacity=".5" stroke-linecap="round" stroke-dasharray="4 12" style="animation:dashFlow 1.5s linear infinite"/>`;
+        } else {
+            eg.innerHTML+=`<line x1="${fn.x}" y1="${fn.y}" x2="${tn.x}" y2="${tn.y}" stroke="${C.muted}" stroke-width="1" opacity=".3" stroke-linecap="round" stroke-dasharray="3 8"/>`;
+        }
+        
+        const pw=42,ph=22;
+        eg.innerHTML+=`<rect x="${mx-pw/2}" y="${my-ph/2}" width="${pw}" height="${ph}" rx="${ph/2}" fill="${onPath?'rgba(0,0,0,.7)':C.panel}" stroke="${onPath?stroke:C.line}" stroke-width="1" opacity=".95"/>
+        <text x="${mx}" y="${my+1}" text-anchor="middle" dominant-baseline="central" fill="${onPath?stroke:C.bright}" font-size="10" font-family="'IBM Plex Mono',monospace" font-weight="600">${e.dist}cm</text>`;
+        
+        if(e.sign) eg.innerHTML+=`<circle cx="${mx}" cy="${my-ph/2-6}" r="3.5" fill="${sc}" filter="url(#glw)"/>`;
+    });
+
+    const ng=document.getElementById("nodes-g");ng.innerHTML="";
+    nodes.forEach(n=>{
+        const fill=n.type==="start"?C.green:n.type==="destination"?C.purple:n.type==="fork"?C.amber:C.muted;
+        const letter=n.type==="start"?"A":n.type==="destination"?"B":n.type==="fork"?"F":"W";
+        const r=n.type==="fork"?18:15;
+        const isOn=shortest?.path.includes(n.id);
+        
+        if(isOn){
+            ng.innerHTML+=`<circle cx="${n.x}" cy="${n.y}" r="${r+12}" fill="none" stroke="${fill}" stroke-width="1" opacity=".3" stroke-dasharray="3 5" style="animation:orbitSpin 8s linear infinite;transform-origin:${n.x}px ${n.y}px"/>
+            <circle cx="${n.x}" cy="${n.y}" r="${r+6}" fill="${fill}" opacity=".08" filter="url(#glw)"/>`;
+        }
+        ng.innerHTML+=`<g class="node-drag" data-id="${n.id}" style="cursor:grab">
+        <circle cx="${n.x}" cy="${n.y}" r="${r}" fill="rgba(10,16,32,0.95)" stroke="${fill}" stroke-width="${isOn?2.5:1.5}" opacity="${isOn?1:.8}"/>
+        <text x="${n.x}" y="${n.y+1}" text-anchor="middle" dominant-baseline="central" fill="${fill}" font-size="12" font-weight="700" font-family="'Outfit',sans-serif" opacity="${isOn?1:.8}">${letter}</text>
+        <rect x="${n.x-14}" y="${n.y-r-20}" width="28" height="14" rx="7" fill="rgba(0,0,0,0.6)" stroke="${C.line}" stroke-width="1"/>
+        <text x="${n.x}" y="${n.y-r-13}" text-anchor="middle" dominant-baseline="central" fill="${isOn?fill:C.bright}" font-size="8" font-family="'IBM Plex Mono',monospace" font-weight="600" letter-spacing=".05em">${n.id}</text></g>`;
+    });
+
+    const mo=document.getElementById("map-info");
+    if(shortest){
+        mo.className="map-overlay active";
+        mo.style.borderColor = cc || C.line;
+        mo.innerHTML=`<span class="mo-dist" style="color:${cc||C.green}">OPTIMAL ${shortest.distance}cm</span>
+                      <span class="mo-path">${shortest.path.join(" &rsaquo; ")}</span>`;
+    } else { mo.className="map-overlay"; }
+
+    const el=document.getElementById("edges-list");el.innerHTML="";
+    edges.forEach((e,i)=>{
+        const row=document.createElement("div");row.className="edge-row";
+        row.innerHTML=`<span class="edge-from-to">${e.from} &rsaquo; ${e.to}</span>
+        <input class="edge-dist" type="number" value="${e.dist}" data-idx="${i}">
+        <span style="font-size:9px;color:var(--muted);font-weight:600">cm</span><div style="flex:1"></div>
+        <button class="sign-btn ${e.sign==='GREEN'?'active':''}" data-idx="${i}" data-sign="GREEN" style="color:${C.green};border-color:${e.sign==='GREEN'?C.green:C.line};background:${e.sign==='GREEN'?'rgba(0,255,136,0.1)':'transparent'}"></button>
+        <button class="sign-btn ${e.sign==='BLUE'?'active':''}" data-idx="${i}" data-sign="BLUE" style="color:${C.blue};border-color:${e.sign==='BLUE'?C.blue:C.line};background:${e.sign==='BLUE'?'rgba(59,157,255,0.1)':'transparent'}"></button>`;
+        el.appendChild(row);
+    });
+    
+    el.querySelectorAll(".edge-dist").forEach(inp=>inp.addEventListener("change",async ev=>{state.edges[parseInt(ev.target.dataset.idx)].dist=Math.max(1,parseInt(ev.target.value)||1);await saveTrack();}));
+    el.querySelectorAll(".sign-btn").forEach(btn=>btn.addEventListener("click",async ev=>{const i=parseInt(ev.target.dataset.idx),s=ev.target.dataset.sign;state.edges[i].sign=state.edges[i].sign===s?null:s;await saveTrack();}));
+
+    const rl=document.getElementById("routes-list");rl.innerHTML="";
+    routes.forEach((r,i)=>{
+        const best=i===0,rsign=r.edges.find(e=>e.sign)?.sign;
+        const rc=rsign==="GREEN"?C.green:rsign==="BLUE"?C.blue:C.muted;
+        const d=document.createElement("div");d.className="route-card"+(best?" best":"");
+        if(!best) { d.style.borderColor = C.line; }
+        d.innerHTML=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+        <span class="route-dist" style="color:${best?rc:C.bright}">${r.distance}<span style="font-size:10px;font-weight:500;color:var(--muted)">cm</span></span>
+        ${best?`<span class="route-tag" style="background:${rc};color:#000;box-shadow:0 0 8px ${rc}">OPTIMAL</span>`:""}
+        ${rsign?`<div style="width:8px;height:8px;border-radius:50%;background:${rc};margin-left:auto;box-shadow:0 0 10px ${rc}"></div>`:""}
+        </div><div class="route-path">${r.path.join(" &rsaquo; ")}</div>`;
+        rl.appendChild(d);
+    });
+
+    const sb=document.getElementById("send-btn"),si=document.getElementById("send-info");
+    if(chosen_sign){
+        sb.disabled=false; sb.style.background=ccBg; sb.style.color=cc; sb.style.boxShadow=`0 0 15px ${ccBg}, inset 0 0 0 1px ${ccBd}`;
+        sb.textContent=`TRANSMIT: ${chosen_sign} PATH`;
+        si.innerHTML=`POST <span style="color:${C.bright}">http://${document.getElementById("pi-ip").value}:${document.getElementById("pi-port").value}/command</span>`;
+    } else {
+        sb.disabled=true; sb.style.background="rgba(255,255,255,0.03)"; sb.style.color=C.muted; sb.style.boxShadow="none";
+        sb.textContent="AWAITING ROUTE"; si.textContent="STANDBY FOR UPLINK";
+    }
+}
+
+async function saveTrack(){
+    try {
+        await fetch("/api/track",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({nodes:state.nodes,edges:state.edges,pi_ip:document.getElementById("pi-ip").value,pi_port:document.getElementById("pi-port").value})});
+    } catch(e) {}
+    await load();
+}
+
+const svg=document.getElementById("map-svg");
+svg.addEventListener("mousedown",e=>{const g=e.target.closest(".node-drag");if(g){dragging=g.dataset.id;svg.style.cursor="grabbing";}});
+svg.addEventListener("mousemove",e=>{
+    if(!dragging||!state)return;
+    const pt=svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;
+    const p=pt.matrixTransform(svg.getScreenCTM().inverse());
+    const node=state.nodes.find(n=>n.id===dragging);
+    if(node){node.x=Math.round(Math.max(25,Math.min(595,p.x)));node.y=Math.round(Math.max(25,Math.min(575,p.y)));render();}
+});
+window.addEventListener("mouseup",async()=>{if(dragging){dragging=null;svg.style.cursor="default";await saveTrack();}});
+document.getElementById("pi-ip").addEventListener("change",()=>render());
+document.getElementById("pi-port").addEventListener("change",()=>render());
+
+// --- Scanner Logic ---
+document.getElementById('track-upload').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(event) {
+        const img = document.getElementById('track-bg-img');
+        const container = document.getElementById('map-frame-container');
+        
+        img.src = event.target.result;
+        img.style.opacity = '0.4'; 
+        
+        container.classList.add('is-scanning');
+        
+        setTimeout(() => {
+            container.classList.remove('is-scanning');
+            alert("Scan Complete! Data ready to be parsed by OpenCV backend.");
+        }, 3000);
+    };
+    reader.readAsDataURL(file);
 });
 
-window.addEventListener("mouseup", async () => {
-  if (dragging) {
-    dragging = null;
-    svg.style.cursor = "default";
-    await saveTrack();
-  }
-});
-
-// Pi IP/port changes
-document.getElementById("pi-ip").addEventListener("change", () => render());
-document.getElementById("pi-port").addEventListener("change", () => render());
-
-// Initial load
 load();
 </script>
 </body>
