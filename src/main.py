@@ -6,25 +6,24 @@ Full feature set for Raspberry Pi deployment.
   Hardware : Picamera2 + dual L298N motors + HC-SR04 ultrasonic
   Detection: YOLO v8n (optional) or classic color+shape detector
   Control  : PID lane-follow + adaptive speed + obstacle avoidance
-  Navigation: Dijkstra pathfinding + intersection-aware turn logic
+  Fork nav : Color tape detection — steers toward target color at forks
   Dashboard: Live web UI at http://<pi-ip>:5000/
 
 USAGE:
-  python main.py                         # basic lane follow
-  python main.py --yolo                  # + YOLO detection
-  python main.py --nav                   # + pathfinding navigation
-  python main.py --yolo --nav            # full feature set
-  python main.py --no-web                # disable web dashboard
-  python main.py --no-display            # headless (no cv2 window)
-  python main.py --help                  # all options
+  python main.py                                 # basic lane follow
+  python main.py --yolo                          # + YOLO detection
+  python main.py --target-color GREEN            # follow GREEN tape at forks
+  python main.py --yolo --target-color BLUE      # YOLO + follow BLUE tape
+  python main.py --no-web                        # disable web dashboard
+  python main.py --no-display                    # headless (no cv2 window)
 
-CONTROLS (keyboard, when display is on):
-  Q      Quit
-  SPACE  Toggle autonomous mode
-  R      Reset all systems
-  S      Save snapshot
-  D      Print sign detector debug info
-  N      Toggle navigation overlay
+KEYBOARD (when display is on):
+  Q        Quit
+  SPACE    Toggle autonomous mode
+  R        Reset all systems
+  S        Save snapshot
+  D        Print detector debug info
+  G/B/E    Set target tape colour to Green / Blue / rEd
 """
 
 import cv2
@@ -42,22 +41,20 @@ from safety import ObstacleDetector
 from sign_detector import TrafficSignDetector
 from yolo_detector import YoloDetector
 from intersection_detector import IntersectionDetector
-from track_map import build_default_track, build_complex_track
-from pathfinder import find_shortest_path, get_all_routes, print_route
-from navigator import Navigator, NavigatorState
+from color_sign_detector import ColorSignDetector
 import pi_server
 
 # ── GPIO pin assignments ──────────────────────────────────────────────────────
-# Motor Driver 1 — Front Left (IN1/IN2) and Front Right (IN3/IN4)
-FL_FWD, FL_BWD = 25, 27
-FR_FWD, FR_BWD = 5, 15
-# Motor Driver 2 — Rear Left (IN5/IN6) and Rear Right (IN7/IN8)
-RL_FWD, RL_BWD = 26, 20
-RR_FWD, RR_BWD = 16, 6
-# HC-SR04 ultrasonic
-TRIG_PIN, ECHO_PIN = 4, 17
-STOP_DISTANCE = 20   # cm — emergency stop
-SLOW_DISTANCE = 50   # cm — start slowing down
+FL_FWD, FL_BWD = 25, 27    # Front Left
+FR_FWD, FR_BWD = 5,  15    # Front Right
+RL_FWD, RL_BWD = 26, 20    # Rear Left
+RR_FWD, RR_BWD = 16, 6     # Rear Right
+TRIG_PIN, ECHO_PIN = 4, 17 # HC-SR04
+STOP_DISTANCE = 20          # cm — hard stop
+SLOW_DISTANCE = 50          # cm — start slowing
+
+# How many frames to steer by tape colour after a fork fires (~1.5 s at 30 fps)
+_COLOR_FOLLOW_FRAMES = 45
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -65,43 +62,37 @@ class AutonomousVehicle:
 
     def __init__(self,
                  max_speed    = 0.8,
-                 enable_nav   = False,
-                 track_name   = "default",
                  enable_yolo  = False,
                  yolo_model   = "yolov8n.pt",
                  yolo_skip    = 5,
+                 target_color = "GREEN",
                  enable_web   = True,
                  web_port     = 5000,
                  show_display = True):
 
         # ── Perception & control ──────────────────────────────────────
-        self.perception   = LaneDetector(width=640, height=480)
-        self.steering     = PIDController(Kp=0.003, Ki=0.0001, Kd=0.001)
+        self.perception    = LaneDetector(width=640, height=480)
+        self.steering      = PIDController(Kp=0.003, Ki=0.0001, Kd=0.001)
         self.speed_control = AdaptiveSpeedController(min_speed=0.2, max_speed=max_speed)
-        self.safety       = ObstacleDetector(
+        self.safety        = ObstacleDetector(
             emergency_distance=STOP_DISTANCE,
             warning_distance=SLOW_DISTANCE
         )
         self.intersection_detector = IntersectionDetector()
 
-        # ── Detector: YOLO or classic fallback ───────────────────────
+        # ── Sign / obstacle detector ──────────────────────────────────
         self.yolo_enabled = enable_yolo
         if enable_yolo:
-            self.detector = YoloDetector(
-                model_name=yolo_model,
-                skip_frames=yolo_skip
-            )
+            self.detector = YoloDetector(model_name=yolo_model, skip_frames=yolo_skip)
         else:
             self.detector = TrafficSignDetector()
-            print("[Detector] Classic color+shape detector active (--yolo to enable YOLO)")
+            print("[Detector] Classic stop-sign detector active (use --yolo for YOLO)")
 
-        # ── Navigation ───────────────────────────────────────────────
-        self.nav_enabled       = enable_nav
-        self.nav_overlay_visible = enable_nav
-        self.navigator         = None
-        self.track             = None
-        if enable_nav:
-            self._init_navigation(track_name)
+        # ── Colour tape navigator ─────────────────────────────────────
+        self.color_detector       = ColorSignDetector(
+            target_color=target_color, frame_width=640, frame_height=480
+        )
+        self._color_follow_frames = 0   # countdown after a fork fires
 
         # ── Motors ───────────────────────────────────────────────────
         self.front_left  = Motor(forward=FL_FWD, backward=FL_BWD)
@@ -130,11 +121,11 @@ class AutonomousVehicle:
         self.smooth_pid        = SmoothValue(0.0, alpha=0.12)
 
         # ── Status hold (prevents HUD flickering) ────────────────────
-        self._display_status   = "READY"
+        self._display_status     = "READY"
         self._status_hold_frames = 0
-        self._STATUS_MIN_HOLD  = 6
+        self._STATUS_MIN_HOLD    = 6
 
-        # ── Runtime state ─────────────────────────────────────────────
+        # ── Runtime counters ──────────────────────────────────────────
         self.autonomous_enabled   = True
         self.current_speed_limit  = max_speed
         self.stop_sign_timer      = 0
@@ -144,38 +135,7 @@ class AutonomousVehicle:
         self.stop_signs_detected  = 0
         self._last_distance       = 999.0
         self._last_steering_error = 0.0
-        self._start_time          = 0.0   # set in run()
-
-    # ── Navigation setup ─────────────────────────────────────────────────────
-
-    def _init_navigation(self, track_name: str):
-        print("\n" + "=" * 56)
-        print("  NAVIGATION MODE")
-        print("=" * 56)
-        self.track = (build_complex_track() if track_name == "complex"
-                      else build_default_track())
-        self.track.print_map()
-
-        start = self.track.get_start()
-        dest  = self.track.get_destination()
-        if not start or not dest:
-            print("[Nav] ERROR: Track must have START and DESTINATION nodes")
-            self.nav_enabled = False
-            return
-
-        route = find_shortest_path(self.track, start.name, dest.name)
-        print_route(route, "SHORTEST PATH (Dijkstra)")
-
-        all_routes = get_all_routes(self.track, start.name, dest.name)
-        if len(all_routes) > 1:
-            print(f"\n  All {len(all_routes)} routes:")
-            for i, r in enumerate(all_routes):
-                tag = " ★ CHOSEN" if i == 0 else ""
-                print(f"    {i+1}. {r['distance']:.0f}cm — "
-                      f"{' → '.join(r['path'])}{tag}")
-
-        self.navigator = Navigator(route)
-        print("=" * 56 + "\n")
+        self._start_time          = 0.0
 
     # ── Status hold ───────────────────────────────────────────────────────────
 
@@ -185,45 +145,38 @@ class AutonomousVehicle:
             return self._display_status
         self._status_hold_frames -= 1
         if self._status_hold_frames <= 0:
-            self._display_status = new_status
+            self._display_status     = new_status
             self._status_hold_frames = self._STATUS_MIN_HOLD
         return self._display_status
 
     # ── Hardware helpers ──────────────────────────────────────────────────────
 
     def _get_distance(self) -> float:
-        """Measure distance in cm via HC-SR04. Returns 999 on timeout."""
         lgpio.gpio_write(self._gpio, TRIG_PIN, 1)
         time.sleep(0.00001)
         lgpio.gpio_write(self._gpio, TRIG_PIN, 0)
-
         timeout = time.time() + 0.04
         start   = time.time()
         while lgpio.gpio_read(self._gpio, ECHO_PIN) == 0:
             start = time.time()
             if time.time() > timeout:
                 return 999.0
-
         stop    = time.time()
         timeout = time.time() + 0.04
         while lgpio.gpio_read(self._gpio, ECHO_PIN) == 1:
             stop = time.time()
             if time.time() > timeout:
                 return 999.0
-
         return round((stop - start) * 34300 / 2, 1)
 
     def _drive(self, left_speed: float, right_speed: float):
-        """Send PWM speeds (0.0–1.0) to all four motors."""
         left_speed  = max(0.0, min(1.0, left_speed))
         right_speed = max(0.0, min(1.0, right_speed))
-
         if left_speed < 0.05:
             self.front_left.stop();  self.rear_left.stop()
         else:
             self.front_left.backward(left_speed)
             self.rear_left.backward(left_speed)
-
         if right_speed < 0.05:
             self.front_right.stop(); self.rear_right.stop()
         else:
@@ -262,50 +215,51 @@ class AutonomousVehicle:
         elif action == "set_speed":
             val = float(cmd.get("value", 0.8))
             self.current_speed_limit = max(0.1, min(1.0, val))
-            print(f"[Web] Speed limit set to {self.current_speed_limit:.2f}")
+            print(f"[Web] Speed limit → {self.current_speed_limit:.2f}")
+        elif action == "set_target_color":
+            self.color_detector.set_target(str(cmd.get("value", "GREEN")))
         pi_server.clear_command()
 
-    # ── Telemetry builder ─────────────────────────────────────────────────────
+    # ── Telemetry ─────────────────────────────────────────────────────────────
 
     def _build_telemetry(self, left: float, right: float, status: str) -> dict:
         elapsed = max(time.time() - self._start_time, 0.1)
         fps     = round(self.frame_count / elapsed, 1)
+
         yolo_dets = (
             [{"label": d[1], "conf": round(d[3], 2)}
              for d in self.detector.all_detections]
             if self.yolo_enabled else []
         )
         yolo_danger = self.detector.get_danger_level() if self.yolo_enabled else "CLEAR"
-        nav_progress = None
-        nav_state    = None
-        nav_turn     = None
-        if self.navigator:
-            nav_progress = self.navigator.get_progress()
-            nav_state    = self.navigator.state.value
-            nav_turn     = self.navigator.get_turn_override()
+
+        color_dets = [
+            {"color": c, "side": det["side"], "area": int(det["area"])}
+            for c, det in self.color_detector.detections.items()
+        ]
 
         return {
-            "mode":               "AUTONOMOUS" if self.autonomous_enabled else "MANUAL",
-            "status":             status,
-            "speed_left":         round(left, 3),
-            "speed_right":        round(right, 3),
-            "base_speed":         round(self.smooth_base_speed.value, 3),
-            "steering_error":     round(self._last_steering_error, 1),
-            "distance_cm":        self._last_distance,
-            "fps":                fps,
-            "frame_count":        self.frame_count,
-            "stop_signs_detected":self.stop_signs_detected,
-            "yolo_enabled":       self.yolo_enabled,
-            "yolo_detections":    yolo_dets,
-            "yolo_danger":        yolo_danger,
-            "obstacle_modifier":  round(
+            "mode":                  "AUTONOMOUS" if self.autonomous_enabled else "MANUAL",
+            "status":                status,
+            "speed_left":            round(left, 3),
+            "speed_right":           round(right, 3),
+            "base_speed":            round(self.smooth_base_speed.value, 3),
+            "steering_error":        round(self._last_steering_error, 1),
+            "distance_cm":           self._last_distance,
+            "fps":                   fps,
+            "frame_count":           self.frame_count,
+            "stop_signs_detected":   self.stop_signs_detected,
+            "yolo_enabled":          self.yolo_enabled,
+            "yolo_detections":       yolo_dets,
+            "yolo_danger":           yolo_danger,
+            "obstacle_modifier":     round(
                 self.detector.get_speed_modifier() if self.yolo_enabled else 1.0, 2
             ),
-            "nav_enabled":        self.nav_enabled,
-            "nav_state":          nav_state,
-            "nav_next_turn":      nav_turn,
-            "nav_progress":       nav_progress,
-            "fork_confidence":    round(self.intersection_detector.fork_confidence, 2),
+            "fork_confidence":       round(self.intersection_detector.fork_confidence, 2),
+            "color_target":          self.color_detector.target_color,
+            "color_detections":      color_dets,
+            "color_follow_active":   self._color_follow_frames > 0,
+            "color_target_visible":  self.color_detector.target_visible(),
         }
 
     # ── Main perception + decision loop ──────────────────────────────────────
@@ -314,60 +268,59 @@ class AutonomousVehicle:
         self.frame_count += 1
         steering_error, vision_frame = self.perception.process_frame(frame)
 
-        # ── Emergency brake: no lane detected ────────────────────────
+        # ── No lane detected — emergency stop ─────────────────────────
         if steering_error is None:
             self.smooth_left.update(0.0)
             self.smooth_right.update(0.0)
             self.smooth_base_speed.update(0.0)
             self.smooth_pid.update(0.0)
-            debug_frame = self._create_debug_frame(
-                vision_frame, 0, 0.0, 0.0, 0.0, 0.0, "EMERGENCY STOP", "NONE"
+            return (
+                self._create_debug_frame(
+                    vision_frame, 0, 0.0, 0.0, 0.0, 0.0, "EMERGENCY STOP", "NONE"
+                ),
+                (0.0, 0.0, "EMERGENCY STOP"),
             )
-            return debug_frame, (0.0, 0.0, "EMERGENCY STOP")
 
-        self.total_error += abs(steering_error)
-        self._last_steering_error = steering_error
+        self.total_error          += abs(steering_error)
+        self._last_steering_error  = steering_error
 
-        # ── Ultrasonic (every 3 frames) ───────────────────────────────
+        # ── Ultrasonic (every 3 frames to avoid blocking) ─────────────
         if self.frame_count % 3 == 0:
             self._last_distance = self._get_distance()
-
         self.safety.sensors['front']['distance'] = self._last_distance
         self.safety._check_obstacles()
 
-        # ── Detection ─────────────────────────────────────────────────
+        # ── Sign / obstacle detection ──────────────────────────────────
         if self.yolo_enabled:
             self.detector.detect(frame)
             obstacle_modifier = self.detector.get_speed_modifier()
         else:
             self.detector.detect_signs(frame)
-            # Merge ultrasonic obstacle modifier with sign detector
             obstacle_modifier = self.safety.get_speed_modifier()
 
         sign_action, _ = self.detector.get_action()
 
         if self.stop_sign_cooldown > 0:
             self.stop_sign_cooldown -= 1
-
         if sign_action == "STOP" and self.stop_sign_cooldown == 0:
             if self.stop_sign_timer == 0:
-                self.stop_sign_timer = 60
+                self.stop_sign_timer    = 60
                 self.stop_sign_cooldown = 120
                 self.stop_signs_detected += 1
-                print("STOP SIGN — stopping for 2 seconds")
+                print("STOP SIGN — holding for 2 s")
 
-        # ── Intersection detection ────────────────────────────────────
+        # ── Colour tape detection (runs every frame — cheap HSV mask) ──
+        self.color_detector.detect(frame)
+
+        # ── Intersection / fork detection ─────────────────────────────
         num_raw_lines = 0
         lane_width    = None
-
         gray  = cv2.cvtColor(cv2.resize(frame, (640, 480)), cv2.COLOR_BGR2GRAY)
-        blur  = cv2.GaussianBlur(gray, (5, 5), 0)
-        edges = cv2.Canny(blur, 50, 150)
+        edges = cv2.Canny(cv2.GaussianBlur(gray, (5, 5), 0), 50, 150)
         lines = cv2.HoughLinesP(edges, 2, 3.14159 / 180, 30,
                                 minLineLength=40, maxLineGap=150)
         if lines is not None:
             num_raw_lines = len(lines)
-
         if (self.perception.ema_left_fit is not None and
                 self.perception.ema_right_fit is not None):
             y_eval  = int(480 * 0.75)
@@ -382,49 +335,52 @@ class AutonomousVehicle:
             right_confidence = self.perception.right_confidence,
             lane_width       = lane_width,
             left_fit         = self.perception.ema_left_fit,
-            right_fit        = self.perception.ema_right_fit
+            right_fit        = self.perception.ema_right_fit,
         )
 
-        # ── Navigation update ─────────────────────────────────────────
-        turn_override = None
-        if self.nav_enabled and self.navigator:
-            est_speed_cm = self.smooth_base_speed.value * 0.6
-            self.navigator.update(
-                distance_delta       = est_speed_cm,
-                intersection_detected = fork_detected
-            )
-            turn_override = self.navigator.get_turn_override()
+        # Fork detected → arm colour-follow window
+        if fork_detected:
+            if self.color_detector.target_visible():
+                self._color_follow_frames = _COLOR_FOLLOW_FRAMES
+                print(f"[Fork] → following {self.color_detector.target_color} "
+                      f"({self.color_detector.target_det['side']})")
+            else:
+                print("[Fork] Detected but target tape not visible — continuing lane follow")
 
         # ── Speed decision ────────────────────────────────────────────
         if self.stop_sign_timer > 0:
             base_speed = 0.0
             self.stop_sign_timer -= 1
-            status = f"STOPPED (Sign: {self.stop_sign_timer})"
-        elif (self.nav_enabled and self.navigator and
-              self.navigator.state == NavigatorState.ARRIVED):
-            base_speed = 0.0
-            status = "ARRIVED AT DEST"
+            status = f"STOPPED ({self.stop_sign_timer} frames)"
         else:
-            base_speed = self.speed_control.calculate_speed(
-                steering_error, obstacle_modifier
-            )
+            base_speed = self.speed_control.calculate_speed(steering_error, obstacle_modifier)
             base_speed = min(base_speed, self.current_speed_limit)
-            speed_cat  = self.speed_control.get_speed_category(abs(steering_error))
-            status     = speed_cat.replace("_", " ")
+            status     = self.speed_control.get_speed_category(
+                abs(steering_error)
+            ).replace("_", " ")
 
-        # ── Steering ──────────────────────────────────────────────────
+        # ── Steering ─────────────────────────────────────────────────
         if self.autonomous_enabled and base_speed > 0:
-            if turn_override == "TURN_LEFT":
-                left_speed  = 0.15
-                right_speed = 0.70
-                pid_output  = -0.3
-                status      = "NAV: TURNING LEFT"
-            elif turn_override == "TURN_RIGHT":
-                left_speed  = 0.70
-                right_speed = 0.15
-                pid_output  = 0.3
-                status      = "NAV: TURNING RIGHT"
+            if self._color_follow_frames > 0:
+                self._color_follow_frames -= 1
+                offset = self.color_detector.get_steering_offset()
+
+                if offset is not None:
+                    # Proportional gentle turn toward the target tape
+                    steer      = offset * 0.40
+                    left_speed  = max(0.0, min(1.0, base_speed + steer))
+                    right_speed = max(0.0, min(1.0, base_speed - steer))
+                    pid_output  = steer
+                    status = (f"COLOR: {self.color_detector.target_color} "
+                              f"→ {self.color_detector.target_det['side']}")
+                else:
+                    # Tape not visible right now — slow and keep lane following
+                    pid_output  = self.steering.compute(steering_error)
+                    left_speed  = max(0.0, min(1.0, base_speed * 0.5 + pid_output))
+                    right_speed = max(0.0, min(1.0, base_speed * 0.5 - pid_output))
+                    status      = "COLOR: SCANNING..."
             else:
+                # Normal PID lane following
                 pid_output  = self.steering.compute(steering_error)
                 left_speed  = max(0.0, min(1.0, base_speed + pid_output))
                 right_speed = max(0.0, min(1.0, base_speed - pid_output))
@@ -452,27 +408,30 @@ class AutonomousVehicle:
         frame = vision_frame.copy()
         frame = self.safety.draw_overlay(frame)
         frame = self.detector.draw_overlay(frame)
+        frame = self.color_detector.draw_overlay(frame)
         frame = self._draw_motor_bars(
             frame,
             self.smooth_left.value,
             self.smooth_right.value,
-            self.smooth_pid.value
+            self.smooth_pid.value,
         )
-        speed_cat    = self.speed_control.get_speed_category(abs(error))
-        target_speed = self.speed_control.target_speed
-        frame = draw_speed_indicator(frame, self.smooth_base_speed.value,
-                                     target_speed, speed_cat)
+        frame = draw_speed_indicator(
+            frame,
+            self.smooth_base_speed.value,
+            self.speed_control.target_speed,
+            self.speed_control.get_speed_category(abs(error)),
+        )
 
         display_status = self._update_display_status(status)
         status_color = (
-            (0,   0,   255) if "STOP"    in display_status else
-            (0,   200, 255) if "NAV:"    in display_status else
-            (0,   255, 100) if "ARRIVED" in display_status else
+            (0,   0,   255) if "STOP"   in display_status else
+            (0,   200, 255) if "COLOR:" in display_status else
             (255, 255, 255)
         )
         cv2.putText(frame, f"Status: {display_status}",
                     (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_color, 2)
 
+        # Sign status line
         if sign_action == "STOP":
             cv2.putText(frame, "STOP DETECTED!",
                         (10, 175), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 1)
@@ -491,47 +450,43 @@ class AutonomousVehicle:
             cv2.putText(frame, "Scanning...",
                         (10, 175), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (150, 150, 150), 1)
 
-        if self.intersection_detector.fork_confidence > 0.2:
-            conf       = self.intersection_detector.fork_confidence
+        # Fork confidence
+        conf = self.intersection_detector.fork_confidence
+        if conf > 0.2:
             fork_color = (0, 255, 255) if conf > 0.45 else (100, 200, 200)
             cv2.putText(frame, f"Fork: {conf:.0%}",
                         (10, 195), cv2.FONT_HERSHEY_SIMPLEX, 0.4, fork_color, 1)
 
-        if self.nav_overlay_visible and self.navigator:
-            frame = self.navigator.draw_overlay(frame)
-
         return frame
 
     def _draw_motor_bars(self, frame, left_speed, right_speed, pid_output):
-        h, w       = frame.shape[:2]
-        bar_width  = 40
-        bar_height = 200
-        bar_x_left = w - 120
-        bar_x_right= w - 60
-        bar_y      = h - bar_height - 50
+        h, w        = frame.shape[:2]
+        bar_width   = 40
+        bar_height  = 200
+        bar_x_left  = w - 120
+        bar_x_right = w - 60
+        bar_y       = h - bar_height - 50
 
-        cv2.rectangle(frame, (bar_x_left,  bar_y),
-                      (bar_x_left  + bar_width, bar_y + bar_height), (50, 50, 50), -1)
-        cv2.rectangle(frame, (bar_x_right, bar_y),
-                      (bar_x_right + bar_width, bar_y + bar_height), (50, 50, 50), -1)
+        for bx in (bar_x_left, bar_x_right):
+            cv2.rectangle(frame, (bx, bar_y),
+                          (bx + bar_width, bar_y + bar_height), (50, 50, 50), -1)
 
         left_fill  = int(bar_height * max(0.0, min(1.0, left_speed)))
         right_fill = int(bar_height * max(0.0, min(1.0, right_speed)))
         bar_color  = (0, 255, 0) if abs(pid_output) < 0.1 else (0, 165, 255)
 
-        if left_fill > 0:
+        if left_fill:
             cv2.rectangle(frame,
                           (bar_x_left,  bar_y + bar_height - left_fill),
                           (bar_x_left  + bar_width, bar_y + bar_height), bar_color, -1)
-        if right_fill > 0:
+        if right_fill:
             cv2.rectangle(frame,
                           (bar_x_right, bar_y + bar_height - right_fill),
                           (bar_x_right + bar_width, bar_y + bar_height), bar_color, -1)
 
-        cv2.putText(frame, "L", (bar_x_left  + 12, bar_y - 5),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-        cv2.putText(frame, "R", (bar_x_right + 12, bar_y - 5),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        for bx, label in ((bar_x_left, "L"), (bar_x_right, "R")):
+            cv2.putText(frame, label, (bx + 12, bar_y - 5),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
         cv2.putText(frame, f"{left_speed:.2f}",
                     (bar_x_left,  bar_y + bar_height + 20),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
@@ -548,43 +503,39 @@ class AutonomousVehicle:
         self.safety.reset()
         self.perception.reset_smoothing()
         self.detector.reset()
+        self.color_detector.reset()
         self.intersection_detector.reset()
-        self.current_speed_limit = 0.8
-        self.stop_sign_timer     = 0
+        self.current_speed_limit  = 0.8
+        self.stop_sign_timer      = 0
+        self._color_follow_frames = 0
         self.smooth_left.set_immediate(0.0)
         self.smooth_right.set_immediate(0.0)
         self.smooth_base_speed.set_immediate(0.0)
         self.smooth_pid.set_immediate(0.0)
         self._display_status = "READY"
-        if self.navigator:
-            self.navigator.reset()
         print("[System] All systems reset")
 
     # ── Main loop ─────────────────────────────────────────────────────────────
 
     def run(self):
-        # Start web dashboard
         if self.web_enabled:
             ok = pi_server.start_server(self.web_port)
             if not ok:
-                print("[WebServer] Dashboard unavailable — continuing without it")
+                print("[WebServer] Flask not installed — dashboard disabled")
                 self.web_enabled = False
 
-        # Start camera
         picam2 = Picamera2()
-        config = picam2.create_preview_configuration(
+        picam2.configure(picam2.create_preview_configuration(
             main={"format": "RGB888", "size": (640, 480)}
-        )
-        picam2.configure(config)
+        ))
         picam2.start()
         time.sleep(1)
-
-        nav_str  = " + NAVIGATION" if self.nav_enabled  else ""
-        yolo_str = " + YOLO"       if self.yolo_enabled else ""
-        print(f"[Camera] 640×480 ready{nav_str}{yolo_str}")
+        print(f"[Camera] 640×480 ready"
+              f"{' + YOLO' if self.yolo_enabled else ''}"
+              f" | tape target: {self.color_detector.target_color}")
         if self.show_display:
-            print("Controls: [Q] Quit  [SPACE] Toggle auto  [R] Reset  "
-                  "[S] Snapshot  [D] Signs  [N] Nav overlay")
+            print("Keys: [Q] Quit  [SPACE] Auto  [R] Reset  [S] Snap  "
+                  "[D] Debug  [G/B/E] Tape Green/Blue/rEd")
 
         self._start_time = time.time()
 
@@ -592,141 +543,114 @@ class AutonomousVehicle:
             frame = picam2.capture_array()
             debug_frame, (left, right, status) = self.process_frame(frame)
 
-            # Handle commands from web dashboard
             if self.web_enabled:
                 self._handle_web_commands()
 
-            # Drive motors
             if self.autonomous_enabled:
                 self._drive(left, right)
             else:
                 self._stop_motors()
 
-            # Push to web dashboard
             if self.web_enabled:
                 pi_server.push_frame(debug_frame)
-                pi_server.push_telemetry(
-                    self._build_telemetry(left, right, status)
-                )
+                pi_server.push_telemetry(self._build_telemetry(left, right, status))
 
-            # Optional local display
             if self.show_display:
-                title = ("VectorVance — " +
-                         ("AUTONOMOUS" if self.autonomous_enabled else "MANUAL") +
-                         (" [NAV]"  if self.nav_enabled  else "") +
-                         (" [YOLO]" if self.yolo_enabled else ""))
+                title = ("VectorVance  "
+                         + ("AUTO" if self.autonomous_enabled else "MANUAL")
+                         + (" [YOLO]" if self.yolo_enabled else "")
+                         + f"  tape:{self.color_detector.target_color}")
                 cv2.imshow(title, debug_frame)
 
-            # Console stats every 30 frames
             if self.frame_count % 30 == 0:
                 elapsed = time.time() - self._start_time
                 fps     = self.frame_count / max(elapsed, 0.1)
                 avg_err = self.total_error / max(self.frame_count, 1)
-                nav_info = ""
-                if self.navigator:
-                    p = self.navigator.get_progress()
-                    nav_info = f" | Nav:{p['state']}"
                 print(f"Frame {self.frame_count:04d} | "
                       f"L:{left:.2f} R:{right:.2f} | "
-                      f"{status:25s} | "
+                      f"{status:35s} | "
                       f"Dist:{self._last_distance:.0f}cm | "
-                      f"FPS:{fps:.1f} | "
-                      f"AvgErr:{avg_err:.1f}px{nav_info}")
+                      f"FPS:{fps:.1f} | AvgErr:{avg_err:.1f}px")
 
-            # Keyboard input
             if self.show_display:
                 key = cv2.waitKey(1) & 0xFF
                 if key == ord('q'):
                     break
                 elif key == ord(' '):
                     self.autonomous_enabled = not self.autonomous_enabled
-                    print(f"Autonomous: {'ENABLED' if self.autonomous_enabled else 'DISABLED'}")
+                    print(f"Autonomous: {'ON' if self.autonomous_enabled else 'OFF'}")
                 elif key == ord('r'):
                     self._reset_all()
                 elif key == ord('s'):
-                    fname = f"/home/pi/test/snapshot_{self.frame_count:04d}.jpg"
+                    fname = f"/home/pi/snap_{self.frame_count:04d}.jpg"
                     cv2.imwrite(fname, debug_frame)
-                    print(f"Snapshot saved: {fname}")
+                    print(f"Snapshot: {fname}")
                 elif key == ord('d'):
-                    det = self.detector
-                    if hasattr(det, 'confirmed_signs'):
-                        print(f"Signs: {len(det.detected_signs)} raw, "
-                              f"{len(det.confirmed_signs)} confirmed")
-                        for s in det.confirmed_signs:
-                            print(f"  {s[0].value} conf={s[2]:.2f}")
-                    else:
-                        print(f"YOLO: {len(det.all_detections)} detections")
-                        for d in det.all_detections:
-                            print(f"  {d[1]} conf={d[3]:.2f}")
-                elif key == ord('n'):
-                    self.nav_overlay_visible = not self.nav_overlay_visible
-                    print(f"Nav overlay: {'ON' if self.nav_overlay_visible else 'OFF'}")
-            else:
-                # Headless: check for Ctrl-C only (handled by Python's signal)
-                pass
+                    if self.yolo_enabled:
+                        print(f"YOLO: {len(self.detector.all_detections)} dets | "
+                              f"danger={self.detector.get_danger_level()}")
+                        for d in self.detector.all_detections:
+                            print(f"  {d[1]} {d[3]:.0%}")
+                    print(f"Tape: {self.color_detector.detections}")
+                elif key == ord('g'):
+                    self.color_detector.set_target("GREEN")
+                elif key == ord('b'):
+                    self.color_detector.set_target("BLUE")
+                elif key == ord('e'):
+                    self.color_detector.set_target("RED")
 
         picam2.stop()
         if self.show_display:
             cv2.destroyAllWindows()
         self._stop_motors()
         self._cleanup_hardware()
-        self._print_statistics()
+        self._print_stats()
 
     # ── End-of-run stats ──────────────────────────────────────────────────────
 
-    def _print_statistics(self):
+    def _print_stats(self):
         duration = time.time() - self._start_time
-        avg_err  = self.total_error / max(self.frame_count, 1)
-        fps      = self.frame_count / max(duration, 0.1)
-        print("=" * 70)
-        print(f"Duration      : {duration:.1f}s")
-        print(f"Frames        : {self.frame_count}")
-        print(f"Average FPS   : {fps:.1f}")
-        print(f"Average error : {avg_err:.1f}px")
-        print(f"Stop signs    : {self.stop_signs_detected}")
-        if self.navigator:
-            p = self.navigator.get_progress()
-            print(f"Navigation    : {p['state']} — "
-                  f"{p['total_traveled']:.0f}/{p['total_route']:.0f}cm")
-        print("=" * 70)
+        print("=" * 60)
+        print(f"Duration    : {duration:.1f}s")
+        print(f"Frames      : {self.frame_count}")
+        print(f"Avg FPS     : {self.frame_count / max(duration, 0.1):.1f}")
+        print(f"Avg error   : {self.total_error / max(self.frame_count, 1):.1f}px")
+        print(f"Stop signs  : {self.stop_signs_detected}")
+        print("=" * 60)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 def main():
-    parser = argparse.ArgumentParser(description='VectorVance Autonomous Car')
-    parser.add_argument('--speed',       type=float, default=0.8,
-                        help='Max motor speed 0.0–1.0 (default 0.8)')
-    parser.add_argument('--yolo',        action='store_true',
-                        help='Enable YOLOv8 detection')
-    parser.add_argument('--yolo-model',  type=str,   default='yolov8n.pt',
-                        help='YOLO model (default: yolov8n.pt)')
-    parser.add_argument('--yolo-skip',   type=int,   default=5,
-                        help='Run YOLO every N frames (default: 5, lower = more accurate but slower)')
-    parser.add_argument('--nav',         action='store_true',
-                        help='Enable pathfinding navigation')
-    parser.add_argument('--track',       type=str,   default='default',
-                        choices=['default', 'complex'],
-                        help='Track layout (default or complex)')
-    parser.add_argument('--port',        type=int,   default=5000,
-                        help='Web dashboard port (default: 5000)')
-    parser.add_argument('--no-web',      action='store_true',
-                        help='Disable web dashboard')
-    parser.add_argument('--no-display',  action='store_true',
-                        help='Headless mode — no cv2 window (useful when no monitor connected)')
-    args = parser.parse_args()
+    p = argparse.ArgumentParser(description="VectorVance Autonomous Car")
+    p.add_argument("--speed",         type=float, default=0.8,
+                   help="Max motor speed 0–1 (default 0.8)")
+    p.add_argument("--yolo",          action="store_true",
+                   help="Enable YOLOv8 detection")
+    p.add_argument("--yolo-model",    type=str,   default="yolov8n.pt",
+                   help="YOLO weights file (default: yolov8n.pt)")
+    p.add_argument("--yolo-skip",     type=int,   default=5,
+                   help="Run YOLO every N frames (default: 5)")
+    p.add_argument("--target-color",  type=str,   default="GREEN",
+                   choices=["GREEN", "BLUE", "RED"],
+                   help="Tape colour to follow at forks (default: GREEN)")
+    p.add_argument("--port",          type=int,   default=5000,
+                   help="Web dashboard port (default: 5000)")
+    p.add_argument("--no-web",        action="store_true",
+                   help="Disable web dashboard")
+    p.add_argument("--no-display",    action="store_true",
+                   help="Headless mode — no OpenCV window")
+    args = p.parse_args()
 
-    vehicle = AutonomousVehicle(
+    AutonomousVehicle(
         max_speed    = args.speed,
-        enable_nav   = args.nav,
-        track_name   = args.track,
         enable_yolo  = args.yolo,
         yolo_model   = args.yolo_model,
         yolo_skip    = args.yolo_skip,
+        target_color = args.target_color,
         enable_web   = not args.no_web,
         web_port     = args.port,
         show_display = not args.no_display,
-    )
-    vehicle.run()
+    ).run()
 
 
 if __name__ == "__main__":

@@ -200,33 +200,31 @@
     }
     .no-detections { color: var(--muted); font-size: 12px; text-align: center; padding: 8px 0; }
 
-    /* ── Navigation ── */
-    .nav-state {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 8px;
-    }
-    .nav-badge {
-      font-size: 11px;
+    /* ── Color navigation ── */
+    .color-btn-row { display: flex; gap: 6px; margin-bottom: 10px; }
+    .color-btn {
+      flex: 1;
+      padding: 7px 0;
+      border: 2px solid transparent;
+      border-radius: 7px;
+      font-size: 12px;
       font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.5px;
+      opacity: 0.45;
+      transition: opacity 0.2s, filter 0.2s;
+    }
+    .color-btn.active { opacity: 1; filter: brightness(1.2); }
+    .color-btn:hover  { opacity: 0.8; }
+    .btn-green  { background: rgba(0,232,122,0.15); color: #00e87a; border-color: #00e87a; }
+    .btn-blue   { background: rgba(77,166,255,0.15); color: #4da6ff; border-color: #4da6ff; }
+    .btn-red    { background: rgba(255,59,59,0.15);  color: #ff3b3b; border-color: #ff3b3b; }
+    .color-det-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .color-det-chip {
       padding: 3px 8px;
       border-radius: 4px;
-      background: rgba(0, 212, 255, 0.12);
-      color: var(--cyan);
-    }
-    .progress-bar-bg {
-      height: 6px;
-      background: #1e1f26;
-      border-radius: 3px;
-      overflow: hidden;
-      margin-top: 4px;
-    }
-    .progress-bar-fill {
-      height: 100%;
-      background: var(--cyan);
-      border-radius: 3px;
-      transition: width 0.3s ease;
+      font-size: 11px;
+      font-weight: 600;
     }
     .nav-row { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: var(--muted); }
     .nav-row span { color: var(--text); font-weight: 600; }
@@ -389,12 +387,39 @@
       </div>
     </div>
 
-    <!-- Navigation -->
-    <div class="card" id="nav-card">
-      <div class="card-title">Navigation</div>
-      <div class="card-body" id="nav-body">
-        <div style="color:var(--muted);font-size:12px;text-align:center;">
-          Navigation disabled
+    <!-- Color Tape Navigation -->
+    <div class="card">
+      <div class="card-title">Color Tape Navigation</div>
+      <div class="card-body">
+        <div class="color-btn-row">
+          <button id="btn-GREEN"  class="color-btn btn-green"
+                  onclick="setColor('GREEN')">GREEN</button>
+          <button id="btn-BLUE"   class="color-btn btn-blue"
+                  onclick="setColor('BLUE')">BLUE</button>
+          <button id="btn-RED"    class="color-btn btn-red"
+                  onclick="setColor('RED')">RED</button>
+        </div>
+        <div class="nav-row">
+          <span>Following</span>
+          <span id="val-color-target">—</span>
+        </div>
+        <div class="nav-row">
+          <span>Target visible</span>
+          <span id="val-color-visible">—</span>
+        </div>
+        <div class="nav-row">
+          <span>Fork active</span>
+          <span id="val-color-follow">—</span>
+        </div>
+        <div class="nav-row">
+          <span>Fork confidence</span>
+          <span id="val-fork">—</span>
+        </div>
+        <div style="margin-top:8px;">
+          <div class="stat-label" style="margin-bottom:4px;">Detected tapes</div>
+          <div class="color-det-row" id="color-det-row">
+            <span style="color:var(--muted);font-size:11px;">none</span>
+          </div>
         </div>
       </div>
     </div>
@@ -515,36 +540,39 @@
       }).join('');
     }
 
-    // Navigation
-    const navBody = document.getElementById('nav-body');
-    if (!d.nav_enabled || !d.nav_state) {
-      navBody.innerHTML = '<div style="color:var(--muted);font-size:12px;text-align:center;">Navigation disabled</div>';
+    // Color tape navigation
+    const target  = d.color_target || '—';
+    const visible = d.color_target_visible;
+    const active  = d.color_follow_active;
+
+    document.getElementById('val-color-target').textContent  = target;
+    document.getElementById('val-color-visible').textContent =
+      visible == null ? '—' : (visible ? 'YES' : 'no');
+    document.getElementById('val-color-follow').textContent  =
+      active  == null ? '—' : (active  ? 'ACTIVE' : 'off');
+    document.getElementById('val-fork').textContent =
+      d.fork_confidence != null ? Math.round(d.fork_confidence * 100) + '%' : '—';
+
+    // Highlight active target button
+    ['GREEN', 'BLUE', 'RED'].forEach(c => {
+      const btn = document.getElementById('btn-' + c);
+      if (btn) btn.classList.toggle('active', c === target);
+    });
+
+    // Detected tape chips
+    const chipColors = { GREEN: '#00e87a', BLUE: '#4da6ff', RED: '#ff3b3b' };
+    const dets = d.color_detections || [];
+    const chipRow = document.getElementById('color-det-row');
+    if (dets.length === 0) {
+      chipRow.innerHTML = '<span style="color:var(--muted);font-size:11px;">none</span>';
     } else {
-      const p    = d.nav_progress || {};
-      const pct  = p.total_route > 0
-        ? Math.min(100, Math.round((p.total_traveled / p.total_route) * 100))
-        : 0;
-      const turn = d.nav_next_turn || '—';
-      navBody.innerHTML = `
-        <div class="nav-state">
-          <span class="stat-label">State</span>
-          <span class="nav-badge">${d.nav_state}</span>
-        </div>
-        <div class="progress-bar-bg">
-          <div class="progress-bar-fill" style="width:${pct}%"></div>
-        </div>
-        <div class="nav-row">
-          <span>Progress</span>
-          <span>${pct}%</span>
-        </div>
-        <div class="nav-row">
-          <span>Next turn</span>
-          <span>${turn}</span>
-        </div>
-        <div class="nav-row">
-          <span>Fork</span>
-          <span>${Math.round((d.fork_confidence || 0) * 100)}%</span>
-        </div>`;
+      chipRow.innerHTML = dets.map(c => {
+        const col = chipColors[c.color] || '#aaa';
+        return `<span class="color-det-chip"
+          style="background:${col}22;color:${col};border:1px solid ${col}">
+          ${c.color} · ${c.side}
+        </span>`;
+      }).join('');
     }
 
     // Log: add entry when status changes
@@ -569,9 +597,10 @@
   }
 
   // ── Commands ───────────────────────────────────────────────────────────────
-  async function sendCmd(action) {
+  async function sendCmd(action, value) {
     const body = { action };
     if (action === 'set_speed') body.value = speedValue;
+    if (value !== undefined)   body.value = value;
 
     try {
       const res = await fetch('/api/command', {
@@ -584,6 +613,10 @@
     } catch {
       addLog('CMD failed: server unreachable');
     }
+  }
+
+  function setColor(color) {
+    sendCmd('set_target_color', color);
   }
 
   function onSpeedChange(val) {
