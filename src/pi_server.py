@@ -1,207 +1,180 @@
 """
-pi_server.py - VectorVance Pi Command Server
-─────────────────────────────────────────────
-Runs on the Raspberry Pi. Receives route commands from the web dashboard
-over WiFi and stores the current command for the driving loop to read.
+pi_server.py - VectorVance Web Dashboard Server
+─────────────────────────────────────────────────
+Runs as a background thread inside main.py.
+Serves the live dashboard, MJPEG video stream, telemetry API,
+and receives commands from the browser.
 
-INSTALL (on Pi):
+Routes:
+  GET  /              → dashboard HTML
+  GET  /video_feed    → MJPEG stream (multipart/x-mixed-replace)
+  GET  /api/status    → telemetry JSON (polled every 500 ms by dashboard)
+  POST /api/command   → send a command  {"action": "toggle_auto" | "emergency_stop" | "reset" | "set_speed", "value": ...}
+
+API used by main.py:
+  start_server(port)        → start Flask in background thread
+  push_frame(frame)         → push latest debug frame (numpy BGR)
+  push_telemetry(data)      → push latest telemetry dict
+  get_pending_command()     → returns command dict or None
+  clear_command()           → call after executing the command
+
+Install Flask on Pi:
   pip install flask --break-system-packages
-
-USAGE:
-  python pi_server.py              → starts on port 5000
-  python pi_server.py --port 8080  → custom port
-
-The web dashboard POSTs to:
-  POST http://<pi-ip>:5000/command
-  Body: {"action": "FOLLOW_COLOR", "color": "GREEN", "route": ["START","FORK","WP_L","DEST"]}
-
-The driving loop reads:
-  from pi_server import get_current_command, is_command_ready
-  cmd = get_current_command()  → {"color": "GREEN", "route": [...]} or None
 """
 
-import argparse
+import os
+import cv2
+import time
 import threading
 import json
-import time
 
-# Global command store (thread-safe)
-_lock = threading.Lock()
-_current_command = None
-_command_timestamp = 0
+# ── Thread-safe shared state ──────────────────────────────────────────────────
 
+_frame_lock    = threading.Lock()
+_latest_frame  = None          # latest numpy BGR frame from main loop
 
-def get_current_command():
-    """Read the latest command from the web dashboard. Returns dict or None."""
-    with _lock:
-        return _current_command
+_telem_lock    = threading.Lock()
+_telemetry     = {}            # latest telemetry dict from main loop
 
-
-def is_command_ready():
-    """Check if a command has been received."""
-    with _lock:
-        return _current_command is not None
+_cmd_lock      = threading.Lock()
+_pending_cmd   = None          # command dict waiting to be executed
 
 
-def get_command_age():
-    """Seconds since last command was received."""
-    with _lock:
-        if _command_timestamp == 0:
-            return float('inf')
-        return time.time() - _command_timestamp
+# ── Public API (called from main.py) ─────────────────────────────────────────
+
+def push_frame(frame):
+    """Push the latest processed frame. Called every loop iteration."""
+    global _latest_frame
+    with _frame_lock:
+        _latest_frame = frame.copy() if frame is not None else None
+
+
+def push_telemetry(data: dict):
+    """Push the latest telemetry dict. Called every loop iteration."""
+    global _telemetry
+    with _telem_lock:
+        _telemetry = data
+
+
+def get_pending_command() -> dict | None:
+    """Return the pending command dict (or None). Called by main loop."""
+    with _cmd_lock:
+        return _pending_cmd
 
 
 def clear_command():
-    """Clear the current command (after it's been executed)."""
-    global _current_command
-    with _lock:
-        _current_command = None
+    """Clear the pending command after it has been executed."""
+    global _pending_cmd
+    with _cmd_lock:
+        _pending_cmd = None
 
 
-def _set_command(cmd):
-    """Internal: store a new command."""
-    global _current_command, _command_timestamp
-    with _lock:
-        _current_command = cmd
-        _command_timestamp = time.time()
+# ── Internal helpers ──────────────────────────────────────────────────────────
+
+def _encode_frame_jpeg(quality: int = 75) -> bytes | None:
+    with _frame_lock:
+        if _latest_frame is None:
+            return None
+        ret, buf = cv2.imencode(
+            '.jpg', _latest_frame,
+            [cv2.IMWRITE_JPEG_QUALITY, quality]
+        )
+        return buf.tobytes() if ret else None
 
 
-def start_server(port=5000):
-    """Start the Flask server in a background thread."""
+def _mjpeg_generator():
+    """Yields MJPEG boundary frames for the /video_feed route."""
+    while True:
+        jpeg = _encode_frame_jpeg()
+        if jpeg:
+            yield (
+                b'--frame\r\n'
+                b'Content-Type: image/jpeg\r\n\r\n'
+                + jpeg +
+                b'\r\n'
+            )
+        else:
+            time.sleep(0.05)
+
+
+# ── Flask server ──────────────────────────────────────────────────────────────
+
+def start_server(port: int = 5000) -> bool:
+    """
+    Start the Flask dashboard server in a daemon background thread.
+    Returns True on success, False if Flask is not installed.
+    """
     try:
-        from flask import Flask, request, jsonify
+        from flask import Flask, Response, request, jsonify, send_from_directory
     except ImportError:
-        print("Flask not installed. Run: pip install flask --break-system-packages")
+        print("[WebServer] Flask not installed.")
+        print("[WebServer]   pip install flask --break-system-packages")
         return False
 
     app = Flask(__name__)
 
-    @app.route('/command', methods=['POST'])
-    def receive_command():
-        """Receive a route command from the web dashboard."""
-        try:
-            data = request.get_json()
-            if not data:
-                return jsonify({"error": "No JSON body"}), 400
-
-            action = data.get("action")
-            color = data.get("color")
-            route = data.get("route", [])
-
-            if action != "FOLLOW_COLOR" or color not in ("GREEN", "BLUE"):
-                return jsonify({"error": "Invalid command"}), 400
-
-            _set_command({
-                "color": color,
-                "route": route,
-                "received_at": time.time()
-            })
-
-            print(f">>> RECEIVED: Follow {color} — Route: {' -> '.join(route)}")
-
-            return jsonify({
-                "status": "ok",
-                "message": f"Following {color} path",
-                "route": route
-            })
-
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
-
-    @app.route('/status', methods=['GET'])
-    def get_status():
-        """Check current command status."""
-        cmd = get_current_command()
-        return jsonify({
-            "has_command": cmd is not None,
-            "command": cmd,
-            "age_seconds": round(get_command_age(), 1)
-        })
-
-    @app.route('/clear', methods=['POST'])
-    def clear():
-        """Clear the current command."""
-        clear_command()
-        return jsonify({"status": "cleared"})
-
-    @app.route('/', methods=['GET'])
-    def index():
-        """Health check."""
-        return jsonify({
-            "service": "VectorVance Pi Server",
-            "status": "running",
-            "has_command": is_command_ready()
-        })
-
-    # Disable Flask's default logging for cleaner output
+    # Silence Flask request logs (main.py console stays clean)
     import logging
-    log = logging.getLogger('werkzeug')
-    log.setLevel(logging.WARNING)
+    logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
-    def run():
-        print(f"VectorVance Pi Server starting on port {port}...")
-        print(f"Web dashboard should POST to: http://<this-pi-ip>:{port}/command")
-        print(f"Check status: http://<this-pi-ip>:{port}/status")
-        print()
-        app.run(host='0.0.0.0', port=port, debug=False)
+    # ── Resolve template path ─────────────────────────────────────────
+    _here = os.path.dirname(os.path.abspath(__file__))
+    _template_dir = os.path.join(_here, 'webapp', 'templates')
 
-    thread = threading.Thread(target=run, daemon=True)
-    thread.start()
-    return True
+    # ── Routes ───────────────────────────────────────────────────────
 
+    @app.route('/')
+    def index():
+        return send_from_directory(_template_dir, 'dashboard.html')
 
-# ─────────────────────────────────────────────────────────────────────
-#  STANDALONE MODE (run directly to test)
-# ─────────────────────────────────────────────────────────────────────
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='VectorVance Pi Server')
-    parser.add_argument('--port', type=int, default=5000, help='Port (default: 5000)')
-    args = parser.parse_args()
+    @app.route('/video_feed')
+    def video_feed():
+        return Response(
+            _mjpeg_generator(),
+            mimetype='multipart/x-mixed-replace; boundary=frame'
+        )
 
-    try:
-        from flask import Flask
-    except ImportError:
-        print("Flask not installed!")
-        print("Run: pip install flask --break-system-packages")
-        exit(1)
+    @app.route('/api/status')
+    def api_status():
+        with _telem_lock:
+            data = dict(_telemetry)
+        data['server_time'] = round(time.time(), 2)
+        return jsonify(data)
 
-    # In standalone mode, run in foreground
-    from flask import Flask, request, jsonify
-
-    app = Flask(__name__)
-
-    @app.route('/command', methods=['POST'])
-    def receive_command():
-        data = request.get_json()
-        if not data:
+    @app.route('/api/command', methods=['POST'])
+    def api_command():
+        global _pending_cmd
+        body = request.get_json(silent=True)
+        if not body:
             return jsonify({"error": "No JSON body"}), 400
 
-        color = data.get("color")
-        route = data.get("route", [])
+        action = body.get("action")
+        valid = {"toggle_auto", "emergency_stop", "reset", "set_speed"}
+        if action not in valid:
+            return jsonify({"error": f"Unknown action '{action}'"}), 400
 
-        _set_command({"color": color, "route": route, "received_at": time.time()})
-        print(f"\n>>> COMMAND: Follow {color}")
-        print(f"    Route: {' -> '.join(route)}")
+        with _cmd_lock:
+            _pending_cmd = body
 
-        return jsonify({"status": "ok", "message": f"Following {color}"})
+        print(f"[WebServer] Command received: {body}")
+        return jsonify({"status": "ok", "action": action})
 
-    @app.route('/status', methods=['GET'])
-    def status():
-        cmd = get_current_command()
-        return jsonify({"has_command": cmd is not None, "command": cmd})
+    @app.route('/api/ping')
+    def api_ping():
+        return jsonify({"status": "alive", "time": time.time()})
 
-    @app.route('/clear', methods=['POST'])
-    def clear():
-        clear_command()
-        return jsonify({"status": "cleared"})
+    # ── Start in daemon thread ────────────────────────────────────────
 
-    @app.route('/', methods=['GET'])
-    def index():
-        return jsonify({"service": "VectorVance Pi Server", "status": "running"})
+    def _run():
+        print(f"[WebServer] Dashboard running → http://<pi-ip>:{port}/")
+        app.run(
+            host='0.0.0.0',
+            port=port,
+            debug=False,
+            use_reloader=False,
+            threaded=True
+        )
 
-    print(f"\nVectorVance Pi Server")
-    print(f"Port: {args.port}")
-    print(f"Waiting for commands from web dashboard...")
-    print(f"Test: curl http://localhost:{args.port}/status\n")
-
-    app.run(host='0.0.0.0', port=args.port, debug=False)
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    return True

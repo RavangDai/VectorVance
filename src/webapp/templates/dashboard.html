@@ -1,421 +1,600 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VectorVance — Mission Control</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
-<style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VectorVance Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  :root {
-    --bg: #080A0F;
-    --surface: rgba(255,255,255,0.04);
-    --border: rgba(255,255,255,0.08);
-    --text-primary: rgba(255,255,255,0.92);
-    --text-secondary: rgba(255,255,255,0.38);
-    --text-tertiary: rgba(255,255,255,0.18);
-    --accent-green: #2EE8A5;
-    --accent-blue: #5B9EF8;
-    --accent-yellow: #F5C842;
-    --mono: 'DM Mono', monospace;
-    --sans: 'DM Sans', sans-serif;
-  }
+    :root {
+      --bg:       #0d0d0f;
+      --surface:  #16171c;
+      --border:   #2a2b32;
+      --text:     #e8e9f0;
+      --muted:    #6b6d7a;
+      --cyan:     #00d4ff;
+      --green:    #00e87a;
+      --orange:   #ff8c42;
+      --red:      #ff3b3b;
+      --yellow:   #ffd166;
+      --radius:   10px;
+    }
 
-  html, body { height: 100%; background: var(--bg); color: var(--text-primary); font-family: var(--sans); font-weight: 300; overflow: hidden; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
 
-  body::before {
-    content: '';
-    position: fixed; inset: 0;
-    background:
-      radial-gradient(ellipse 80% 60% at 15% 20%, rgba(30,50,100,0.18) 0%, transparent 60%),
-      radial-gradient(ellipse 60% 50% at 85% 80%, rgba(20,40,80,0.12) 0%, transparent 55%);
-    pointer-events: none; z-index: 0;
-  }
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    header h1 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: var(--cyan);
+      text-transform: uppercase;
+    }
+    header .subtitle { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .conn-row { display: flex; align-items: center; gap: 8px; }
+    .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--muted);
+      transition: background 0.3s;
+    }
+    .dot.live { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .dot.dead { background: var(--red); }
+    #conn-label { font-size: 12px; color: var(--muted); }
 
-  body::after {
-    content: '';
-    position: fixed; inset: 0;
-    background-image: linear-gradient(rgba(255,255,255,0.012) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.012) 1px, transparent 1px);
-    background-size: 48px 48px;
-    pointer-events: none; z-index: 0;
-  }
+    /* ── Main layout ── */
+    .main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 12px;
+      padding: 12px;
+    }
 
-  .layout {
-    position: relative; z-index: 1;
-    height: 100vh;
-    display: grid;
-    grid-template-rows: 52px 1fr 200px;
-    grid-template-columns: 1fr 272px;
-    grid-template-areas: "nav nav" "main telem" "ctrl ctrl";
-    gap: 10px; padding: 10px;
-  }
+    /* ── Video panel ── */
+    .video-panel {
+      background: #000;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .video-panel .panel-title {
+      padding: 8px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--muted);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .video-panel img {
+      width: 100%;
+      display: block;
+      object-fit: contain;
+    }
 
-  .glass {
-    background: var(--surface);
-    backdrop-filter: blur(20px) saturate(1.4);
-    -webkit-backdrop-filter: blur(20px) saturate(1.4);
-    border: 1px solid var(--border);
-    border-radius: 18px;
-  }
+    /* ── Right sidebar ── */
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow-y: auto;
+    }
 
-  /* NAV */
-  nav { grid-area: nav; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; position: relative; border-radius: 14px; }
+    /* ── Cards ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .card-title {
+      padding: 8px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+    .card-body { padding: 10px 12px; }
 
-  .nav-logo { display: flex; align-items: baseline; }
-  .nav-logo .v1 { font-size: 14px; font-weight: 500; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.14em; }
-  .nav-logo .v2 { font-size: 14px; font-weight: 300; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.14em; }
+    /* ── Status grid ── */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .stat-item { display: flex; flex-direction: column; gap: 2px; }
+    .stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .stat-value {
+      font-size: 18px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: var(--cyan);
+    }
+    .stat-value.good  { color: var(--green); }
+    .stat-value.warn  { color: var(--orange); }
+    .stat-value.danger{ color: var(--red); }
 
-  .nav-center { position: absolute; left: 50%; transform: translateX(-50%); font-family: var(--mono); font-size: 9px; color: var(--text-tertiary); letter-spacing: 0.22em; text-transform: uppercase; }
+    /* ── Mode badge ── */
+    .mode-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      background: rgba(0, 232, 122, 0.15);
+      color: var(--green);
+      border: 1px solid var(--green);
+    }
+    .mode-badge.manual {
+      background: rgba(255, 140, 66, 0.15);
+      color: var(--orange);
+      border-color: var(--orange);
+    }
+    .mode-badge.stopped {
+      background: rgba(255, 59, 59, 0.15);
+      color: var(--red);
+      border-color: var(--red);
+    }
 
-  .nav-right { display: flex; align-items: center; gap: 16px; }
+    /* ── Speed bars ── */
+    .speed-bars { display: flex; gap: 10px; align-items: flex-end; height: 60px; }
+    .speed-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .speed-bar-bg {
+      width: 100%; height: 44px;
+      background: #1e1f26;
+      border-radius: 4px;
+      position: relative;
+      overflow: hidden;
+    }
+    .speed-bar-fill {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      background: var(--cyan);
+      border-radius: 4px;
+      transition: height 0.15s ease;
+    }
+    .speed-bar-label { font-size: 10px; color: var(--muted); }
+    .speed-bar-val { font-size: 11px; font-weight: 600; color: var(--text); }
 
-  .status-pill { display: flex; align-items: center; gap: 7px; background: rgba(46,232,165,0.06); border: 1px solid rgba(46,232,165,0.18); border-radius: 999px; padding: 5px 12px 5px 9px; font-family: var(--mono); font-size: 9px; color: var(--accent-green); letter-spacing: 0.1em; text-transform: uppercase; }
+    /* ── YOLO detections ── */
+    .detection-list { display: flex; flex-direction: column; gap: 6px; }
+    .detection-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 5px 8px;
+      background: #1e1f26;
+      border-radius: 6px;
+      border-left: 3px solid var(--cyan);
+    }
+    .detection-item.stop-sign { border-left-color: var(--red); }
+    .detection-item.person    { border-left-color: var(--orange); }
+    .detection-item.vehicle   { border-left-color: var(--green); }
+    .detection-name { font-size: 12px; font-weight: 600; }
+    .detection-conf {
+      font-size: 11px; color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .no-detections { color: var(--muted); font-size: 12px; text-align: center; padding: 8px 0; }
 
-  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-green); animation: pulse-dot 2.4s ease-in-out infinite; }
-  @keyframes pulse-dot { 0%,100% { box-shadow: 0 0 6px var(--accent-green); } 50% { box-shadow: 0 0 14px var(--accent-green); opacity: 0.6; } }
+    /* ── Navigation ── */
+    .nav-state {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .nav-badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: rgba(0, 212, 255, 0.12);
+      color: var(--cyan);
+    }
+    .progress-bar-bg {
+      height: 6px;
+      background: #1e1f26;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--cyan);
+      border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+    .nav-row { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: var(--muted); }
+    .nav-row span { color: var(--text); font-weight: 600; }
 
-  .nav-time { font-family: var(--mono); font-size: 11px; color: var(--text-secondary); letter-spacing: 0.08em; }
+    /* ── Log ── */
+    .log-list {
+      font-size: 11px;
+      font-family: 'Consolas', monospace;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      max-height: 100px;
+      overflow-y: auto;
+    }
+    .log-item { color: var(--muted); }
+    .log-item.new { color: var(--text); }
+    .log-item .ts { color: var(--border); margin-right: 6px; }
 
-  /* MAIN VIEWPORT */
-  .main-viewport { grid-area: main; position: relative; overflow: hidden; display: flex; flex-direction: column; }
+    /* ── Controls ── */
+    .controls {
+      display: flex;
+      gap: 8px;
+      padding: 10px 12px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .btn {
+      padding: 8px 18px;
+      border: none;
+      border-radius: 7px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      letter-spacing: 0.5px;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary  { background: var(--cyan);   color: #000; }
+    .btn-warning  { background: var(--orange); color: #000; }
+    .btn-danger   { background: var(--red);    color: #fff; }
+    .btn-neutral  { background: var(--border); color: var(--text); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  .viewport-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px 0; flex-shrink: 0; }
+    .speed-control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+    }
+    .speed-control label { font-size: 12px; color: var(--muted); white-space: nowrap; }
+    .speed-control input[type=range] {
+      width: 100px;
+      accent-color: var(--cyan);
+    }
+    #speed-val { font-size: 12px; font-weight: 700; color: var(--cyan); min-width: 32px; }
 
-  .section-label { font-family: var(--mono); font-size: 9px; color: var(--text-tertiary); letter-spacing: 0.22em; text-transform: uppercase; }
+    /* ── Obstacle banner ── */
+    #obstacle-banner {
+      display: none;
+      padding: 6px 12px;
+      background: var(--red);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+      letter-spacing: 1px;
+    }
+    #obstacle-banner.warn { background: var(--orange); }
 
-  .viewport-badges { display: flex; gap: 6px; }
-
-  .badge { font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-secondary); }
-  .badge.live { border-color: rgba(46,232,165,0.25); color: var(--accent-green); background: rgba(46,232,165,0.05); }
-
-  .feed-frame { flex: 1; margin: 12px; border-radius: 12px; overflow: hidden; background: rgba(0,0,0,0.5); border: 1px solid var(--border); position: relative; display: flex; align-items: center; justify-content: center; }
-  .feed-frame img, .feed-frame video { width: 100%; height: 100%; object-fit: cover; display: block; }
-
-  .feed-placeholder { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-  .feed-placeholder p { font-family: var(--mono); font-size: 10px; color: var(--text-tertiary); letter-spacing: 0.14em; text-transform: uppercase; }
-
-  .feed-frame::before, .feed-frame::after { content: ''; position: absolute; width: 18px; height: 18px; border-color: rgba(255,255,255,0.2); border-style: solid; z-index: 2; }
-  .feed-frame::before { top: 10px; left: 10px; border-width: 1px 0 0 1px; }
-  .feed-frame::after  { bottom: 10px; right: 10px; border-width: 0 1px 1px 0; }
-
-  .scanline { position: absolute; inset: 0; background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.04) 3px, rgba(0,0,0,0.04) 4px); pointer-events: none; z-index: 1; border-radius: 12px; }
-
-  /* TELEMETRY */
-  .telemetry { grid-area: telem; display: flex; flex-direction: column; padding: 16px 14px; gap: 0; overflow: hidden; }
-
-  .telem-block { padding: 10px 0 12px; border-bottom: 1px solid rgba(255,255,255,0.05); flex-shrink: 0; }
-
-  .telem-label { font-family: var(--mono); font-size: 9px; color: var(--text-tertiary); letter-spacing: 0.18em; text-transform: uppercase; margin-bottom: 5px; }
-
-  .telem-value { font-size: 24px; font-weight: 300; letter-spacing: -0.03em; line-height: 1; }
-  .telem-unit { font-size: 11px; color: var(--text-secondary); margin-left: 3px; }
-
-  .telem-bar { margin-top: 7px; height: 2px; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; }
-  .telem-bar-fill { height: 100%; border-radius: 999px; transition: width 0.8s cubic-bezier(0.23,1,0.32,1); }
-  .fill-green { background: var(--accent-green); box-shadow: 0 0 8px rgba(46,232,165,0.5); }
-  .fill-blue  { background: var(--accent-blue);  box-shadow: 0 0 8px rgba(91,158,248,0.5); }
-
-  .telem-sub { font-family: var(--mono); font-size: 9px; color: var(--text-secondary); margin-top: 3px; }
-
-  /* Vision ring */
-  .vision-rings { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
-  .ring-wrap { position: relative; width: 42px; height: 42px; flex-shrink: 0; }
-  .ring-wrap svg { transform: rotate(-90deg); }
-  .ring-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 8px; color: var(--text-secondary); }
-  .ring-meta p { font-size: 12px; font-weight: 400; margin-bottom: 2px; }
-  .ring-meta span { font-family: var(--mono); font-size: 9px; color: var(--text-secondary); }
-
-  /* Log */
-  .log-header { margin-top: 10px; margin-bottom: 4px; flex-shrink: 0; }
-  .log-feed { flex: 1; overflow-y: auto; scrollbar-width: none; }
-  .log-feed::-webkit-scrollbar { display: none; }
-
-  .log-entry { display: flex; align-items: flex-start; gap: 7px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.03); animation: fadeSlide 0.35s ease; }
-  @keyframes fadeSlide { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
-  .log-ts { font-family: var(--mono); font-size: 8px; color: var(--text-tertiary); flex-shrink: 0; padding-top: 1px; }
-  .log-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; }
-  .log-msg { font-family: var(--mono); font-size: 9px; color: var(--text-secondary); line-height: 1.4; }
-
-  /* CONTROL PANEL */
-  .control-panel { grid-area: ctrl; display: grid; grid-template-columns: 272px 1fr; gap: 10px; background: none; border: none; backdrop-filter: none; }
-
-  .fork-visual { padding: 14px 18px; display: flex; flex-direction: column; position: relative; overflow: hidden; }
-  .fork-visual svg { flex: 1; }
-
-  .path-actions { padding: 16px 20px; display: flex; flex-direction: column; }
-  .path-actions-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-
-  .drive-mode { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 9px; color: var(--text-secondary); letter-spacing: 0.1em; }
-  .mode-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent-green); animation: pulse-dot 2s ease-in-out infinite; }
-
-  .path-buttons { display: flex; gap: 9px; flex: 1; }
-
-  .path-btn {
-    flex: 1; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-    padding: 12px 8px; border-radius: 13px; border: 1px solid var(--border); background: var(--surface);
-    cursor: pointer; transition: all 0.25s cubic-bezier(0.23,1,0.32,1); overflow: hidden; font-family: var(--sans);
-  }
-  .path-btn::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 120%, var(--btn-glow, transparent) 0%, transparent 70%); opacity: 0; transition: opacity 0.3s; }
-  .path-btn:hover::before, .path-btn.active::before { opacity: 1; }
-  .path-btn:hover { border-color: var(--btn-color); background: var(--btn-surface); transform: translateY(-1px); }
-  .path-btn.active { border-color: var(--btn-color); background: var(--btn-surface); box-shadow: 0 0 22px var(--btn-glow); }
-
-  .btn-bar { position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--btn-color); border-radius: 999px 999px 0 0; opacity: 0; transition: opacity 0.25s; }
-  .path-btn:hover .btn-bar, .path-btn.active .btn-bar { opacity: 1; }
-
-  .btn-label { font-size: 9px; font-weight: 500; color: var(--text-secondary); letter-spacing: 0.12em; text-transform: uppercase; }
-  .btn-dist  { font-family: var(--mono); font-size: 22px; font-weight: 300; color: var(--btn-color); letter-spacing: -0.02em; line-height: 1; }
-  .btn-unit  { font-family: var(--mono); font-size: 9px; color: var(--text-secondary); }
-
-  .btn-green  { --btn-color: #2EE8A5; --btn-glow: rgba(46,232,165,0.2);  --btn-surface: rgba(46,232,165,0.05); }
-  .btn-blue   { --btn-color: #5B9EF8; --btn-glow: rgba(91,158,248,0.2);  --btn-surface: rgba(91,158,248,0.05); }
-  .btn-yellow { --btn-color: #F5C842; --btn-glow: rgba(245,200,66,0.2);  --btn-surface: rgba(245,200,66,0.05); }
-
-  .send-btn { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 10px; padding: 10px; border-radius: 10px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09); color: var(--text-primary); font-family: var(--mono); font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; cursor: pointer; transition: all 0.2s; flex-shrink: 0; }
-  .send-btn:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.16); }
-  .send-btn svg { opacity: 0.4; }
-
-  .fork-path { transition: stroke 0.3s, stroke-width 0.3s, filter 0.3s; }
-  .sel-green { stroke: #2EE8A5 !important; stroke-width: 2.5 !important; filter: drop-shadow(0 0 5px rgba(46,232,165,0.7)); }
-  .sel-blue  { stroke: #5B9EF8 !important; stroke-width: 2.5 !important; filter: drop-shadow(0 0 5px rgba(91,158,248,0.7)); }
-  .sel-yellow{ stroke: #F5C842 !important; stroke-width: 2.5 !important; filter: drop-shadow(0 0 5px rgba(245,200,66,0.7)); }
-</style>
+    @media (max-width: 800px) {
+      .main { grid-template-columns: 1fr; }
+    }
+  </style>
 </head>
 <body>
-<div class="layout">
 
-  <!-- NAV -->
-  <nav class="glass">
-    <div class="nav-logo"><span class="v1">Vector</span><span class="v2">Vance</span></div>
-    <div class="nav-center">Mission Control</div>
-    <div class="nav-right">
-      <div class="status-pill"><div class="dot"></div>Online</div>
-      <div class="nav-time" id="clock">--:--:--</div>
-    </div>
-  </nav>
+<header>
+  <div>
+    <h1>VectorVance</h1>
+    <div class="subtitle">Autonomous Vehicle Dashboard</div>
+  </div>
+  <div class="conn-row">
+    <div class="dot" id="conn-dot"></div>
+    <span id="conn-label">Connecting...</span>
+  </div>
+</header>
 
-  <!-- MAIN VIEWPORT -->
-  <div class="main-viewport glass">
-    <div class="viewport-header">
-      <span class="section-label">Camera Feed</span>
-      <div class="viewport-badges">
-        <span class="badge">720p</span>
-        <span class="badge live">● Live</span>
-      </div>
-    </div>
-    <div class="feed-frame">
-      <div class="scanline"></div>
-      <!-- Swap comment below with your MJPEG/WebRTC stream -->
-      <!-- <img src="http://raspberrypi.local:5000/video_feed" alt="Live Feed"> -->
-      <div class="feed-placeholder">
-        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" style="opacity:.15">
-          <rect x="2" y="8" width="36" height="26" rx="4" stroke="white" stroke-width="1.5"/>
-          <circle cx="20" cy="21" r="6" stroke="white" stroke-width="1.5"/>
-          <circle cx="20" cy="21" r="2.5" fill="white" opacity="0.4"/>
-          <rect x="14" y="5" width="12" height="5" rx="2" stroke="white" stroke-width="1.5"/>
-        </svg>
-        <p>Awaiting stream</p>
-      </div>
-    </div>
+<div id="obstacle-banner">OBSTACLE DETECTED</div>
+
+<div class="main">
+
+  <!-- ── Video feed ── -->
+  <div class="video-panel">
+    <div class="panel-title">Live Feed</div>
+    <img src="/video_feed" alt="Live camera feed" id="video-feed"
+         onerror="this.src='/video_feed'" />
   </div>
 
-  <!-- TELEMETRY -->
-  <div class="telemetry glass">
-    <div class="section-label" style="flex-shrink:0;margin-bottom:6px;">Telemetry</div>
+  <!-- ── Sidebar ── -->
+  <div class="sidebar">
 
-    <div class="telem-block">
-      <div class="telem-label">Speed</div>
-      <div><span class="telem-value" id="speed">0.0</span><span class="telem-unit">cm/s</span></div>
-      <div class="telem-bar"><div class="telem-bar-fill fill-green" id="speed-bar" style="width:0%"></div></div>
-      <div class="telem-sub" id="speed-sub">Idle</div>
-    </div>
-
-    <div class="telem-block">
-      <div class="telem-label">Ping</div>
-      <div><span class="telem-value" id="ping" style="color:var(--accent-blue)">—</span><span class="telem-unit">ms</span></div>
-      <div class="telem-bar"><div class="telem-bar-fill fill-blue" id="ping-bar" style="width:20%"></div></div>
-      <div class="telem-sub" id="ping-sub">Excellent</div>
-    </div>
-
-    <div class="telem-block">
-      <div class="telem-label">Vision</div>
-      <div class="vision-rings">
-        <div class="ring-wrap">
-          <svg width="42" height="42" viewBox="0 0 42 42">
-            <circle cx="21" cy="21" r="16" stroke="rgba(255,255,255,0.07)" stroke-width="2" fill="none"/>
-            <circle cx="21" cy="21" r="16" stroke="#2EE8A5" stroke-width="2" fill="none"
-              stroke-dasharray="100.5" stroke-dashoffset="25" stroke-linecap="round" id="conf-ring"/>
-          </svg>
-          <div class="ring-label" id="conf-label">75%</div>
+    <!-- Status -->
+    <div class="card">
+      <div class="card-title">Status</div>
+      <div class="card-body">
+        <div style="margin-bottom:10px;">
+          <span id="mode-badge" class="mode-badge">—</span>
+          &nbsp;
+          <span id="status-text" style="font-size:12px;color:var(--muted)">—</span>
         </div>
-        <div class="ring-meta">
-          <p>Confidence</p>
-          <span>Lane tracking</span>
+        <div class="stat-grid">
+          <div class="stat-item">
+            <span class="stat-label">Distance</span>
+            <span class="stat-value" id="val-dist">—</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">FPS</span>
+            <span class="stat-value" id="val-fps">—</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Steer Error</span>
+            <span class="stat-value" id="val-err">—</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Stop Signs</span>
+            <span class="stat-value" id="val-stops">—</span>
+          </div>
+        </div>
+        <!-- Motor speed bars -->
+        <div style="margin-top:12px;">
+          <div class="stat-label" style="margin-bottom:6px;">Motor Speed</div>
+          <div class="speed-bars">
+            <div class="speed-bar-wrap">
+              <div class="speed-bar-bg">
+                <div class="speed-bar-fill" id="bar-left" style="height:0%"></div>
+              </div>
+              <div class="speed-bar-label">L</div>
+              <div class="speed-bar-val" id="bar-left-val">0.00</div>
+            </div>
+            <div class="speed-bar-wrap">
+              <div class="speed-bar-bg">
+                <div class="speed-bar-fill" id="bar-right" style="height:0%"></div>
+              </div>
+              <div class="speed-bar-label">R</div>
+              <div class="speed-bar-val" id="bar-right-val">0.00</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="log-header"><span class="section-label">Activity</span></div>
-    <div class="log-feed" id="log-feed"></div>
+    <!-- YOLO Detections -->
+    <div class="card">
+      <div class="card-title">YOLO Detections</div>
+      <div class="card-body">
+        <div class="detection-list" id="detection-list">
+          <div class="no-detections">No detections</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Navigation -->
+    <div class="card" id="nav-card">
+      <div class="card-title">Navigation</div>
+      <div class="card-body" id="nav-body">
+        <div style="color:var(--muted);font-size:12px;text-align:center;">
+          Navigation disabled
+        </div>
+      </div>
+    </div>
+
+    <!-- Log -->
+    <div class="card">
+      <div class="card-title">Log</div>
+      <div class="card-body">
+        <div class="log-list" id="log-list"></div>
+      </div>
+    </div>
+
   </div>
+</div>
 
-  <!-- CONTROL PANEL -->
-  <div class="control-panel">
-
-    <!-- Fork SVG -->
-    <div class="glass fork-visual">
-      <span class="section-label">Intersection</span>
-      <svg viewBox="0 0 220 155" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <!-- trunk -->
-        <line x1="110" y1="150" x2="110" y2="90" stroke="rgba(255,255,255,0.1)" stroke-width="14" stroke-linecap="round"/>
-        <line x1="110" y1="148" x2="110" y2="100" stroke="rgba(255,255,255,0.15)" stroke-width="1" stroke-dasharray="6 6"/>
-        <!-- left branch green -->
-        <line x1="110" y1="90" x2="25" y2="22" stroke="rgba(255,255,255,0.07)" stroke-width="10" stroke-linecap="round"/>
-        <line x1="110" y1="90" x2="25" y2="22" stroke="rgba(46,232,165,0.12)" stroke-width="2" stroke-linecap="round" id="road-green" class="fork-path"/>
-        <circle cx="25" cy="22" r="5.5" fill="rgba(46,232,165,0.1)" stroke="rgba(46,232,165,0.35)" stroke-width="1" id="node-green"/>
-        <text x="5" y="18" fill="rgba(46,232,165,0.55)" font-size="7" font-family="DM Mono,monospace" letter-spacing="0.08em">40cm</text>
-        <!-- center branch blue -->
-        <line x1="110" y1="90" x2="110" y2="15" stroke="rgba(255,255,255,0.07)" stroke-width="10" stroke-linecap="round"/>
-        <line x1="110" y1="90" x2="110" y2="15" stroke="rgba(91,158,248,0.12)" stroke-width="2" stroke-linecap="round" id="road-blue" class="fork-path"/>
-        <circle cx="110" cy="15" r="5.5" fill="rgba(91,158,248,0.1)" stroke="rgba(91,158,248,0.35)" stroke-width="1" id="node-blue"/>
-        <text x="116" y="19" fill="rgba(91,158,248,0.55)" font-size="7" font-family="DM Mono,monospace" letter-spacing="0.08em">95cm</text>
-        <!-- right branch yellow -->
-        <line x1="110" y1="90" x2="195" y2="22" stroke="rgba(255,255,255,0.07)" stroke-width="10" stroke-linecap="round"/>
-        <line x1="110" y1="90" x2="195" y2="22" stroke="rgba(245,200,66,0.12)" stroke-width="2" stroke-linecap="round" id="road-yellow" class="fork-path"/>
-        <circle cx="195" cy="22" r="5.5" fill="rgba(245,200,66,0.1)" stroke="rgba(245,200,66,0.35)" stroke-width="1" id="node-yellow"/>
-        <text x="168" y="18" fill="rgba(245,200,66,0.55)" font-size="7" font-family="DM Mono,monospace" letter-spacing="0.08em">150cm</text>
-        <!-- junction -->
-        <circle cx="110" cy="90" r="4.5" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>
-        <!-- robot -->
-        <rect x="103" y="126" width="14" height="10" rx="3" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.18)" stroke-width="0.8"/>
-        <circle cx="106" cy="137" r="2" fill="rgba(255,255,255,0.18)"/>
-        <circle cx="114" cy="137" r="2" fill="rgba(255,255,255,0.18)"/>
-      </svg>
-    </div>
-
-    <!-- Path Buttons -->
-    <div class="glass path-actions">
-      <div class="path-actions-header">
-        <span class="section-label">Select Path</span>
-        <div class="drive-mode"><div class="mode-dot"></div><span id="drive-status">Driving</span></div>
-      </div>
-
-      <div class="path-buttons">
-        <button class="path-btn btn-green" onclick="selectPath('green')" id="btn-green">
-          <div class="btn-bar"></div>
-          <div class="btn-label">Alpha</div>
-          <div class="btn-dist">40</div>
-          <div class="btn-unit">cm</div>
-        </button>
-        <button class="path-btn btn-blue" onclick="selectPath('blue')" id="btn-blue">
-          <div class="btn-bar"></div>
-          <div class="btn-label">Beta</div>
-          <div class="btn-dist">95</div>
-          <div class="btn-unit">cm</div>
-        </button>
-        <button class="path-btn btn-yellow" onclick="selectPath('yellow')" id="btn-yellow">
-          <div class="btn-bar"></div>
-          <div class="btn-label">Gamma</div>
-          <div class="btn-dist">150</div>
-          <div class="btn-unit">cm</div>
-        </button>
-      </div>
-
-      <button class="send-btn" onclick="sendPath()">
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 6H11M11 6L7 2M11 6L7 10" stroke="white" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Execute Path
-      </button>
-    </div>
+<!-- ── Controls ── -->
+<div class="controls">
+  <button class="btn btn-primary"  onclick="sendCmd('toggle_auto')">Toggle Auto</button>
+  <button class="btn btn-danger"   onclick="sendCmd('emergency_stop')">Emergency Stop</button>
+  <button class="btn btn-neutral"  onclick="sendCmd('reset')">Reset</button>
+  <div class="speed-control">
+    <label for="speed-slider">Max Speed</label>
+    <input type="range" id="speed-slider" min="10" max="100" value="80"
+           oninput="onSpeedChange(this.value)" />
+    <span id="speed-val">0.80</span>
+    <button class="btn btn-neutral" style="padding:8px 12px;"
+            onclick="sendCmd('set_speed')">Set</button>
   </div>
 </div>
 
 <script>
-// ── Clock ───────────────────────────────────────
-setInterval(() => {
-  document.getElementById('clock').textContent =
-    new Date().toLocaleTimeString('en-US',{hour12:false});
-}, 1000);
-document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-US',{hour12:false});
+  // ── State ──────────────────────────────────────────────────────────────────
+  let lastStatus = '';
+  let logEntries = [];
+  let connected  = false;
+  let speedValue = 0.80;
 
-// ── Path selection ──────────────────────────────
-let selected = null;
+  // ── Telemetry polling ──────────────────────────────────────────────────────
+  async function fetchTelemetry() {
+    try {
+      const res = await fetch('/api/status', { signal: AbortSignal.timeout(1500) });
+      if (!res.ok) throw new Error('bad status');
+      const d = await res.json();
+      setConnected(true);
+      updateUI(d);
+    } catch {
+      setConnected(false);
+    }
+  }
 
-function selectPath(color) {
-  selected = color;
-  ['green','blue','yellow'].forEach(c => {
-    document.getElementById('btn-'+c).classList.toggle('active', c===color);
-    const road = document.getElementById('road-'+c);
-    road.className.baseVal = 'fork-path' + (c===color ? ' sel-'+c : '');
-    const ng = document.getElementById('node-'+c);
-    const rgb = {green:'46,232,165', blue:'91,158,248', yellow:'245,200,66'}[c];
-    ng.setAttribute('fill', `rgba(${rgb},${c===color?'0.28':'0.1'})`);
-  });
-  const dist = {green:'40',blue:'95',yellow:'150'}[color];
-  addLog(color, `Path selected — ${dist}cm`);
-}
+  function setConnected(ok) {
+    connected = ok;
+    const dot   = document.getElementById('conn-dot');
+    const label = document.getElementById('conn-label');
+    dot.className   = 'dot ' + (ok ? 'live' : 'dead');
+    label.textContent = ok ? 'Connected' : 'Offline';
+  }
 
-// ── Send path ────────────────────────────────────
-function sendPath() {
-  if (!selected) { addLog('warn','No path selected'); return; }
-  addLog('system',`Executing ${selected} path…`);
-  // fetch('/api/path', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({path:selected}) })
-  //   .then(r=>r.json()).then(d=>addLog('system','Confirmed: '+d.status))
-  //   .catch(()=>addLog('warn','Connection error'));
-  const dist = {green:'40',blue:'95',yellow:'150'}[selected];
-  setTimeout(()=>addLog(selected,`Robot en route · ${dist}cm`), 600);
-}
+  function updateUI(d) {
+    // Mode badge
+    const badge = document.getElementById('mode-badge');
+    const mode  = d.mode || '—';
+    badge.textContent = mode;
+    badge.className   = 'mode-badge' +
+      (mode === 'MANUAL'      ? ' manual'  : '') +
+      (d.status?.includes('STOP') ? ' stopped' : '');
 
-// ── Activity log ─────────────────────────────────
-const logColors = { green:'#2EE8A5', blue:'#5B9EF8', yellow:'#F5C842', system:'rgba(255,255,255,0.2)', warn:'#FF6B6B' };
+    // Status text
+    document.getElementById('status-text').textContent = d.status || '—';
 
-function addLog(type, msg) {
-  const feed = document.getElementById('log-feed');
-  const ts = new Date().toLocaleTimeString('en-US',{hour12:false});
-  const entry = document.createElement('div');
-  entry.className = 'log-entry';
-  entry.innerHTML = `<span class="log-ts">${ts}</span><div class="log-dot" style="background:${logColors[type]||logColors.system}"></div><span class="log-msg">${msg}</span>`;
-  feed.prepend(entry);
-  while(feed.children.length > 40) feed.removeChild(feed.lastChild);
-}
+    // Stat values
+    const dist = d.distance_cm;
+    const distEl = document.getElementById('val-dist');
+    distEl.textContent = dist >= 999 ? '—' : dist + ' cm';
+    distEl.className   = 'stat-value' +
+      (dist < 25 ? ' danger' : dist < 50 ? ' warn' : ' good');
 
-// ── Simulated telemetry ───────────────────────────
-// Replace with WebSocket / SSE from Pi:
-// const ws = new WebSocket('ws://raspberrypi.local:8765');
-// ws.onmessage = e => { const d = JSON.parse(e.data); applyTelemetry(d.speed, d.ping, d.confidence); };
-let pingBuf = [];
-function updateTelemetry() {
-  const spd = (Math.random()*16+2).toFixed(1);
-  document.getElementById('speed').textContent = spd;
-  document.getElementById('speed-bar').style.width = Math.min(spd*4,100)+'%';
-  document.getElementById('speed-sub').textContent = spd>12?'High speed':spd>6?'Cruising':'Low speed';
+    document.getElementById('val-fps').textContent    = d.fps ?? '—';
+    document.getElementById('val-err').textContent    = d.steering_error != null ? d.steering_error + 'px' : '—';
+    document.getElementById('val-stops').textContent  = d.stop_signs_detected ?? '—';
 
-  const ping = Math.round(Math.random()*28+8);
-  pingBuf.push(ping); if(pingBuf.length>5) pingBuf.shift();
-  const avg = Math.round(pingBuf.reduce((a,b)=>a+b,0)/pingBuf.length);
-  document.getElementById('ping').textContent = avg;
-  document.getElementById('ping-bar').style.width = Math.min(avg*2,100)+'%';
-  document.getElementById('ping-sub').textContent = avg<20?'Excellent':avg<50?'Good':'High latency';
+    // Motor bars
+    const l = d.speed_left  ?? 0;
+    const r = d.speed_right ?? 0;
+    document.getElementById('bar-left').style.height      = (l * 100) + '%';
+    document.getElementById('bar-right').style.height     = (r * 100) + '%';
+    document.getElementById('bar-left-val').textContent   = l.toFixed(2);
+    document.getElementById('bar-right-val').textContent  = r.toFixed(2);
 
-  const conf = Math.round(Math.random()*14+72);
-  const circum = 2*Math.PI*16;
-  document.getElementById('conf-ring').setAttribute('stroke-dashoffset', (circum*(1-conf/100)).toFixed(1));
-  document.getElementById('conf-label').textContent = conf+'%';
-}
-setInterval(updateTelemetry, 1800);
-updateTelemetry();
+    // Obstacle banner
+    const modifier = d.obstacle_modifier ?? 1;
+    const banner   = document.getElementById('obstacle-banner');
+    if (modifier < 1.0) {
+      banner.style.display = 'block';
+      banner.className     = modifier === 0 ? '' : 'warn';
+      banner.textContent   = modifier === 0
+        ? 'OBSTACLE — STOPPING'
+        : `OBSTACLE DETECTED — speed ×${modifier.toFixed(1)}`;
+    } else {
+      banner.style.display = 'none';
+    }
 
-// Boot log
-[200,800,1400,2000].forEach((t,i)=>{
-  const msgs = [
-    ['system','VectorVance online'],
-    ['green', 'Lane tracking active'],
-    ['blue',  'Camera stream ready'],
-    ['system','Awaiting intersection']
-  ];
-  setTimeout(()=>addLog(...msgs[i]), t);
-});
+    // YOLO detections
+    const dl   = document.getElementById('detection-list');
+    const dets = d.yolo_detections || [];
+    if (!d.yolo_enabled || dets.length === 0) {
+      dl.innerHTML = `<div class="no-detections">${d.yolo_enabled ? 'No detections' : 'YOLO disabled'}</div>`;
+    } else {
+      dl.innerHTML = dets.map(det => {
+        const cls = det.label === 'stop sign' ? 'stop-sign'
+                  : det.label === 'person'    ? 'person'
+                  : ['car','bus','truck','bicycle','motorcycle'].includes(det.label) ? 'vehicle'
+                  : '';
+        return `<div class="detection-item ${cls}">
+          <span class="detection-name">${det.label}</span>
+          <span class="detection-conf">${Math.round(det.conf * 100)}%</span>
+        </div>`;
+      }).join('');
+    }
+
+    // Navigation
+    const navBody = document.getElementById('nav-body');
+    if (!d.nav_enabled || !d.nav_state) {
+      navBody.innerHTML = '<div style="color:var(--muted);font-size:12px;text-align:center;">Navigation disabled</div>';
+    } else {
+      const p    = d.nav_progress || {};
+      const pct  = p.total_route > 0
+        ? Math.min(100, Math.round((p.total_traveled / p.total_route) * 100))
+        : 0;
+      const turn = d.nav_next_turn || '—';
+      navBody.innerHTML = `
+        <div class="nav-state">
+          <span class="stat-label">State</span>
+          <span class="nav-badge">${d.nav_state}</span>
+        </div>
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" style="width:${pct}%"></div>
+        </div>
+        <div class="nav-row">
+          <span>Progress</span>
+          <span>${pct}%</span>
+        </div>
+        <div class="nav-row">
+          <span>Next turn</span>
+          <span>${turn}</span>
+        </div>
+        <div class="nav-row">
+          <span>Fork</span>
+          <span>${Math.round((d.fork_confidence || 0) * 100)}%</span>
+        </div>`;
+    }
+
+    // Log: add entry when status changes
+    if (d.status && d.status !== lastStatus) {
+      lastStatus = d.status;
+      addLog(d.status);
+    }
+  }
+
+  function addLog(msg) {
+    const now = new Date();
+    const ts  = now.toTimeString().slice(0, 8);
+    logEntries.unshift({ ts, msg });
+    if (logEntries.length > 20) logEntries.pop();
+
+    const el = document.getElementById('log-list');
+    el.innerHTML = logEntries.map((e, i) =>
+      `<div class="log-item ${i === 0 ? 'new' : ''}">
+         <span class="ts">${e.ts}</span>${e.msg}
+       </div>`
+    ).join('');
+  }
+
+  // ── Commands ───────────────────────────────────────────────────────────────
+  async function sendCmd(action) {
+    const body = { action };
+    if (action === 'set_speed') body.value = speedValue;
+
+    try {
+      const res = await fetch('/api/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const d = await res.json();
+      addLog(`CMD: ${action}${body.value != null ? ' = ' + body.value : ''}`);
+    } catch {
+      addLog('CMD failed: server unreachable');
+    }
+  }
+
+  function onSpeedChange(val) {
+    speedValue = val / 100;
+    document.getElementById('speed-val').textContent = speedValue.toFixed(2);
+  }
+
+  // ── Start polling ──────────────────────────────────────────────────────────
+  setInterval(fetchTelemetry, 500);
+  fetchTelemetry();
+  addLog('Dashboard loaded');
 </script>
 </body>
 </html>

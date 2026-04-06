@@ -35,6 +35,7 @@ from controller import PIDController
 from speed_controller import AdaptiveSpeedController, draw_speed_indicator
 from safety import ObstacleDetector
 from sign_detector import TrafficSignDetector
+from yolo_detector import YoloDetector
 from intersection_detector import IntersectionDetector
 from track_map import build_default_track, build_complex_track
 from pathfinder import find_shortest_path, get_all_routes, print_route
@@ -110,13 +111,21 @@ def pick_source_interactive(default_video_dir='test_videos'):
 #  AUTONOMOUS VEHICLE (with Navigation)
 # ─────────────────────────────────────────────────────────────────────
 class AutonomousVehicle:
-    def __init__(self, max_speed=0.8, enable_nav=False, track_name="default"):
+    def __init__(self, max_speed=0.8, enable_nav=False, track_name="default",
+                 enable_yolo=False, yolo_model="yolov8n.pt"):
         self.perception = LaneDetector(width=640, height=480)
         self.steering = PIDController(Kp=0.003, Ki=0.0001, Kd=0.001)
         self.speed_control = AdaptiveSpeedController(min_speed=0.2, max_speed=max_speed)
         self.safety = ObstacleDetector(emergency_distance=20, warning_distance=50)
-        self.sign_detector = TrafficSignDetector()
         self.intersection_detector = IntersectionDetector()
+
+        # ── Detector: YOLO (preferred) or classic color+shape fallback ────────
+        self.yolo_enabled = enable_yolo
+        if enable_yolo:
+            self.detector = YoloDetector(model_name=yolo_model, skip_frames=3)
+        else:
+            self.detector = TrafficSignDetector()
+            print("[Detector] Using classic color+shape sign detector (no YOLO)")
 
         self.autonomous_enabled = True
         self.current_speed_limit = max_speed
@@ -211,11 +220,16 @@ class AutonomousVehicle:
             return debug_frame, (0.0, 0.0, "EMERGENCY STOP")
 
         self.total_error += abs(steering_error)
-        obstacle_modifier = 1.0
 
-        # ── SIGN DETECTION ───────────────────────────────────────────
-        self.sign_detector.detect_signs(frame)
-        sign_action, _ = self.sign_detector.get_action()
+        # ── DETECTION (YOLO or classic) ──────────────────────────────
+        if self.yolo_enabled:
+            self.detector.detect(frame)
+            obstacle_modifier = self.detector.get_speed_modifier()
+        else:
+            self.detector.detect_signs(frame)
+            obstacle_modifier = 1.0   # classic detector has no obstacle sense
+
+        sign_action, _ = self.detector.get_action()
 
         if self.stop_sign_cooldown > 0:
             self.stop_sign_cooldown -= 1
@@ -325,7 +339,7 @@ class AutonomousVehicle:
                             base_speed, left_speed, right_speed, status, sign_action):
         frame = vision_frame.copy()
         frame = self.safety.draw_overlay(frame)
-        frame = self.sign_detector.draw_overlay(frame)
+        frame = self.detector.draw_overlay(frame)
 
         # Motor bars
         frame = self._draw_motor_bars(
@@ -348,10 +362,21 @@ class AutonomousVehicle:
         cv2.putText(frame, f"Status: {display_status}",
                     (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_color, 2)
 
-        # Sign status
+        # Sign / YOLO status
         if sign_action == "STOP":
             cv2.putText(frame, "STOP DETECTED!",
                         (10, 175), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 1)
+        elif self.yolo_enabled:
+            danger = self.detector.get_danger_level()
+            danger_colors = {
+                "CLEAR":   (100, 200, 100),
+                "CAUTION": (0,   200, 255),
+                "DANGER":  (0,   100, 255),
+                "STOP":    (0,   0,   255),
+            }
+            cv2.putText(frame, f"YOLO: {danger}",
+                        (10, 175), cv2.FONT_HERSHEY_SIMPLEX, 0.45,
+                        danger_colors.get(danger, (150, 150, 150)), 1)
         else:
             cv2.putText(frame, "Scanning...",
                         (10, 175), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (150, 150, 150), 1)
@@ -413,7 +438,7 @@ class AutonomousVehicle:
         self.speed_control.reset()
         self.safety.reset()
         self.perception.reset_smoothing()
-        self.sign_detector.reset()
+        self.detector.reset()
         self.intersection_detector.reset()
         self.current_speed_limit = 0.8
         self.stop_sign_timer = 0
@@ -494,7 +519,8 @@ class AutonomousVehicle:
 
             window_title = "VectorVance - " + \
                            ("AUTONOMOUS" if self.autonomous_enabled else "MANUAL") + \
-                           (" [NAV]" if self.nav_enabled else "")
+                           (" [NAV]" if self.nav_enabled else "") + \
+                           (" [YOLO]" if self.yolo_enabled else "")
             cv2.imshow(window_title, debug_frame)
 
             if self.frame_count % 30 == 0 and not paused:
@@ -528,10 +554,17 @@ class AutonomousVehicle:
                 cv2.imwrite(filename, debug_frame)
                 print(f"Snapshot saved: {filename}")
             elif key == ord('d'):
-                print(f"Sign detector: {len(self.sign_detector.detected_signs)} raw, "
-                      f"{len(self.sign_detector.confirmed_signs)} confirmed")
-                for s in self.sign_detector.confirmed_signs:
-                    print(f"  {s[0].value} at {s[1]} conf={s[2]:.2f}")
+                det = self.detector
+                if self.yolo_enabled:
+                    print(f"YOLO: {len(det.all_detections)} detections | "
+                          f"danger={det.get_danger_level()}")
+                    for d in det.all_detections:
+                        print(f"  {d[1]} conf={d[3]:.2f}")
+                elif hasattr(det, 'confirmed_signs'):
+                    print(f"Sign detector: {len(det.detected_signs)} raw, "
+                          f"{len(det.confirmed_signs)} confirmed")
+                    for s in det.confirmed_signs:
+                        print(f"  {s[0]} conf={s[2]:.2f}")
             elif key == ord('n'):
                 self.nav_overlay_visible = not self.nav_overlay_visible
                 print(f"Nav overlay: {'ON' if self.nav_overlay_visible else 'OFF'}")
@@ -591,12 +624,18 @@ def main():
     parser.add_argument('--track', type=str, default='default',
                         choices=['default', 'complex'],
                         help='Track layout to use (default or complex)')
+    parser.add_argument('--yolo', action='store_true',
+                        help='Enable YOLOv8 detection (pip install ultralytics)')
+    parser.add_argument('--yolo-model', type=str, default='yolov8n.pt',
+                        help='YOLO model file (default: yolov8n.pt)')
     args = parser.parse_args()
 
     vehicle = AutonomousVehicle(
         max_speed=args.speed,
         enable_nav=args.nav,
-        track_name=args.track
+        track_name=args.track,
+        enable_yolo=args.yolo,
+        yolo_model=args.yolo_model,
     )
 
     if args.video:
