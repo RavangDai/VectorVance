@@ -15,7 +15,7 @@ Stop signs feed the STOP action (replaces color+shape detector).
 Persons/vehicles feed the obstacle speed modifier.
 Zone-aware: only objects in the center zone (car's path) trigger braking.
 
-Install: pip install ultralytics
+Install: pip install ultralytics --break-system-packages
 """
 
 import cv2
@@ -126,7 +126,7 @@ class YoloDetector:
 
         if not self.available:
             print("[YOLO] ultralytics not installed — running in disabled mode")
-            print("[YOLO]   pip install ultralytics")
+            print("[YOLO]   pip install ultralytics --break-system-packages")
             return
 
         print(f"[YOLO] Loading {model_name} ...")

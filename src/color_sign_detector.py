@@ -1,20 +1,15 @@
 """
 color_sign_detector.py - VectorVance Color Tape Navigation
 ──────────────────────────────────────────────────────────
-At a 3-way fork, three colored tape strips mark each path.
-This module detects the tapes and steers the car toward
-the target color (e.g. GREEN = shortest path).
+Detects coloured tape strips on the track.
 
-Physical setup:
-  Place a colored tape strip (~8×5 cm) at the entrance of
-  each fork arm — one color per arm (GREEN / BLUE / RED).
-  Tell the car which color to follow via the web dashboard
-  or the --target-color argument.
+Physical layout:
+  FORK  : GREEN tape on one arm, BLUE tape on the other arm
+  END   : RED tape at the destination (car stops here)
 
-Detection works on the bottom half of the frame (where the
-ground tape appears). Works independently of YOLO — it is
-a simple HSV threshold pass, so it runs on every frame
-with no performance cost.
+At a fork the car stops and waits for the user to pick
+GREEN or BLUE via the web dashboard. The car then steers
+toward that tape. When it sees RED it stops — arrived.
 """
 
 import cv2
@@ -23,7 +18,6 @@ from collections import deque
 
 
 # ── HSV colour ranges ─────────────────────────────────────────────────────────
-# Tune lo/hi if detection is unreliable under your lighting conditions.
 _COLOR_RANGES: dict[str, list] = {
     "GREEN": [
         (np.array([38,  60,  60]),  np.array([88,  255, 255])),
@@ -37,48 +31,54 @@ _COLOR_RANGES: dict[str, list] = {
     ],
 }
 
-# BGR display colours for the HUD overlay
 _COLOR_BGR: dict[str, tuple] = {
     "GREEN": (0,   220, 0),
     "BLUE":  (255, 80,  0),
     "RED":   (0,   0,   255),
 }
 
-MIN_AREA = 400   # px² — blobs smaller than this are ignored as noise
+# RED tape at end — must be this big before we call it the destination
+DESTINATION_COLOR    = "RED"
+DESTINATION_MIN_AREA = 1200   # px²  — large enough to be right in front of car
+DESTINATION_CONFIRM  = 4      # must appear in 4 consecutive frames
+
+MIN_AREA = 400   # px²  for path-colour tapes
 
 
 class ColorSignDetector:
     """
-    Detects coloured tape strips at a 3-way fork and returns
-    a steering offset so the car turns toward the target colour.
+    Detects GREEN / BLUE path tapes at forks and RED destination tape at end.
     """
 
-    def __init__(self, target_color: str = "GREEN",
-                 frame_width: int  = 640,
-                 frame_height: int = 480):
+    def __init__(self, frame_width: int = 640, frame_height: int = 480):
         self.frame_width  = frame_width
         self.frame_height = frame_height
-        self.target_color = target_color.upper()
 
-        # Scan only the bottom half — tape is on the ground / low in frame
+        # Which colour to steer toward (set by user via dashboard)
+        self.target_color: str | None = None
+
+        # Bottom half of frame — tape is on the ground
         self._roi_top = int(frame_height * 0.45)
 
-        # Smooth the offset over the last 5 frames to avoid jitter
+        # Smooth steering offset
         self._offset_history: deque = deque(maxlen=5)
 
-        # Results updated by detect()
-        self.detections: dict[str, dict] = {}   # color → {x,y,w,h,cx,area,side}
-        self.target_det: dict | None     = None  # detection for the target colour
+        # Consecutive-frame counter for destination confirmation
+        self._dest_counter = 0
 
-        print(f"[ColorSign] Ready — target={self.target_color} | "
-              f"colours={', '.join(_COLOR_RANGES)}")
+        # Latest results
+        self.detections: dict[str, dict] = {}
+        self.target_det: dict | None     = None
+
+        print(f"[ColorSign] Ready — fork colours: GREEN / BLUE | "
+              f"destination: RED")
 
     # ── public API ────────────────────────────────────────────────────────────
 
     def detect(self, frame: np.ndarray) -> dict:
         """
-        Run colour detection on frame. Call once per frame.
-        Returns: {color_name: {x, y, w, h, cx, area, side}, ...}
+        Run colour detection. Call once per frame.
+        Returns {color: {x, y, w, h, cx, area, side}} for all colours found.
         """
         roi = frame[self._roi_top:, :]
         hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
@@ -87,12 +87,10 @@ class ColorSignDetector:
         self.target_det = None
 
         for color, ranges in _COLOR_RANGES.items():
-            # Build combined mask for this colour
             mask = np.zeros(roi.shape[:2], dtype=np.uint8)
             for lo, hi in ranges:
                 mask |= cv2.inRange(hsv, lo, hi)
 
-            # Morphological cleanup
             k    = np.ones((5, 5), np.uint8)
             mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN,  k)
             mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k)
@@ -105,14 +103,16 @@ class ColorSignDetector:
 
             best = max(cnts, key=cv2.contourArea)
             area = cv2.contourArea(best)
-            if area < MIN_AREA:
+
+            min_needed = DESTINATION_MIN_AREA if color == DESTINATION_COLOR else MIN_AREA
+            if area < min_needed:
                 continue
 
             x, y, w, h = cv2.boundingRect(best)
             cx  = x + w // 2
             det = {
                 "x":    x,
-                "y":    y + self._roi_top,   # convert to full-frame coords
+                "y":    y + self._roi_top,
                 "w":    w,
                 "h":    h,
                 "cx":   cx,
@@ -123,14 +123,25 @@ class ColorSignDetector:
             if color == self.target_color:
                 self.target_det = det
 
+        # Update destination consecutive counter
+        if DESTINATION_COLOR in self.detections:
+            self._dest_counter += 1
+        else:
+            self._dest_counter = 0
+
         return self.detections
+
+    def destination_reached(self) -> bool:
+        """
+        True when RED tape has been visible for DESTINATION_CONFIRM
+        consecutive frames — car should stop.
+        """
+        return self._dest_counter >= DESTINATION_CONFIRM
 
     def get_steering_offset(self) -> float | None:
         """
-        Smoothed offset (-1.0 … +1.0) pointing toward the target tape.
-          Negative  → steer left
-          Positive  → steer right
-          None      → target colour not visible
+        Smoothed offset (-1.0 … +1.0) toward the target tape.
+        Negative = left, Positive = right, None = not visible.
         """
         if self.target_det is None:
             return None
@@ -140,23 +151,27 @@ class ColorSignDetector:
         return float(np.mean(self._offset_history))
 
     def target_visible(self) -> bool:
-        """True if the target colour tape was seen in the last detect() call."""
         return self.target_det is not None
 
     def set_target(self, color: str):
-        """Change the target colour at runtime (e.g. from web command)."""
+        """Set the path colour to follow (called when user picks on dashboard)."""
         color = color.upper()
-        if color in _COLOR_RANGES:
+        if color in ("GREEN", "BLUE"):
             self.target_color = color
             self._offset_history.clear()
-            print(f"[ColorSign] Target → {color}")
+            print(f"[ColorSign] Path target → {color}")
         else:
-            print(f"[ColorSign] Unknown colour '{color}'. "
-                  f"Options: {list(_COLOR_RANGES)}")
+            print(f"[ColorSign] '{color}' is not a valid path colour. Use GREEN or BLUE.")
+
+    def get_fork_options(self) -> list[str]:
+        """
+        Returns which path colours (GREEN / BLUE) are currently visible.
+        Used to tell the dashboard what options to show.
+        """
+        return [c for c in ("GREEN", "BLUE") if c in self.detections]
 
     def draw_overlay(self, frame: np.ndarray) -> np.ndarray:
-        """Draw tape bounding boxes and status text on the frame."""
-        # Subtle scan-zone line
+        """Draw tape boxes and status line on frame."""
         cv2.line(frame,
                  (0, self._roi_top), (self.frame_width, self._roi_top),
                  (60, 60, 60), 1)
@@ -165,42 +180,48 @@ class ColorSignDetector:
             bgr       = _COLOR_BGR.get(color, (180, 180, 180))
             x, y, w, h = det["x"], det["y"], det["w"], det["h"]
             is_target = (color == self.target_color)
-            thickness = 3 if is_target else 1
+            is_dest   = (color == DESTINATION_COLOR)
 
+            thickness = 3 if (is_target or is_dest) else 1
             cv2.rectangle(frame, (x, y), (x + w, y + h), bgr, thickness)
-            label = f"{'>>> ' if is_target else ''}{color} ({det['side']})"
+
+            if is_dest:
+                label = f"DESTINATION ({det['side']})"
+            elif is_target:
+                label = f">>> {color} ({det['side']}) <<<"
+            else:
+                label = f"{color} ({det['side']})"
+
             cv2.putText(frame, label, (x, y - 6),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, bgr,
-                        2 if is_target else 1)
+                        2 if (is_target or is_dest) else 1)
 
-        # Status line on HUD
-        if self.target_det:
+        # Status line
+        if self.target_color and self.target_det:
             offset = self.get_steering_offset()
-            txt = (f"TAPE: {self.target_color} "
+            txt = (f"FOLLOWING: {self.target_color} "
                    f"[{self.target_det['side']}] off={offset:+.2f}")
             cv2.putText(frame, txt, (10, 215),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45,
                         _COLOR_BGR.get(self.target_color, (180, 180, 180)), 1)
-        else:
-            cv2.putText(frame,
-                        f"TAPE: {self.target_color} — scanning...",
-                        (10, 215),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (100, 100, 100), 1)
+        elif self.target_color:
+            cv2.putText(frame, f"SEEKING: {self.target_color}...",
+                        (10, 215), cv2.FONT_HERSHEY_SIMPLEX, 0.45,
+                        _COLOR_BGR.get(self.target_color, (100, 100, 100)), 1)
 
         return frame
 
     def reset(self):
         self._offset_history.clear()
-        self.detections = {}
-        self.target_det = None
+        self._dest_counter = 0
+        self.detections    = {}
+        self.target_det    = None
+        self.target_color  = None
 
     # ── internal ──────────────────────────────────────────────────────────────
 
     def _zone(self, cx: int) -> str:
-        """Return LEFT / CENTER / RIGHT based on x position."""
         third = self.frame_width / 3
-        if cx < third:
-            return "LEFT"
-        if cx < 2 * third:
-            return "CENTER"
+        if cx < third:        return "LEFT"
+        if cx < 2 * third:    return "CENTER"
         return "RIGHT"

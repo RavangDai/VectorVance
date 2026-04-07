@@ -295,6 +295,23 @@
     }
     #obstacle-banner.warn { background: var(--orange); }
 
+    /* ── Fork waiting banner ── */
+    #fork-banner {
+      display: none;
+      padding: 10px 20px;
+      background: #00529e;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 700;
+      text-align: center;
+      letter-spacing: 1px;
+      animation: pulse-border 1s infinite;
+    }
+    @keyframes pulse-border {
+      0%, 100% { background: #00529e; }
+      50%       { background: #0078d4; }
+    }
+
     @media (max-width: 800px) {
       .main { grid-template-columns: 1fr; }
     }
@@ -314,6 +331,9 @@
 </header>
 
 <div id="obstacle-banner">OBSTACLE DETECTED</div>
+<div id="fork-banner">
+  CAR IS AT FORK — SELECT PATH BELOW
+</div>
 
 <div class="main">
 
@@ -391,13 +411,17 @@
     <div class="card">
       <div class="card-title">Color Tape Navigation</div>
       <div class="card-body">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">
+          Select the path when car stops at fork:
+        </div>
         <div class="color-btn-row">
-          <button id="btn-GREEN"  class="color-btn btn-green"
-                  onclick="setColor('GREEN')">GREEN</button>
-          <button id="btn-BLUE"   class="color-btn btn-blue"
-                  onclick="setColor('BLUE')">BLUE</button>
-          <button id="btn-RED"    class="color-btn btn-red"
-                  onclick="setColor('RED')">RED</button>
+          <button id="btn-GREEN" class="color-btn btn-green"
+                  onclick="setColor('GREEN')">GREEN PATH</button>
+          <button id="btn-BLUE"  class="color-btn btn-blue"
+                  onclick="setColor('BLUE')">BLUE PATH</button>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px;">
+          RED tape = destination (auto-stop)
         </div>
         <div class="nav-row">
           <span>Following</span>
@@ -540,23 +564,43 @@
       }).join('');
     }
 
-    // Color tape navigation
-    const target  = d.color_target || '—';
-    const visible = d.color_target_visible;
-    const active  = d.color_follow_active;
+    // ── Fork banner ────────────────────────────────────────────────────────
+    const forkBanner = document.getElementById('fork-banner');
+    const carState   = d.car_state || '';
+    const forkWait   = d.fork_waiting || false;
+    forkBanner.style.display = forkWait ? 'block' : 'none';
 
-    document.getElementById('val-color-target').textContent  = target;
+    // Arrived banner in status
+    if (carState === 'ARRIVED') {
+      document.getElementById('status-text').textContent = '✓ ARRIVED AT DESTINATION';
+      document.getElementById('status-text').style.color = 'var(--green)';
+    } else {
+      document.getElementById('status-text').style.color = '';
+    }
+
+    // ── Color tape navigation ──────────────────────────────────────────────
+    const target   = d.color_target || '—';
+    const visible  = d.color_target_visible;
+    const options  = d.fork_options || [];
+
+    document.getElementById('val-color-target').textContent  =
+      target !== '—' ? target : (forkWait ? 'WAITING...' : '—');
     document.getElementById('val-color-visible').textContent =
       visible == null ? '—' : (visible ? 'YES' : 'no');
     document.getElementById('val-color-follow').textContent  =
-      active  == null ? '—' : (active  ? 'ACTIVE' : 'off');
+      carState === 'COLOR_FOLLOWING' ? 'ACTIVE' :
+      carState === 'FORK_WAITING'    ? 'WAITING' :
+      carState === 'ARRIVED'         ? 'DONE' : 'off';
     document.getElementById('val-fork').textContent =
       d.fork_confidence != null ? Math.round(d.fork_confidence * 100) + '%' : '—';
 
-    // Highlight active target button
-    ['GREEN', 'BLUE', 'RED'].forEach(c => {
+    // Highlight the active target button; pulse both if waiting at fork
+    ['GREEN', 'BLUE'].forEach(c => {
       const btn = document.getElementById('btn-' + c);
-      if (btn) btn.classList.toggle('active', c === target);
+      if (!btn) return;
+      const isTarget  = (c === target);
+      const isOption  = options.includes(c);
+      btn.classList.toggle('active', isTarget || (forkWait && isOption));
     });
 
     // Detected tape chips
@@ -568,9 +612,10 @@
     } else {
       chipRow.innerHTML = dets.map(c => {
         const col = chipColors[c.color] || '#aaa';
+        const label = c.color === 'RED' ? 'DESTINATION' : c.color;
         return `<span class="color-det-chip"
           style="background:${col}22;color:${col};border:1px solid ${col}">
-          ${c.color} · ${c.side}
+          ${label} · ${c.side}
         </span>`;
       }).join('');
     }
