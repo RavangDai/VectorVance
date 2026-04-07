@@ -117,9 +117,8 @@ class AutonomousVehicle:
             print("[Detector] Classic stop-sign detector (--yolo to enable YOLO)")
 
         # ── Colour tape navigator ─────────────────────────────────────
-        self.color_detector       = ColorSignDetector(
-            target_color=target_color, frame_width=640, frame_height=480
-        )
+        self.color_detector       = ColorSignDetector(frame_width=640, frame_height=480)
+        self.color_detector.set_target(target_color)
         self._color_follow_frames = 0
 
         # ── Runtime state ─────────────────────────────────────────────

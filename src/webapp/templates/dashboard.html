@@ -605,12 +605,12 @@
 
     // Detected tape chips
     const chipColors = { GREEN: '#00e87a', BLUE: '#4da6ff', RED: '#ff3b3b' };
-    const dets = d.color_detections || [];
+    const colorDets = d.color_detections || [];
     const chipRow = document.getElementById('color-det-row');
-    if (dets.length === 0) {
+    if (colorDets.length === 0) {
       chipRow.innerHTML = '<span style="color:var(--muted);font-size:11px;">none</span>';
     } else {
-      chipRow.innerHTML = dets.map(c => {
+      chipRow.innerHTML = colorDets.map(c => {
         const col = chipColors[c.color] || '#aaa';
         const label = c.color === 'RED' ? 'DESTINATION' : c.color;
         return `<span class="color-det-chip"

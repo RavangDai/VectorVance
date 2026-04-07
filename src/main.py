@@ -556,8 +556,7 @@ class AutonomousVehicle:
         ))
         picam2.start()
         time.sleep(1)
-        print(f"[Camera] 640×480 ready"
-              f"{' + YOLO' if self.yolo_enabled else ''}")
+        print("[Camera] 640×480 ready + YOLO")
         if self.show_display:
             print("Keys: [Q] Quit  [SPACE] Auto  [R] Reset  [S] Snap  "
                   "[D] Debug  [G] Green path  [B] Blue path")
