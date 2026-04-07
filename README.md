@@ -3,12 +3,12 @@
                                                                                                                   
   ## Features
 
-  - **Lane following** — PID steering with EMA-smoothed Hough lane detection
-  - **YOLO detection** — stop signs, traffic lights, pedestrians, vehicles (YOLOv8n)
-  - **Fork navigation** — stops at forks, user picks GREEN or BLUE path via dashboard
-  - **Destination** — automatically stops when RED tape is reached
-  - **Obstacle avoidance** — HC-SR04 ultrasonic + YOLO proximity for adaptive speed
-  - **Live dashboard** — web UI with MJPEG stream, telemetry, and remote controls
+  - **Lane following**  PID steering with EMA-smoothed Hough lane detection
+  - **YOLO detection**  stop signs, traffic lights, pedestrians, vehicles (YOLOv8n)
+  - **Fork navigation** stops at forks, user picks GREEN or BLUE path via dashboard
+  - **Destination** automatically stops when RED tape is reached
+  - **Obstacle avoidance** HC-SR04 ultrasonic + YOLO proximity for adaptive speed
+  - **Live dashboard** web UI with MJPEG stream, telemetry, and remote controls
 
   ## Hardware
 
