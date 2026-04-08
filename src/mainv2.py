@@ -8,7 +8,7 @@ USAGE:
   python mainv2.py                               → interactive menu
   python mainv2.py --webcam                      → webcam directly
   python mainv2.py --video path/to/video.mp4     → video file
-  python mainv2.py --yolo --target-color GREEN   → YOLO + green tape
+  python mainv2.py --dnn --target-color GREEN    → DNN + green tape
 
 CONTROLS:
   Q           Quit
@@ -33,7 +33,7 @@ from controller import PIDController
 from speed_controller import AdaptiveSpeedController, draw_speed_indicator
 from safety import ObstacleDetector
 from sign_detector import TrafficSignDetector
-from yolo_detector import YoloDetector
+from dnn_detector import DNNDetector
 from intersection_detector import IntersectionDetector
 from color_sign_detector import ColorSignDetector
 
@@ -99,8 +99,8 @@ def pick_source_interactive(default_video_dir='test_videos'):
 # ── Autonomous vehicle (PC version — no hardware) ─────────────────────────────
 class AutonomousVehicle:
 
-    def __init__(self, max_speed=0.8, enable_yolo=True,
-                 yolo_model="yolov8n.pt", target_color="GREEN"):
+    def __init__(self, max_speed=0.8, enable_dnn=True,
+                 dnn_model="ssd_mobilenet_v2_coco.pb", target_color="GREEN"):
 
         self.perception    = LaneDetector(width=640, height=480)
         self.steering      = PIDController(Kp=0.003, Ki=0.0001, Kd=0.001)
@@ -109,12 +109,12 @@ class AutonomousVehicle:
         self.intersection_detector = IntersectionDetector()
 
         # ── Sign / obstacle detector ──────────────────────────────────
-        self.yolo_enabled = enable_yolo
-        if enable_yolo:
-            self.detector = YoloDetector(model_name=yolo_model, skip_frames=3)
+        self.dnn_enabled = enable_dnn
+        if enable_dnn:
+            self.detector = DNNDetector(model_name=dnn_model, skip_frames=3)
         else:
             self.detector = TrafficSignDetector()
-            print("[Detector] Classic stop-sign detector (--yolo to enable YOLO)")
+            print("[Detector] Classic stop-sign detector (--dnn to enable DNN)")
 
         # ── Colour tape navigator ─────────────────────────────────────
         self.color_detector       = ColorSignDetector(frame_width=640, frame_height=480)
@@ -175,7 +175,7 @@ class AutonomousVehicle:
         self.total_error += abs(steering_error)
 
         # ── Detection ─────────────────────────────────────────────────
-        if self.yolo_enabled:
+        if self.dnn_enabled:
             self.detector.detect(frame)
             obstacle_modifier = self.detector.get_speed_modifier()
         else:
@@ -312,7 +312,7 @@ class AutonomousVehicle:
         if sign_action == "STOP":
             cv2.putText(frame, "STOP DETECTED!",
                         (10, 175), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 1)
-        elif self.yolo_enabled:
+        elif self.dnn_enabled:
             danger = self.detector.get_danger_level()
             danger_colors = {
                 "CLEAR":   (100, 200, 100),
@@ -320,7 +320,7 @@ class AutonomousVehicle:
                 "DANGER":  (0,   100, 255),
                 "STOP":    (0,   0,   255),
             }
-            cv2.putText(frame, f"YOLO: {danger}",
+            cv2.putText(frame, f"DNN: {danger}",
                         (10, 175), cv2.FONT_HERSHEY_SIMPLEX, 0.45,
                         danger_colors.get(danger, (150, 150, 150)), 1)
         else:
@@ -459,7 +459,7 @@ class AutonomousVehicle:
 
             title = ("VectorVance  "
                      + ("AUTO" if self.autonomous_enabled else "MANUAL")
-                     + (" [YOLO]" if self.yolo_enabled else "")
+                     + (" [DNN]" if self.dnn_enabled else "")
                      + f"  tape:{self.color_detector.target_color}")
             cv2.imshow(title, debug_frame)
 
@@ -488,8 +488,8 @@ class AutonomousVehicle:
                 cv2.imwrite(fname, debug_frame)
                 print(f"Snapshot: {fname}")
             elif key == ord('d'):
-                if self.yolo_enabled:
-                    print(f"YOLO: {len(self.detector.all_detections)} dets | "
+                if self.dnn_enabled:
+                    print(f"DNN: {len(self.detector.all_detections)} dets | "
                           f"danger={self.detector.get_danger_level()}")
                     for d in self.detector.all_detections:
                         print(f"  {d[1]} {d[3]:.0%}")
@@ -535,8 +535,8 @@ def main():
     p.add_argument("--speed",         type=float, default=0.8)
     p.add_argument("--rotate",        action="store_true")
     p.add_argument("--no-rotate",     action="store_true")
-    p.add_argument("--yolo",          action="store_true")
-    p.add_argument("--yolo-model",    type=str,   default="yolov8n.pt")
+    p.add_argument("--dnn",           action="store_true")
+    p.add_argument("--dnn-model",     type=str,   default="ssd_mobilenet_v2_coco.pb")
     p.add_argument("--target-color",  type=str,   default="GREEN",
                    choices=["GREEN", "BLUE", "RED"],
                    help="Tape colour to follow at forks (default: GREEN)")
@@ -544,8 +544,8 @@ def main():
 
     vehicle = AutonomousVehicle(
         max_speed    = args.speed,
-        enable_yolo  = args.yolo,
-        yolo_model   = args.yolo_model,
+        enable_dnn   = args.dnn,
+        dnn_model    = args.dnn_model,
         target_color = args.target_color,
     )
 

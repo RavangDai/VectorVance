@@ -2,14 +2,14 @@
 main.py - VectorVance Autonomous Car (PRODUCTION)
 ──────────────────────────────────────────────────
 Hardware : Picamera2 + dual L298N motors + HC-SR04 ultrasonic
-Detection: YOLO v8n (always active)
+Detection: MobileNet SSD v2 (always active)
 Control  : PID lane-follow + adaptive speed + obstacle avoidance
 Fork nav : Stops at fork, waits for user to pick colour on dashboard,
            then follows that tape and stops on RED destination tape.
 Dashboard: Live web UI at http://<pi-ip>:5000/
 
 USAGE:
-  python main.py                    # full autonomous (YOLO always on)
+  python main.py                    # full autonomous (MobileNet SSD always on)
   python main.py --no-web           # disable web dashboard
   python main.py --no-display       # headless (no cv2 window)
 
@@ -30,11 +30,12 @@ import argparse
 from gpiozero import Motor
 from picamera2 import Picamera2
 
+from camera import FisheyeCamera
 from perception import LaneDetector, SmoothValue
 from controller import PIDController
 from speed_controller import AdaptiveSpeedController, draw_speed_indicator
 from safety import ObstacleDetector
-from yolo_detector import YoloDetector
+from dnn_detector import DNNDetector
 from intersection_detector import IntersectionDetector
 from color_sign_detector import ColorSignDetector
 import pi_server
@@ -60,12 +61,26 @@ class State:
 class AutonomousVehicle:
 
     def __init__(self,
-                 max_speed    = 0.8,
-                 yolo_model   = "yolov8n.pt",
-                 yolo_skip    = 5,
-                 enable_web   = True,
-                 web_port     = 5000,
-                 show_display = True):
+                 max_speed        = 0.8,
+                 dnn_model        = "ssd_mobilenet_v2_coco.pb",
+                 dnn_skip         = 5,
+                 enable_web       = True,
+                 web_port         = 5000,
+                 show_display     = True,
+                 fov_deg          = 160.0,
+                 undistort        = True,
+                 calibration_file = None):
+
+        # ── Camera (fisheye undistortion for 160° lens) ──────────────
+        self.undistort_enabled = undistort
+        if undistort:
+            if calibration_file:
+                self.camera = FisheyeCamera.from_file(calibration_file)
+            else:
+                self.camera = FisheyeCamera(fov_deg=fov_deg)
+        else:
+            self.camera = None
+            print(f"[Camera] Undistortion disabled (FOV={fov_deg}°)")
 
         # ── Perception & control ──────────────────────────────────────
         self.perception    = LaneDetector(width=640, height=480)
@@ -77,7 +92,7 @@ class AutonomousVehicle:
         self.intersection_detector = IntersectionDetector()
 
         # ── Sign / obstacle detector ──────────────────────────────────
-        self.detector = YoloDetector(model_name=yolo_model, skip_frames=yolo_skip)
+        self.detector = DNNDetector(model_name=dnn_model, skip_frames=dnn_skip)
 
         # ── Colour tape detector ──────────────────────────────────────
         self.color_detector = ColorSignDetector(frame_width=640, frame_height=480)
@@ -264,9 +279,9 @@ class AutonomousVehicle:
 
     def _build_telemetry(self, left: float, right: float, status: str) -> dict:
         elapsed   = max(time.time() - self._start_time, 0.1)
-        yolo_dets = [{"label": d[1], "conf": round(d[3], 2)}
-                     for d in self.detector.all_detections]
-        yolo_danger = self.detector.get_danger_level()
+        dnn_dets = [{"label": d[1], "conf": round(d[3], 2)}
+                    for d in self.detector.all_detections]
+        dnn_danger = self.detector.get_danger_level()
 
         color_dets = [
             {"color": c, "side": det["side"]}
@@ -288,9 +303,9 @@ class AutonomousVehicle:
             "fps":                   round(self.frame_count / elapsed, 1),
             "frame_count":           self.frame_count,
             "stop_signs_detected":   self.stop_signs_detected,
-            "yolo_enabled":          True,
-            "yolo_detections":       yolo_dets,
-            "yolo_danger":           yolo_danger,
+            "dnn_enabled":           True,
+            "dnn_detections":        dnn_dets,
+            "dnn_danger":            dnn_danger,
             "obstacle_modifier":     round(self.detector.get_speed_modifier(), 2),
             "fork_confidence":       round(self.intersection_detector.fork_confidence, 2),
             "color_target":          self.color_detector.target_color,
@@ -499,7 +514,7 @@ class AutonomousVehicle:
                         (w//2 - 210, h//2 + 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
 
-        # Sign / YOLO status
+        # Sign / DNN status
         danger = self.detector.get_danger_level()
         danger_colors = {
             "CLEAR":   (100, 200, 100),
@@ -507,7 +522,7 @@ class AutonomousVehicle:
             "DANGER":  (0,   100, 255),
             "STOP":    (0,   0,   255),
         }
-        cv2.putText(frame, f"YOLO: {danger}",
+        cv2.putText(frame, f"DNN: {danger}",
                     (10, 175), cv2.FONT_HERSHEY_SIMPLEX, 0.45,
                     danger_colors.get(danger, (150, 150, 150)), 1)
 
@@ -591,7 +606,7 @@ class AutonomousVehicle:
         ))
         picam2.start()
         time.sleep(1)
-        print("[Camera] 640×480 ready + YOLO")
+        print("[Camera] 640×480 ready + MobileNet SSD")
         if self.show_display:
             print("Keys: [Q] Quit  [SPACE] Auto  [R] Reset  [S] Snap  "
                   "[D] Debug  [G] Green path  [B] Blue path")
@@ -601,6 +616,8 @@ class AutonomousVehicle:
         while True:
             frame = picam2.capture_array()
             frame = cv2.rotate(frame, cv2.ROTATE_180)  # camera mounted upside-down
+            if self.undistort_enabled and self.camera:
+                frame = self.camera.undistort(frame)
             debug_frame, (left, right, status) = self.process_frame(frame)
 
             if self.web_enabled:
@@ -651,7 +668,7 @@ class AutonomousVehicle:
                 elif key == ord('d'):
                     print(f"State: {self.car_state}")
                     print(f"Tape detections: {self.color_detector.detections}")
-                    print(f"YOLO: {len(self.detector.all_detections)} dets | "
+                    print(f"DNN: {len(self.detector.all_detections)} dets | "
                           f"danger={self.detector.get_danger_level()}")
                 elif key == ord('g'):
                     self.color_detector.set_target("GREEN")
@@ -680,20 +697,29 @@ class AutonomousVehicle:
 def main():
     p = argparse.ArgumentParser(description="VectorVance Autonomous Car")
     p.add_argument("--speed",       type=float, default=0.8)
-    p.add_argument("--yolo-model",  type=str,   default="yolov8n.pt")
-    p.add_argument("--yolo-skip",   type=int,   default=5)
-    p.add_argument("--port",        type=int,   default=5000)
-    p.add_argument("--no-web",      action="store_true")
-    p.add_argument("--no-display",  action="store_true")
+    p.add_argument("--dnn-model",     type=str,   default="ssd_mobilenet_v2_coco.pb")
+    p.add_argument("--dnn-skip",      type=int,   default=5)
+    p.add_argument("--port",          type=int,   default=5000)
+    p.add_argument("--no-web",        action="store_true")
+    p.add_argument("--no-display",    action="store_true")
+    p.add_argument("--fov",           type=float, default=160.0,
+                   help="Camera FOV in degrees (default: 160)")
+    p.add_argument("--no-undistort",  action="store_true",
+                   help="Disable fisheye undistortion")
+    p.add_argument("--calibration",   type=str,   default=None,
+                   help="Path to calibration .npz file (uses approximation if omitted)")
     args = p.parse_args()
 
     AutonomousVehicle(
         max_speed    = args.speed,
-        yolo_model   = args.yolo_model,
-        yolo_skip    = args.yolo_skip,
-        enable_web   = not args.no_web,
-        web_port     = args.port,
-        show_display = not args.no_display,
+        dnn_model        = args.dnn_model,
+        dnn_skip         = args.dnn_skip,
+        enable_web       = not args.no_web,
+        web_port         = args.port,
+        show_display     = not args.no_display,
+        fov_deg          = args.fov,
+        undistort        = not args.no_undistort,
+        calibration_file = args.calibration,
     ).run()
 
 

@@ -179,7 +179,7 @@
     .speed-bar-label { font-size: 10px; color: var(--muted); }
     .speed-bar-val { font-size: 11px; font-weight: 600; color: var(--text); }
 
-    /* ── YOLO detections ── */
+    /* ── DNN detections ── */
     .detection-list { display: flex; flex-direction: column; gap: 6px; }
     .detection-item {
       display: flex;
@@ -430,9 +430,9 @@
       </div>
     </div>
 
-    <!-- YOLO Detections -->
+    <!-- DNN Detections -->
     <div class="card">
-      <div class="card-title">YOLO Detections</div>
+      <div class="card-title">DNN Detections</div>
       <div class="card-body">
         <div class="detection-list" id="detection-list">
           <div class="no-detections">No detections</div>
@@ -598,11 +598,11 @@
       banner.style.display = 'none';
     }
 
-    // YOLO detections
+    // DNN detections
     const dl   = document.getElementById('detection-list');
-    const dets = d.yolo_detections || [];
-    if (!d.yolo_enabled || dets.length === 0) {
-      dl.innerHTML = `<div class="no-detections">${d.yolo_enabled ? 'No detections' : 'YOLO disabled'}</div>`;
+    const dets = d.dnn_detections || [];
+    if (!d.dnn_enabled || dets.length === 0) {
+      dl.innerHTML = `<div class="no-detections">${d.dnn_enabled ? 'No detections' : 'DNN disabled'}</div>`;
     } else {
       dl.innerHTML = dets.map(det => {
         const cls = det.label === 'stop sign' ? 'stop-sign'
