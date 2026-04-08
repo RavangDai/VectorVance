@@ -179,6 +179,41 @@ class AutonomousVehicle:
                   self.front_right, self.rear_right):
             m.stop()
 
+    def _drive_manual(self, left: float, right: float):
+        """Manual drive: positive = forward, negative = backward."""
+        left  = max(-1.0, min(1.0, left))
+        right = max(-1.0, min(1.0, right))
+
+        if abs(left) < 0.05:
+            self.front_left.stop();  self.rear_left.stop()
+        elif left > 0:
+            self.front_left.backward(left);  self.rear_left.backward(left)
+        else:
+            self.front_left.forward(-left);  self.rear_left.forward(-left)
+
+        if abs(right) < 0.05:
+            self.front_right.stop(); self.rear_right.stop()
+        elif right > 0:
+            self.front_right.backward(right); self.rear_right.backward(right)
+        else:
+            self.front_right.forward(-right); self.rear_right.forward(-right)
+
+    def _apply_manual_drive(self, keys: dict):
+        """Translate WASD key state into motor commands."""
+        spd = 0.65
+        w, a, s, d = keys.get("w"), keys.get("a"), keys.get("s"), keys.get("d")
+        if w:
+            if a:   self._drive_manual(spd * 0.25, spd)    # forward-left
+            elif d: self._drive_manual(spd, spd * 0.25)    # forward-right
+            else:   self._drive_manual(spd, spd)            # straight forward
+        elif s:
+            if a:   self._drive_manual(-spd * 0.25, -spd)  # reverse-left
+            elif d: self._drive_manual(-spd, -spd * 0.25)  # reverse-right
+            else:   self._drive_manual(-spd, -spd)          # straight reverse
+        elif a:     self._drive_manual(-spd * 0.5,  spd * 0.5)  # spin left
+        elif d:     self._drive_manual( spd * 0.5, -spd * 0.5)  # spin right
+        else:       self._stop_motors()
+
     def _cleanup_hardware(self):
         self._stop_motors()
         for m in (self.front_left, self.rear_left,
@@ -571,12 +606,14 @@ class AutonomousVehicle:
             if self.web_enabled:
                 self._handle_web_commands()
 
-            # Motors only run when autonomous AND not waiting/arrived
-            if (self.autonomous_enabled and
-                    self.car_state not in (State.FORK_WAITING, State.ARRIVED)):
-                self._drive(left, right)
-            else:
-                self._stop_motors()
+            # Motors: autonomous drives by PID, manual drives by WASD keys
+            if self.autonomous_enabled:
+                if self.car_state not in (State.FORK_WAITING, State.ARRIVED):
+                    self._drive(left, right)
+                else:
+                    self._stop_motors()
+            elif self.web_enabled:
+                self._apply_manual_drive(pi_server.get_manual_keys())
 
             if self.web_enabled:
                 pi_server.push_frame(debug_frame)

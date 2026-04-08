@@ -229,6 +229,39 @@
     .nav-row { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: var(--muted); }
     .nav-row span { color: var(--text); font-weight: 600; }
 
+    /* ── WASD Manual Control ── */
+    .wasd-card-body { padding: 10px 12px; }
+    .wasd-hint { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+    .wasd-grid {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 8px;
+    }
+    .wasd-row { display: flex; gap: 4px; }
+    .key-box {
+      width: 36px; height: 36px;
+      background: #1e1f26;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--muted);
+      transition: background 0.1s, color 0.1s, border-color 0.1s;
+      user-select: none;
+    }
+    .key-box.active {
+      background: rgba(0, 212, 255, 0.15);
+      border-color: var(--cyan);
+      color: var(--cyan);
+      box-shadow: 0 0 8px rgba(0,212,255,0.3);
+    }
+    .manual-inactive { color: var(--muted); font-size: 11px; text-align: center; }
+
     /* ── Log ── */
     .log-list {
       font-size: 11px;
@@ -445,6 +478,25 @@
             <span style="color:var(--muted);font-size:11px;">none</span>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Manual Control -->
+    <div class="card">
+      <div class="card-title">Manual Control</div>
+      <div class="wasd-card-body">
+        <div class="wasd-hint">Switch to Manual mode, then use keyboard:</div>
+        <div class="wasd-grid">
+          <div class="wasd-row">
+            <div class="key-box" id="key-w">W</div>
+          </div>
+          <div class="wasd-row">
+            <div class="key-box" id="key-a">A</div>
+            <div class="key-box" id="key-s">S</div>
+            <div class="key-box" id="key-d">D</div>
+          </div>
+        </div>
+        <div id="manual-status" class="manual-inactive">Toggle Auto OFF to drive</div>
       </div>
     </div>
 
@@ -667,6 +719,77 @@
   function onSpeedChange(val) {
     speedValue = val / 100;
     document.getElementById('speed-val').textContent = speedValue.toFixed(2);
+  }
+
+  // ── Manual WASD drive ─────────────────────────────────────────────────────
+  const manualKeys = { w: false, a: false, s: false, d: false };
+  let isManualMode = false;
+
+  function updateKeyVisual() {
+    ['w','a','s','d'].forEach(k => {
+      const el = document.getElementById('key-' + k);
+      if (el) el.classList.toggle('active', manualKeys[k]);
+    });
+    const status = document.getElementById('manual-status');
+    if (!isManualMode) {
+      status.textContent = 'Toggle Auto OFF to drive';
+      status.style.color = '';
+    } else {
+      const active = Object.entries(manualKeys).filter(([,v]) => v).map(([k]) => k.toUpperCase());
+      status.textContent = active.length ? 'Driving: ' + active.join('+') : 'Ready — press W/A/S/D';
+      status.style.color = active.length ? 'var(--cyan)' : 'var(--green)';
+    }
+  }
+
+  async function sendManualDrive() {
+    if (!isManualMode) return;
+    try {
+      await fetch('/api/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'manual_drive', keys: { ...manualKeys } })
+      });
+    } catch {}
+    updateKeyVisual();
+  }
+
+  async function stopManualDrive() {
+    Object.keys(manualKeys).forEach(k => manualKeys[k] = false);
+    updateKeyVisual();
+    try {
+      await fetch('/api/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'manual_drive', keys: { w:false, a:false, s:false, d:false } })
+      });
+    } catch {}
+  }
+
+  document.addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    if (!(k in manualKeys)) return;
+    e.preventDefault();
+    if (!manualKeys[k]) { manualKeys[k] = true; sendManualDrive(); }
+  });
+
+  document.addEventListener('keyup', e => {
+    const k = e.key.toLowerCase();
+    if (!(k in manualKeys)) return;
+    manualKeys[k] = false;
+    sendManualDrive();
+  });
+
+  // Stop car if browser tab loses focus
+  window.addEventListener('blur', stopManualDrive);
+
+  // Track manual mode from telemetry
+  const _origUpdateUI = updateUI;
+  function updateUI(d) {
+    _origUpdateUI(d);
+    const wasManual = isManualMode;
+    isManualMode = (d.mode === 'MANUAL');
+    if (wasManual && !isManualMode) stopManualDrive();
+    updateKeyVisual();
   }
 
   // ── Start polling ──────────────────────────────────────────────────────────

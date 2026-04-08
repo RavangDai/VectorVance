@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(python app.py)",
+      "Bash(curl -s http://localhost:3000/api/state)",
+      "Bash(pkill -f \"python app.py\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('OK — status:', d['status']\\)\")",
+      "Bash(python:*)",
+      "Bash(ls *.py)"
+    ]
+  }
+}

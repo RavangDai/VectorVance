@@ -99,7 +99,7 @@ def pick_source_interactive(default_video_dir='test_videos'):
 # ── Autonomous vehicle (PC version — no hardware) ─────────────────────────────
 class AutonomousVehicle:
 
-    def __init__(self, max_speed=0.8, enable_yolo=False,
+    def __init__(self, max_speed=0.8, enable_yolo=True,
                  yolo_model="yolov8n.pt", target_color="GREEN"):
 
         self.perception    = LaneDetector(width=640, height=480)

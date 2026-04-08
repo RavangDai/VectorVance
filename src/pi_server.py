@@ -39,6 +39,9 @@ _telemetry     = {}            # latest telemetry dict from main loop
 _cmd_lock      = threading.Lock()
 _pending_cmd   = None          # command dict waiting to be executed
 
+_manual_keys_lock = threading.Lock()
+_manual_keys      = {"w": False, "a": False, "s": False, "d": False}
+
 
 # ── Public API (called from main.py) ─────────────────────────────────────────
 
@@ -67,6 +70,12 @@ def clear_command():
     global _pending_cmd
     with _cmd_lock:
         _pending_cmd = None
+
+
+def get_manual_keys() -> dict:
+    """Return current WASD key state for manual drive. Called every loop iteration."""
+    with _manual_keys_lock:
+        return dict(_manual_keys)
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -149,9 +158,18 @@ def start_server(port: int = 5000) -> bool:
             return jsonify({"error": "No JSON body"}), 400
 
         action = body.get("action")
-        valid = {"toggle_auto", "emergency_stop", "reset", "set_speed", "set_target_color"}
+        valid = {"toggle_auto", "emergency_stop", "reset", "set_speed",
+                 "set_target_color", "manual_drive"}
         if action not in valid:
             return jsonify({"error": f"Unknown action '{action}'"}), 400
+
+        # manual_drive is a continuous key-state update — bypass the one-shot cmd queue
+        if action == "manual_drive":
+            global _manual_keys
+            with _manual_keys_lock:
+                _manual_keys = body.get("keys", {"w": False, "a": False,
+                                                  "s": False, "d": False})
+            return jsonify({"status": "ok", "action": action})
 
         with _cmd_lock:
             _pending_cmd = body
