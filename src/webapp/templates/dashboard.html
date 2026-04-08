@@ -31,24 +31,97 @@
       flex-direction: column;
     }
 
+    /* ── Connection splash ── */
+    #conn-splash {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      z-index: 999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 24px;
+      transition: opacity 0.5s ease;
+    }
+    #conn-splash.fade-out { opacity: 0; pointer-events: none; }
+    .splash-logo {
+      font-size: 36px;
+      font-weight: 800;
+      letter-spacing: 4px;
+      color: var(--cyan);
+      text-transform: uppercase;
+    }
+    .splash-sub { color: var(--muted); font-size: 13px; letter-spacing: 1px; }
+    .splash-spinner {
+      width: 40px; height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--cyan);
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #splash-msg { font-size: 13px; color: var(--muted); }
+    .splash-dot-row { display: flex; gap: 6px; }
+    .splash-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: var(--border);
+      animation: splash-pulse 1.2s ease-in-out infinite;
+    }
+    .splash-dot:nth-child(2) { animation-delay: 0.2s; }
+    .splash-dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes splash-pulse {
+      0%, 100% { background: var(--border); }
+      50%       { background: var(--cyan); }
+    }
+
     /* ── Header ── */
     header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 12px 20px;
+      padding: 10px 20px;
       background: var(--surface);
       border-bottom: 1px solid var(--border);
+      gap: 12px;
     }
-    header h1 {
+    .header-brand h1 {
       font-size: 18px;
       font-weight: 700;
       letter-spacing: 2px;
       color: var(--cyan);
       text-transform: uppercase;
     }
-    header .subtitle { color: var(--muted); font-size: 12px; margin-top: 2px; }
-    .conn-row { display: flex; align-items: center; gap: 8px; }
+    .header-brand .subtitle { color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+    /* ── Mode tabs ── */
+    .mode-tabs {
+      display: flex;
+      gap: 4px;
+      background: var(--bg);
+      padding: 4px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+    .mode-tab {
+      padding: 7px 18px;
+      border: none;
+      border-radius: 7px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      cursor: pointer;
+      background: transparent;
+      color: var(--muted);
+      transition: background 0.15s, color 0.15s;
+    }
+    .mode-tab:disabled { cursor: not-allowed; opacity: 0.35; }
+    .mode-tab:not(:disabled):hover { color: var(--text); background: var(--border); }
+    .mode-tab.active[data-mode="FSD"]    { background: rgba(0,212,255,0.15); color: var(--cyan);   border: 1px solid var(--cyan); }
+    .mode-tab.active[data-mode="LANE"]   { background: rgba(0,232,122,0.15); color: var(--green);  border: 1px solid var(--green); }
+    .mode-tab.active[data-mode="MANUAL"] { background: rgba(255,140,66,0.15); color: var(--orange); border: 1px solid var(--orange); }
+
+    /* ── Connection indicator ── */
+    .conn-row { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
     .dot {
       width: 10px; height: 10px; border-radius: 50%;
       background: var(--muted);
@@ -75,6 +148,7 @@
       overflow: hidden;
       display: flex;
       flex-direction: column;
+      position: relative;
     }
     .video-panel .panel-title {
       padding: 8px 12px;
@@ -119,62 +193,37 @@
     .card-body { padding: 10px 12px; }
 
     /* ── Status grid ── */
-    .stat-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-    }
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .stat-item { display: flex; flex-direction: column; gap: 2px; }
     .stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
     .stat-value {
-      font-size: 18px;
-      font-weight: 700;
-      font-variant-numeric: tabular-nums;
-      color: var(--cyan);
+      font-size: 18px; font-weight: 700;
+      font-variant-numeric: tabular-nums; color: var(--cyan);
     }
-    .stat-value.good  { color: var(--green); }
-    .stat-value.warn  { color: var(--orange); }
-    .stat-value.danger{ color: var(--red); }
+    .stat-value.good   { color: var(--green); }
+    .stat-value.warn   { color: var(--orange); }
+    .stat-value.danger { color: var(--red); }
 
     /* ── Mode badge ── */
     .mode-badge {
-      display: inline-block;
-      padding: 4px 10px;
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 1px;
-      background: rgba(0, 232, 122, 0.15);
-      color: var(--green);
-      border: 1px solid var(--green);
+      display: inline-block; padding: 4px 10px; border-radius: 20px;
+      font-size: 12px; font-weight: 700; letter-spacing: 1px;
+      background: rgba(0,212,255,0.15); color: var(--cyan); border: 1px solid var(--cyan);
     }
-    .mode-badge.manual {
-      background: rgba(255, 140, 66, 0.15);
-      color: var(--orange);
-      border-color: var(--orange);
-    }
-    .mode-badge.stopped {
-      background: rgba(255, 59, 59, 0.15);
-      color: var(--red);
-      border-color: var(--red);
-    }
+    .mode-badge.lane    { background: rgba(0,232,122,0.15); color: var(--green);  border-color: var(--green); }
+    .mode-badge.manual  { background: rgba(255,140,66,0.15); color: var(--orange); border-color: var(--orange); }
+    .mode-badge.stopped { background: rgba(255,59,59,0.15);  color: var(--red);   border-color: var(--red); }
 
     /* ── Speed bars ── */
     .speed-bars { display: flex; gap: 10px; align-items: flex-end; height: 60px; }
     .speed-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
     .speed-bar-bg {
-      width: 100%; height: 44px;
-      background: #1e1f26;
-      border-radius: 4px;
-      position: relative;
-      overflow: hidden;
+      width: 100%; height: 44px; background: #1e1f26;
+      border-radius: 4px; position: relative; overflow: hidden;
     }
     .speed-bar-fill {
-      position: absolute;
-      bottom: 0; left: 0; right: 0;
-      background: var(--cyan);
-      border-radius: 4px;
-      transition: height 0.15s ease;
+      position: absolute; bottom: 0; left: 0; right: 0;
+      background: var(--cyan); border-radius: 4px; transition: height 0.15s ease;
     }
     .speed-bar-label { font-size: 10px; color: var(--muted); }
     .speed-bar-val { font-size: 11px; font-weight: 600; color: var(--text); }
@@ -182,162 +231,126 @@
     /* ── DNN detections ── */
     .detection-list { display: flex; flex-direction: column; gap: 6px; }
     .detection-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 5px 8px;
-      background: #1e1f26;
-      border-radius: 6px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 5px 8px; background: #1e1f26; border-radius: 6px;
       border-left: 3px solid var(--cyan);
     }
     .detection-item.stop-sign { border-left-color: var(--red); }
     .detection-item.person    { border-left-color: var(--orange); }
     .detection-item.vehicle   { border-left-color: var(--green); }
     .detection-name { font-size: 12px; font-weight: 600; }
-    .detection-conf {
-      font-size: 11px; color: var(--muted);
-      font-variant-numeric: tabular-nums;
-    }
+    .detection-conf { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
     .no-detections { color: var(--muted); font-size: 12px; text-align: center; padding: 8px 0; }
 
     /* ── Color navigation ── */
     .color-btn-row { display: flex; gap: 6px; margin-bottom: 10px; }
     .color-btn {
-      flex: 1;
-      padding: 7px 0;
-      border: 2px solid transparent;
-      border-radius: 7px;
-      font-size: 12px;
-      font-weight: 700;
-      cursor: pointer;
-      letter-spacing: 0.5px;
-      opacity: 0.45;
-      transition: opacity 0.2s, filter 0.2s;
+      flex: 1; padding: 7px 0; border: 2px solid transparent; border-radius: 7px;
+      font-size: 12px; font-weight: 700; cursor: pointer; letter-spacing: 0.5px;
+      opacity: 0.45; transition: opacity 0.2s, filter 0.2s;
     }
     .color-btn.active { opacity: 1; filter: brightness(1.2); }
     .color-btn:hover  { opacity: 0.8; }
-    .btn-green  { background: rgba(0,232,122,0.15); color: #00e87a; border-color: #00e87a; }
-    .btn-blue   { background: rgba(77,166,255,0.15); color: #4da6ff; border-color: #4da6ff; }
-    .btn-red    { background: rgba(255,59,59,0.15);  color: #ff3b3b; border-color: #ff3b3b; }
+    .btn-green { background: rgba(0,232,122,0.15); color: #00e87a; border-color: #00e87a; }
+    .btn-blue  { background: rgba(77,166,255,0.15); color: #4da6ff; border-color: #4da6ff; }
     .color-det-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
     .color-det-chip {
-      padding: 3px 8px;
-      border-radius: 4px;
-      font-size: 11px;
-      font-weight: 600;
+      padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;
     }
     .nav-row { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: var(--muted); }
     .nav-row span { color: var(--text); font-weight: 600; }
 
-    /* ── WASD Manual Control ── */
-    .wasd-card-body { padding: 10px 12px; }
+    /* ── Manual control card ── */
+    .manual-card-body { padding: 10px 12px; }
+
+    /* WASD key display (shown when mode != MANUAL) */
     .wasd-hint { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
-    .wasd-grid {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 4px;
-      margin-bottom: 8px;
-    }
+    .wasd-grid { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-bottom: 8px; }
     .wasd-row { display: flex; gap: 4px; }
     .key-box {
-      width: 36px; height: 36px;
-      background: #1e1f26;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 13px;
-      font-weight: 700;
-      color: var(--muted);
-      transition: background 0.1s, color 0.1s, border-color 0.1s;
-      user-select: none;
+      width: 36px; height: 36px; background: #1e1f26;
+      border: 1px solid var(--border); border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 700; color: var(--muted);
+      transition: background 0.1s, color 0.1s, border-color 0.1s; user-select: none;
     }
     .key-box.active {
-      background: rgba(0, 212, 255, 0.15);
-      border-color: var(--cyan);
-      color: var(--cyan);
-      box-shadow: 0 0 8px rgba(0,212,255,0.3);
+      background: rgba(0,212,255,0.15); border-color: var(--cyan);
+      color: var(--cyan); box-shadow: 0 0 8px rgba(0,212,255,0.3);
     }
     .manual-inactive { color: var(--muted); font-size: 11px; text-align: center; }
 
+    /* D-pad (shown when mode == MANUAL) */
+    #dpad-container { display: none; }
+    .dpad-label { font-size: 11px; color: var(--green); font-weight: 600; margin-bottom: 10px; text-align: center; }
+    .dpad {
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      margin-bottom: 8px;
+    }
+    .dpad-row { display: flex; gap: 4px; align-items: center; }
+    .dpad-btn {
+      width: 54px; height: 54px; border-radius: 10px;
+      border: 2px solid var(--border); background: #1e1f26;
+      color: var(--muted); font-size: 20px; font-weight: 700;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      user-select: none; transition: background 0.1s, color 0.1s, border-color 0.1s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .dpad-btn:active,
+    .dpad-btn.pressed {
+      background: rgba(0,212,255,0.2); border-color: var(--cyan);
+      color: var(--cyan); box-shadow: 0 0 10px rgba(0,212,255,0.35);
+    }
+    .dpad-stop {
+      width: 44px; height: 44px; font-size: 16px;
+      background: rgba(255,59,59,0.1); border-color: var(--red); color: var(--red);
+    }
+    .dpad-stop:active { background: rgba(255,59,59,0.3); }
+    #dpad-status { font-size: 11px; color: var(--muted); text-align: center; margin-top: 4px; }
+
     /* ── Log ── */
     .log-list {
-      font-size: 11px;
-      font-family: 'Consolas', monospace;
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-      max-height: 100px;
-      overflow-y: auto;
+      font-size: 11px; font-family: 'Consolas', monospace;
+      display: flex; flex-direction: column; gap: 3px;
+      max-height: 100px; overflow-y: auto;
     }
     .log-item { color: var(--muted); }
     .log-item.new { color: var(--text); }
     .log-item .ts { color: var(--border); margin-right: 6px; }
 
-    /* ── Controls ── */
+    /* ── Controls bar ── */
     .controls {
-      display: flex;
-      gap: 8px;
-      padding: 10px 12px;
-      background: var(--surface);
-      border-top: 1px solid var(--border);
-      flex-wrap: wrap;
+      display: flex; gap: 8px; padding: 10px 12px;
+      background: var(--surface); border-top: 1px solid var(--border); flex-wrap: wrap;
     }
     .btn {
-      padding: 8px 18px;
-      border: none;
-      border-radius: 7px;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      letter-spacing: 0.5px;
+      padding: 8px 18px; border: none; border-radius: 7px;
+      font-size: 13px; font-weight: 600; cursor: pointer; letter-spacing: 0.5px;
       transition: opacity 0.15s, transform 0.1s;
     }
-    .btn:active { transform: scale(0.97); }
-    .btn-primary  { background: var(--cyan);   color: #000; }
-    .btn-warning  { background: var(--orange); color: #000; }
-    .btn-danger   { background: var(--red);    color: #fff; }
-    .btn-neutral  { background: var(--border); color: var(--text); }
+    .btn:active  { transform: scale(0.97); }
+    .btn-danger  { background: var(--red);    color: #fff; }
+    .btn-neutral { background: var(--border); color: var(--text); }
     .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
     .speed-control {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-left: auto;
+      display: flex; align-items: center; gap: 8px; margin-left: auto;
     }
     .speed-control label { font-size: 12px; color: var(--muted); white-space: nowrap; }
-    .speed-control input[type=range] {
-      width: 100px;
-      accent-color: var(--cyan);
-    }
+    .speed-control input[type=range] { width: 100px; accent-color: var(--cyan); }
     #speed-val { font-size: 12px; font-weight: 700; color: var(--cyan); min-width: 32px; }
 
-    /* ── Obstacle banner ── */
+    /* ── Banners ── */
     #obstacle-banner {
-      display: none;
-      padding: 6px 12px;
-      background: var(--red);
-      color: #fff;
-      font-size: 12px;
-      font-weight: 700;
-      text-align: center;
-      letter-spacing: 1px;
+      display: none; padding: 6px 12px; background: var(--red);
+      color: #fff; font-size: 12px; font-weight: 700;
+      text-align: center; letter-spacing: 1px;
     }
     #obstacle-banner.warn { background: var(--orange); }
-
-    /* ── Fork waiting banner ── */
     #fork-banner {
-      display: none;
-      padding: 10px 20px;
-      background: #00529e;
-      color: #fff;
-      font-size: 14px;
-      font-weight: 700;
-      text-align: center;
-      letter-spacing: 1px;
+      display: none; padding: 10px 20px; background: #00529e;
+      color: #fff; font-size: 14px; font-weight: 700;
+      text-align: center; letter-spacing: 1px;
       animation: pulse-border 1s infinite;
     }
     @keyframes pulse-border {
@@ -347,26 +360,46 @@
 
     @media (max-width: 800px) {
       .main { grid-template-columns: 1fr; }
+      .mode-tabs { flex-wrap: wrap; }
     }
   </style>
 </head>
 <body>
 
+<!-- ── Connection splash ── -->
+<div id="conn-splash">
+  <div class="splash-logo">VectorVance</div>
+  <div class="splash-sub">Autonomous Vehicle Dashboard</div>
+  <div class="splash-spinner"></div>
+  <div id="splash-msg">Connecting to Pi&hellip;</div>
+  <div class="splash-dot-row">
+    <div class="splash-dot"></div>
+    <div class="splash-dot"></div>
+    <div class="splash-dot"></div>
+  </div>
+</div>
+
 <header>
-  <div>
+  <div class="header-brand">
     <h1>VectorVance</h1>
     <div class="subtitle">Autonomous Vehicle Dashboard</div>
   </div>
+
+  <!-- 3-mode toggle — disabled until Pi connects -->
+  <div class="mode-tabs" id="mode-tabs">
+    <button class="mode-tab" data-mode="FSD"    onclick="setMode('FSD')"    disabled>FSD</button>
+    <button class="mode-tab" data-mode="LANE"   onclick="setMode('LANE')"   disabled>LaneCheck</button>
+    <button class="mode-tab" data-mode="MANUAL" onclick="setMode('MANUAL')" disabled>Manual</button>
+  </div>
+
   <div class="conn-row">
     <div class="dot" id="conn-dot"></div>
-    <span id="conn-label">Connecting...</span>
+    <span id="conn-label">Connecting&hellip;</span>
   </div>
 </header>
 
 <div id="obstacle-banner">OBSTACLE DETECTED</div>
-<div id="fork-banner">
-  CAR IS AT FORK — SELECT PATH BELOW
-</div>
+<div id="fork-banner">CAR IS AT FORK — SELECT PATH BELOW</div>
 
 <div class="main">
 
@@ -407,7 +440,6 @@
             <span class="stat-value" id="val-stops">—</span>
           </div>
         </div>
-        <!-- Motor speed bars -->
         <div style="margin-top:12px;">
           <div class="stat-label" style="margin-bottom:6px;">Motor Speed</div>
           <div class="speed-bars">
@@ -441,7 +473,7 @@
     </div>
 
     <!-- Color Tape Navigation -->
-    <div class="card">
+    <div class="card" id="color-nav-card">
       <div class="card-title">Color Tape Navigation</div>
       <div class="card-body">
         <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">
@@ -456,22 +488,10 @@
         <div style="font-size:10px;color:var(--muted);margin-top:4px;">
           RED tape = destination (auto-stop)
         </div>
-        <div class="nav-row">
-          <span>Following</span>
-          <span id="val-color-target">—</span>
-        </div>
-        <div class="nav-row">
-          <span>Target visible</span>
-          <span id="val-color-visible">—</span>
-        </div>
-        <div class="nav-row">
-          <span>Fork active</span>
-          <span id="val-color-follow">—</span>
-        </div>
-        <div class="nav-row">
-          <span>Fork confidence</span>
-          <span id="val-fork">—</span>
-        </div>
+        <div class="nav-row"><span>Following</span><span id="val-color-target">—</span></div>
+        <div class="nav-row"><span>Target visible</span><span id="val-color-visible">—</span></div>
+        <div class="nav-row"><span>Fork active</span><span id="val-color-follow">—</span></div>
+        <div class="nav-row"><span>Fork confidence</span><span id="val-fork">—</span></div>
         <div style="margin-top:8px;">
           <div class="stat-label" style="margin-bottom:4px;">Detected tapes</div>
           <div class="color-det-row" id="color-det-row">
@@ -484,19 +504,41 @@
     <!-- Manual Control -->
     <div class="card">
       <div class="card-title">Manual Control</div>
-      <div class="wasd-card-body">
-        <div class="wasd-hint">Switch to Manual mode, then use keyboard:</div>
-        <div class="wasd-grid">
-          <div class="wasd-row">
-            <div class="key-box" id="key-w">W</div>
+      <div class="manual-card-body">
+
+        <!-- WASD key indicators (shown in FSD / LaneCheck modes) -->
+        <div id="wasd-section">
+          <div class="wasd-hint">In Manual mode, use keyboard or buttons below:</div>
+          <div class="wasd-grid">
+            <div class="wasd-row"><div class="key-box" id="key-w">W</div></div>
+            <div class="wasd-row">
+              <div class="key-box" id="key-a">A</div>
+              <div class="key-box" id="key-s">S</div>
+              <div class="key-box" id="key-d">D</div>
+            </div>
           </div>
-          <div class="wasd-row">
-            <div class="key-box" id="key-a">A</div>
-            <div class="key-box" id="key-s">S</div>
-            <div class="key-box" id="key-d">D</div>
-          </div>
+          <div id="manual-status" class="manual-inactive">Select Manual mode to drive</div>
         </div>
-        <div id="manual-status" class="manual-inactive">Toggle Auto OFF to drive</div>
+
+        <!-- D-pad (shown only in Manual mode) -->
+        <div id="dpad-container">
+          <div class="dpad-label">MANUAL DRIVE ACTIVE</div>
+          <div class="dpad">
+            <div class="dpad-row">
+              <button class="dpad-btn" id="dpad-w">&#8679;</button>
+            </div>
+            <div class="dpad-row">
+              <button class="dpad-btn" id="dpad-a">&#8678;</button>
+              <button class="dpad-btn dpad-stop" id="dpad-stop" title="Stop">&#9632;</button>
+              <button class="dpad-btn" id="dpad-d">&#8680;</button>
+            </div>
+            <div class="dpad-row">
+              <button class="dpad-btn" id="dpad-s">&#8681;</button>
+            </div>
+          </div>
+          <div id="dpad-status">Press or hold a button to drive</div>
+        </div>
+
       </div>
     </div>
 
@@ -511,11 +553,10 @@
   </div>
 </div>
 
-<!-- ── Controls ── -->
+<!-- ── Controls bar ── -->
 <div class="controls">
-  <button class="btn btn-primary"  onclick="sendCmd('toggle_auto')">Toggle Auto</button>
-  <button class="btn btn-danger"   onclick="sendCmd('emergency_stop')">Emergency Stop</button>
-  <button class="btn btn-neutral"  onclick="sendCmd('reset')">Reset</button>
+  <button class="btn btn-danger"  onclick="sendCmd('emergency_stop')">Emergency Stop</button>
+  <button class="btn btn-neutral" onclick="sendCmd('reset')">Reset</button>
   <div class="speed-control">
     <label for="speed-slider">Max Speed</label>
     <input type="range" id="speed-slider" min="10" max="100" value="80"
@@ -527,11 +568,48 @@
 </div>
 
 <script>
-  // ── State ──────────────────────────────────────────────────────────────────
-  let lastStatus = '';
-  let logEntries = [];
-  let connected  = false;
-  let speedValue = 0.80;
+  // ── App state ──────────────────────────────────────────────────────────────
+  let lastStatus  = '';
+  let logEntries  = [];
+  let connected   = false;
+  let speedValue  = 0.80;
+  let currentMode = 'LANE';  // synced from server telemetry
+
+  // WASD key state (shared by keyboard and d-pad)
+  const manualKeys = { w: false, a: false, s: false, d: false };
+
+  // ── Connection handshake ───────────────────────────────────────────────────
+  async function tryConnect() {
+    try {
+      const res = await fetch('/api/ping', { signal: AbortSignal.timeout(2000) });
+      if (res.ok) {
+        hideSplash();
+        enableModeTabs();
+        startPolling();
+        addLog('Connected to Pi');
+        return;
+      }
+    } catch {}
+    document.getElementById('splash-msg').textContent = 'Retrying connection…';
+    setTimeout(tryConnect, 1500);
+  }
+
+  function hideSplash() {
+    const splash = document.getElementById('conn-splash');
+    splash.classList.add('fade-out');
+    setTimeout(() => { splash.style.display = 'none'; }, 500);
+  }
+
+  function enableModeTabs() {
+    document.querySelectorAll('.mode-tab').forEach(btn => {
+      btn.disabled = false;
+    });
+  }
+
+  function startPolling() {
+    setInterval(fetchTelemetry, 500);
+    fetchTelemetry();
+  }
 
   // ── Telemetry polling ──────────────────────────────────────────────────────
   async function fetchTelemetry() {
@@ -550,40 +628,87 @@
     connected = ok;
     const dot   = document.getElementById('conn-dot');
     const label = document.getElementById('conn-label');
-    dot.className   = 'dot ' + (ok ? 'live' : 'dead');
+    dot.className     = 'dot ' + (ok ? 'live' : 'dead');
     label.textContent = ok ? 'Connected' : 'Offline';
   }
 
-  function updateUI(d) {
+  // ── Mode management ────────────────────────────────────────────────────────
+  async function setMode(mode) {
+    if (!connected) return;
+    await sendCmd('set_mode', mode);
+    applyModeUI(mode);
+    addLog('Mode → ' + mode);
+  }
+
+  function applyModeUI(mode) {
+    currentMode = mode;
+
+    // Update tab highlights
+    document.querySelectorAll('.mode-tab').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.mode === mode);
+    });
+
     // Mode badge
     const badge = document.getElementById('mode-badge');
-    const mode  = d.mode || '—';
     badge.textContent = mode;
     badge.className   = 'mode-badge' +
-      (mode === 'MANUAL'      ? ' manual'  : '') +
-      (d.status?.includes('STOP') ? ' stopped' : '');
+      (mode === 'LANE'   ? ' lane'   : '') +
+      (mode === 'MANUAL' ? ' manual' : '');
+
+    // Show/hide d-pad vs wasd section
+    const wasd = document.getElementById('wasd-section');
+    const dpad = document.getElementById('dpad-container');
+    if (mode === 'MANUAL') {
+      wasd.style.display = 'none';
+      dpad.style.display = 'block';
+    } else {
+      wasd.style.display = 'block';
+      dpad.style.display = 'none';
+      stopManualDrive();
+    }
+
+    // Color nav card — dim in FSD/Manual (lane features not active)
+    document.getElementById('color-nav-card').style.opacity =
+      mode === 'LANE' ? '1' : '0.45';
+  }
+
+  // ── UI update from telemetry ───────────────────────────────────────────────
+  function updateUI(d) {
+    // Sync mode from server (handles page reload / reconnect)
+    const serverMode = d.drive_mode || 'LANE';
+    if (serverMode !== currentMode) {
+      applyModeUI(serverMode);
+    }
 
     // Status text
-    document.getElementById('status-text').textContent = d.status || '—';
+    const statusEl = document.getElementById('status-text');
+    const carState  = d.car_state || '';
+    if (carState === 'ARRIVED') {
+      statusEl.textContent = '✓ ARRIVED AT DESTINATION';
+      statusEl.style.color = 'var(--green)';
+    } else {
+      statusEl.textContent = d.status || '—';
+      statusEl.style.color = '';
+    }
 
-    // Stat values
-    const dist = d.distance_cm;
+    // Distance
+    const dist   = d.distance_cm;
     const distEl = document.getElementById('val-dist');
     distEl.textContent = dist >= 999 ? '—' : dist + ' cm';
     distEl.className   = 'stat-value' +
       (dist < 25 ? ' danger' : dist < 50 ? ' warn' : ' good');
 
-    document.getElementById('val-fps').textContent    = d.fps ?? '—';
-    document.getElementById('val-err').textContent    = d.steering_error != null ? d.steering_error + 'px' : '—';
-    document.getElementById('val-stops').textContent  = d.stop_signs_detected ?? '—';
+    document.getElementById('val-fps').textContent   = d.fps ?? '—';
+    document.getElementById('val-err').textContent   = d.steering_error != null ? d.steering_error + 'px' : '—';
+    document.getElementById('val-stops').textContent = d.stop_signs_detected ?? '—';
 
     // Motor bars
     const l = d.speed_left  ?? 0;
     const r = d.speed_right ?? 0;
-    document.getElementById('bar-left').style.height      = (l * 100) + '%';
-    document.getElementById('bar-right').style.height     = (r * 100) + '%';
-    document.getElementById('bar-left-val').textContent   = l.toFixed(2);
-    document.getElementById('bar-right-val').textContent  = r.toFixed(2);
+    document.getElementById('bar-left').style.height     = (l * 100) + '%';
+    document.getElementById('bar-right').style.height    = (r * 100) + '%';
+    document.getElementById('bar-left-val').textContent  = l.toFixed(2);
+    document.getElementById('bar-right-val').textContent = r.toFixed(2);
 
     // Obstacle banner
     const modifier = d.obstacle_modifier ?? 1;
@@ -616,27 +741,18 @@
       }).join('');
     }
 
-    // ── Fork banner ────────────────────────────────────────────────────────
+    // Fork banner
     const forkBanner = document.getElementById('fork-banner');
-    const carState   = d.car_state || '';
     const forkWait   = d.fork_waiting || false;
-    forkBanner.style.display = forkWait ? 'block' : 'none';
+    forkBanner.style.display = (forkWait && serverMode === 'LANE') ? 'block' : 'none';
 
-    // Arrived banner in status
-    if (carState === 'ARRIVED') {
-      document.getElementById('status-text').textContent = '✓ ARRIVED AT DESTINATION';
-      document.getElementById('status-text').style.color = 'var(--green)';
-    } else {
-      document.getElementById('status-text').style.color = '';
-    }
-
-    // ── Color tape navigation ──────────────────────────────────────────────
-    const target   = d.color_target || '—';
-    const visible  = d.color_target_visible;
-    const options  = d.fork_options || [];
+    // Color tape section
+    const target  = d.color_target || '—';
+    const visible = d.color_target_visible;
+    const options = d.fork_options || [];
 
     document.getElementById('val-color-target').textContent  =
-      target !== '—' ? target : (forkWait ? 'WAITING...' : '—');
+      target !== '—' ? target : (forkWait ? 'WAITING…' : '—');
     document.getElementById('val-color-visible').textContent =
       visible == null ? '—' : (visible ? 'YES' : 'no');
     document.getElementById('val-color-follow').textContent  =
@@ -646,33 +762,31 @@
     document.getElementById('val-fork').textContent =
       d.fork_confidence != null ? Math.round(d.fork_confidence * 100) + '%' : '—';
 
-    // Highlight the active target button; pulse both if waiting at fork
     ['GREEN', 'BLUE'].forEach(c => {
       const btn = document.getElementById('btn-' + c);
       if (!btn) return;
-      const isTarget  = (c === target);
-      const isOption  = options.includes(c);
-      btn.classList.toggle('active', isTarget || (forkWait && isOption));
+      btn.classList.toggle('active', c === target || (forkWait && options.includes(c)));
     });
 
-    // Detected tape chips
     const chipColors = { GREEN: '#00e87a', BLUE: '#4da6ff', RED: '#ff3b3b' };
-    const colorDets = d.color_detections || [];
-    const chipRow = document.getElementById('color-det-row');
+    const colorDets  = d.color_detections || [];
+    const chipRow    = document.getElementById('color-det-row');
     if (colorDets.length === 0) {
       chipRow.innerHTML = '<span style="color:var(--muted);font-size:11px;">none</span>';
     } else {
       chipRow.innerHTML = colorDets.map(c => {
-        const col = chipColors[c.color] || '#aaa';
+        const col   = chipColors[c.color] || '#aaa';
         const label = c.color === 'RED' ? 'DESTINATION' : c.color;
         return `<span class="color-det-chip"
           style="background:${col}22;color:${col};border:1px solid ${col}">
-          ${label} · ${c.side}
-        </span>`;
+          ${label} · ${c.side}</span>`;
       }).join('');
     }
 
-    // Log: add entry when status changes
+    // WASD key visual (only meaningful in Manual mode)
+    updateKeyVisual();
+
+    // Log on status change
     if (d.status && d.status !== lastStatus) {
       lastStatus = d.status;
       addLog(d.status);
@@ -680,11 +794,9 @@
   }
 
   function addLog(msg) {
-    const now = new Date();
-    const ts  = now.toTimeString().slice(0, 8);
+    const ts = new Date().toTimeString().slice(0, 8);
     logEntries.unshift({ ts, msg });
     if (logEntries.length > 20) logEntries.pop();
-
     const el = document.getElementById('log-list');
     el.innerHTML = logEntries.map((e, i) =>
       `<div class="log-item ${i === 0 ? 'new' : ''}">
@@ -697,52 +809,51 @@
   async function sendCmd(action, value) {
     const body = { action };
     if (action === 'set_speed') body.value = speedValue;
-    if (value !== undefined)   body.value = value;
-
+    if (value !== undefined)   body.value  = value;
     try {
-      const res = await fetch('/api/command', {
+      await fetch('/api/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
-      const d = await res.json();
       addLog(`CMD: ${action}${body.value != null ? ' = ' + body.value : ''}`);
     } catch {
-      addLog('CMD failed: server unreachable');
+      addLog('CMD failed: unreachable');
     }
   }
 
-  function setColor(color) {
-    sendCmd('set_target_color', color);
-  }
-
+  function setColor(color) { sendCmd('set_target_color', color); }
   function onSpeedChange(val) {
     speedValue = val / 100;
     document.getElementById('speed-val').textContent = speedValue.toFixed(2);
   }
 
-  // ── Manual WASD drive ─────────────────────────────────────────────────────
-  const manualKeys = { w: false, a: false, s: false, d: false };
-  let isManualMode = false;
-
+  // ── WASD / D-pad manual drive ──────────────────────────────────────────────
   function updateKeyVisual() {
     ['w','a','s','d'].forEach(k => {
       const el = document.getElementById('key-' + k);
       if (el) el.classList.toggle('active', manualKeys[k]);
     });
-    const status = document.getElementById('manual-status');
-    if (!isManualMode) {
-      status.textContent = 'Toggle Auto OFF to drive';
-      status.style.color = '';
-    } else {
-      const active = Object.entries(manualKeys).filter(([,v]) => v).map(([k]) => k.toUpperCase());
-      status.textContent = active.length ? 'Driving: ' + active.join('+') : 'Ready — press W/A/S/D';
-      status.style.color = active.length ? 'var(--cyan)' : 'var(--green)';
+    // D-pad button highlight
+    const dmap = { w: 'dpad-w', a: 'dpad-a', s: 'dpad-s', d: 'dpad-d' };
+    Object.entries(dmap).forEach(([k, id]) => {
+      const btn = document.getElementById(id);
+      if (btn) btn.classList.toggle('pressed', manualKeys[k]);
+    });
+
+    const statusEl = document.getElementById('manual-status');
+    const dpadSt   = document.getElementById('dpad-status');
+    const active   = Object.entries(manualKeys).filter(([,v]) => v).map(([k]) => k.toUpperCase());
+    const txt      = active.length ? 'Driving: ' + active.join('+') : 'Ready — use buttons or W/A/S/D';
+    if (statusEl) {
+      statusEl.textContent = currentMode === 'MANUAL' ? txt : 'Select Manual mode to drive';
+      statusEl.style.color = active.length ? 'var(--cyan)' : '';
     }
+    if (dpadSt) dpadSt.textContent = active.length ? 'Driving: ' + active.join('+') : 'Press or hold a button to drive';
   }
 
   async function sendManualDrive() {
-    if (!isManualMode) return;
+    if (currentMode !== 'MANUAL') return;
     try {
       await fetch('/api/command', {
         method: 'POST',
@@ -765,37 +876,51 @@
     } catch {}
   }
 
+  // Keyboard
   document.addEventListener('keydown', e => {
     const k = e.key.toLowerCase();
     if (!(k in manualKeys)) return;
     e.preventDefault();
     if (!manualKeys[k]) { manualKeys[k] = true; sendManualDrive(); }
   });
-
   document.addEventListener('keyup', e => {
     const k = e.key.toLowerCase();
     if (!(k in manualKeys)) return;
     manualKeys[k] = false;
     sendManualDrive();
   });
-
-  // Stop car if browser tab loses focus
   window.addEventListener('blur', stopManualDrive);
 
-  // Track manual mode from telemetry
-  const _origUpdateUI = updateUI;
-  function updateUI(d) {
-    _origUpdateUI(d);
-    const wasManual = isManualMode;
-    isManualMode = (d.mode === 'MANUAL');
-    if (wasManual && !isManualMode) stopManualDrive();
-    updateKeyVisual();
+  // D-pad buttons
+  function setupDpad() {
+    const map = { 'dpad-w': 'w', 'dpad-a': 'a', 'dpad-s': 's', 'dpad-d': 'd' };
+    Object.entries(map).forEach(([btnId, key]) => {
+      const btn = document.getElementById(btnId);
+      if (!btn) return;
+      const press = () => {
+        if (currentMode !== 'MANUAL') return;
+        manualKeys[key] = true;
+        sendManualDrive();
+      };
+      const release = () => {
+        manualKeys[key] = false;
+        sendManualDrive();
+      };
+      btn.addEventListener('mousedown',  press);
+      btn.addEventListener('mouseup',    release);
+      btn.addEventListener('mouseleave', release);
+      btn.addEventListener('touchstart', e => { e.preventDefault(); press(); },   { passive: false });
+      btn.addEventListener('touchend',   e => { e.preventDefault(); release(); }, { passive: false });
+    });
+
+    document.getElementById('dpad-stop').addEventListener('mousedown',  stopManualDrive);
+    document.getElementById('dpad-stop').addEventListener('touchstart', e => { e.preventDefault(); stopManualDrive(); }, { passive: false });
   }
 
-  // ── Start polling ──────────────────────────────────────────────────────────
-  setInterval(fetchTelemetry, 500);
-  fetchTelemetry();
-  addLog('Dashboard loaded');
+  // ── Boot ───────────────────────────────────────────────────────────────────
+  setupDpad();
+  addLog('Dashboard loaded — connecting…');
+  tryConnect();
 </script>
 </body>
 </html>

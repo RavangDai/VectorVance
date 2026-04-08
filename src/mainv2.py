@@ -28,6 +28,7 @@ import glob
 import time
 import argparse
 
+from camera import FisheyeCamera
 from perception import LaneDetector, SmoothValue
 from controller import PIDController
 from speed_controller import AdaptiveSpeedController, draw_speed_indicator
@@ -100,7 +101,18 @@ def pick_source_interactive(default_video_dir='test_videos'):
 class AutonomousVehicle:
 
     def __init__(self, max_speed=0.8, enable_dnn=True,
-                 dnn_model="ssd_mobilenet_v2_coco.pb", target_color="GREEN"):
+                 dnn_model="ssd_mobilenet_v2_coco.pb", target_color=None,
+                 fov_deg=160.0, undistort=False, calibration_file=None):
+
+        # ── Camera (fisheye undistortion for 160° lens) ───────────────
+        self.undistort_enabled = undistort
+        if undistort:
+            if calibration_file:
+                self.camera = FisheyeCamera.from_file(calibration_file)
+            else:
+                self.camera = FisheyeCamera(fov_deg=fov_deg)
+        else:
+            self.camera = None
 
         self.perception    = LaneDetector(width=640, height=480)
         self.steering      = PIDController(Kp=0.003, Ki=0.0001, Kd=0.001)
@@ -118,7 +130,8 @@ class AutonomousVehicle:
 
         # ── Colour tape navigator ─────────────────────────────────────
         self.color_detector       = ColorSignDetector(frame_width=640, frame_height=480)
-        self.color_detector.set_target(target_color)
+        if target_color:
+            self.color_detector.set_target(target_color)
         self._color_follow_frames = 0
 
         # ── Runtime state ─────────────────────────────────────────────
@@ -446,6 +459,9 @@ class AutonomousVehicle:
                 if rotate_frame:
                     frame = cv2.rotate(frame, cv2.ROTATE_180)
 
+                if self.undistort_enabled and self.camera:
+                    frame = self.camera.undistort(frame)
+
                 debug_frame, (left, right, status) = self.process_frame(frame)
 
                 # Video progress bar
@@ -537,16 +553,25 @@ def main():
     p.add_argument("--no-rotate",     action="store_true")
     p.add_argument("--dnn",           action="store_true")
     p.add_argument("--dnn-model",     type=str,   default="ssd_mobilenet_v2_coco.pb")
-    p.add_argument("--target-color",  type=str,   default="GREEN",
+    p.add_argument("--undistort",     action="store_true",
+                   help="Enable fisheye undistortion (use with 160° camera footage)")
+    p.add_argument("--fov",           type=float, default=160.0,
+                   help="Camera FOV in degrees (default: 160)")
+    p.add_argument("--calibration",   type=str,   default=None,
+                   help="Path to calibration .npz file")
+    p.add_argument("--target-color",  type=str,   default=None,
                    choices=["GREEN", "BLUE", "RED"],
-                   help="Tape colour to follow at forks (default: GREEN)")
+                   help="Pre-set tape colour to follow at forks (default: unset)")
     args = p.parse_args()
 
     vehicle = AutonomousVehicle(
-        max_speed    = args.speed,
-        enable_dnn   = args.dnn,
-        dnn_model    = args.dnn_model,
-        target_color = args.target_color,
+        max_speed        = args.speed,
+        enable_dnn       = args.dnn,
+        dnn_model        = args.dnn_model,
+        target_color     = args.target_color,
+        fov_deg          = args.fov,
+        undistort        = args.undistort,
+        calibration_file = args.calibration,
     )
 
     if args.video:
@@ -554,10 +579,10 @@ def main():
                     rotate_frame=args.rotate)
     elif args.webcam:
         vehicle.run(source_type='webcam', source_value=0,
-                    rotate_frame=not args.no_rotate)
+                    rotate_frame=args.rotate)
     else:
         source_type, source_value = pick_source_interactive(args.dir)
-        rotate = args.rotate or (source_type == 'webcam' and not args.no_rotate)
+        rotate = args.rotate
         vehicle.run(source_type=source_type, source_value=source_value,
                     rotate_frame=rotate)
 

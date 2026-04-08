@@ -55,6 +55,78 @@ class State:
     FORK_WAITING    = "FORK_WAITING"     # stopped at fork, waiting for user input
     COLOR_FOLLOWING = "COLOR_FOLLOWING"  # steering toward chosen tape
     ARRIVED         = "ARRIVED"          # RED tape seen, stopped at destination
+    FREE_ROAM       = "FREE_ROAM"        # FSD: obstacle-avoiding free roam, no lane
+
+
+# ── FSD free-roam controller ──────────────────────────────────────────────────
+class FreeRoamController:
+    """
+    Obstacle-avoiding controller for FSD mode.
+    No lane detection — drives forward and steers away from obstacles.
+    Uses DNN zone threats + ultrasonic for decisions.
+    """
+    BASE_SPEED    = 0.45
+    TURN_SPEED    = 0.52
+    COMMIT_FRAMES = 28   # hold a turn decision for ~1 s at 28 fps
+    BACKUP_FRAMES = 15   # frames to reverse when ultrasonic triggers
+
+    def __init__(self):
+        self.turn_direction   = 0    # -1=left, 0=straight, +1=right
+        self.committed_frames = 0
+        self.backing_up       = 0
+
+    def reset(self):
+        self.turn_direction   = 0
+        self.committed_frames = 0
+        self.backing_up       = 0
+
+    def compute(self, detector, distance_cm: float):
+        """
+        Returns (left_speed, right_speed, status_str).
+        Negative values = reverse — caller must use _drive_manual().
+        """
+        # Backup countdown
+        if self.backing_up > 0:
+            self.backing_up -= 1
+            return -0.35, -0.35, "FSD: BACKING UP"
+
+        # Ultrasonic emergency → initiate backup
+        if distance_cm < 20:
+            self.backing_up       = self.BACKUP_FRAMES
+            self.turn_direction   = 1 if self.turn_direction <= 0 else -1
+            self.committed_frames = self.COMMIT_FRAMES
+            return -0.35, -0.35, "FSD: BACKING UP"
+
+        # Recalculate direction when commitment expires
+        if self.committed_frames > 0:
+            self.committed_frames -= 1
+        else:
+            zones          = detector.get_zone_threats()
+            center_blocked = len(zones["center"]) > 0
+            left_blocked   = len(zones["left"])   > 0
+            right_blocked  = len(zones["right"])  > 0
+            near_obstacle  = distance_cm < 50
+
+            if center_blocked or near_obstacle:
+                if left_blocked and not right_blocked:
+                    new_dir = 1    # right side clear → turn right
+                elif right_blocked and not left_blocked:
+                    new_dir = -1   # left side clear  → turn left
+                else:
+                    new_dir = 1 if self.turn_direction <= 0 else -1
+                self.turn_direction   = new_dir
+                self.committed_frames = self.COMMIT_FRAMES
+            else:
+                self.turn_direction = 0
+
+        # to turn left:  slow left motor, fast right → left=low, right=high
+        # to turn right: fast left motor, slow right → left=high, right=low
+        if self.turn_direction == -1:
+            return self.BASE_SPEED * 0.10, self.TURN_SPEED, "FSD: TURN LEFT"
+        elif self.turn_direction == 1:
+            return self.TURN_SPEED, self.BASE_SPEED * 0.10, "FSD: TURN RIGHT"
+        else:
+            return self.BASE_SPEED, self.BASE_SPEED, "FSD: FORWARD"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -98,7 +170,9 @@ class AutonomousVehicle:
         self.color_detector = ColorSignDetector(frame_width=640, frame_height=480)
 
         # ── State machine ─────────────────────────────────────────────
-        self.car_state = State.LANE_FOLLOW
+        self.car_state  = State.LANE_FOLLOW
+        self.drive_mode = "LANE"   # "FSD" | "LANE" | "MANUAL"
+        self.free_roam  = FreeRoamController()
 
         # ── Motors ───────────────────────────────────────────────────
         self.front_left  = Motor(forward=FL_FWD, backward=FL_BWD)
@@ -154,6 +228,30 @@ class AutonomousVehicle:
             self._display_status     = new_status
             self._status_hold_frames = self._STATUS_MIN_HOLD
         return self._display_status
+
+    # ── Drive-mode switcher ───────────────────────────────────────────────────
+
+    def _set_drive_mode(self, mode: str):
+        """Switch between FSD / LANE / MANUAL modes safely."""
+        if mode not in ("FSD", "LANE", "MANUAL"):
+            print(f"[Mode] Unknown mode '{mode}' — ignored")
+            return
+        prev = self.drive_mode
+        self.drive_mode = mode
+
+        if mode == "MANUAL":
+            self.autonomous_enabled = False
+            self._stop_motors()
+        elif mode == "LANE":
+            self.autonomous_enabled = True
+            if self.car_state == State.FREE_ROAM:
+                self.car_state = State.LANE_FOLLOW
+        elif mode == "FSD":
+            self.autonomous_enabled = True
+            self.car_state = State.FREE_ROAM
+            self.free_roam.reset()
+
+        print(f"[Mode] {prev} → {mode}")
 
     # ── Hardware helpers ──────────────────────────────────────────────────────
 
@@ -237,6 +335,58 @@ class AutonomousVehicle:
         lgpio.gpiochip_close(self._gpio)
         print("[Hardware] GPIO released")
 
+    # ── FSD frame processing ─────────────────────────────────────────────────
+
+    def process_frame_fsd(self, frame):
+        """Lane-free frame loop for FSD mode. Uses DNN + ultrasonic only."""
+        self.frame_count += 1
+
+        # Ultrasonic (every 3 frames)
+        if self.frame_count % 3 == 0:
+            self._last_distance = self._get_distance()
+        self.safety.sensors['front']['distance'] = self._last_distance
+        self.safety._check_obstacles()
+
+        # DNN obstacle detection (internally caches on skip_frames)
+        self.detector.detect(frame)
+
+        # FreeRoam decision
+        left, right, status = self.free_roam.compute(
+            self.detector, self._last_distance
+        )
+
+        self.smooth_left.update(abs(left))
+        self.smooth_right.update(abs(right))
+        self.smooth_base_speed.update(self.free_roam.BASE_SPEED)
+        self.smooth_pid.update(0.0)
+        self._last_steering_error = 0.0
+
+        # Build debug frame
+        debug = frame.copy()
+        debug = self.safety.draw_overlay(debug)
+        debug = self.detector.draw_overlay(debug)
+        debug = self._draw_motor_bars(
+            debug, abs(left), abs(right), 0.0
+        )
+
+        fsd_color = (0, 0, 255) if "BACKUP" in status else \
+                    (0, 165, 255) if "TURN" in status else (0, 212, 255)
+        cv2.putText(debug, f"[FSD] {status}",
+                    (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, fsd_color, 2)
+        cv2.putText(debug, f"Dist: {self._last_distance:.0f} cm",
+                    (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+
+        danger = self.detector.get_danger_level()
+        danger_colors = {
+            "CLEAR":   (100, 200, 100), "CAUTION": (0, 200, 255),
+            "DANGER":  (0, 100, 255),   "STOP":    (0, 0, 255),
+        }
+        cv2.putText(debug, f"DNN: {danger}",
+                    (10, 175), cv2.FONT_HERSHEY_SIMPLEX, 0.45,
+                    danger_colors.get(danger, (150, 150, 150)), 1)
+
+        return debug, (left, right, status)
+
     # ── Web command handler ───────────────────────────────────────────────────
 
     def _handle_web_commands(self):
@@ -273,6 +423,10 @@ class AutonomousVehicle:
             else:
                 print(f"[Web] Invalid colour '{color}'")
 
+        elif action == "set_mode":
+            mode = str(cmd.get("value", "LANE")).upper()
+            self._set_drive_mode(mode)
+
         pi_server.clear_command()
 
     # ── Telemetry ─────────────────────────────────────────────────────────────
@@ -291,6 +445,7 @@ class AutonomousVehicle:
 
         return {
             "mode":                  "AUTONOMOUS" if self.autonomous_enabled else "MANUAL",
+            "drive_mode":            self.drive_mode,
             "status":                status,
             "car_state":             self.car_state,
             "fork_waiting":          self.car_state == State.FORK_WAITING,
@@ -581,7 +736,10 @@ class AutonomousVehicle:
         self.detector.reset()
         self.color_detector.reset()
         self.intersection_detector.reset()
+        self.free_roam.reset()
         self.car_state           = State.LANE_FOLLOW
+        self.drive_mode          = "LANE"
+        self.autonomous_enabled  = True
         self.current_speed_limit = 0.8
         self.stop_sign_timer     = 0
         self.smooth_left.set_immediate(0.0)
@@ -608,8 +766,8 @@ class AutonomousVehicle:
         time.sleep(1)
         print("[Camera] 640×480 ready + MobileNet SSD")
         if self.show_display:
-            print("Keys: [Q] Quit  [SPACE] Auto  [R] Reset  [S] Snap  "
-                  "[D] Debug  [G] Green path  [B] Blue path")
+            print("Keys: [Q] Quit  [SPACE] Auto/Manual  [F] FSD  [R] Reset  "
+                  "[S] Snap  [D] Debug  [G] Green path  [B] Blue path")
 
         self._start_time = time.time()
 
@@ -618,28 +776,38 @@ class AutonomousVehicle:
             frame = cv2.rotate(frame, cv2.ROTATE_180)  # camera mounted upside-down
             if self.undistort_enabled and self.camera:
                 frame = self.camera.undistort(frame)
-            debug_frame, (left, right, status) = self.process_frame(frame)
+
+            # ── Frame processing (mode-dependent) ────────────────────────
+            if self.drive_mode == "FSD":
+                debug_frame, (left, right, status) = self.process_frame_fsd(frame)
+            else:
+                debug_frame, (left, right, status) = self.process_frame(frame)
 
             if self.web_enabled:
                 self._handle_web_commands()
 
-            # Motors: autonomous drives by PID, manual drives by WASD keys
-            if self.autonomous_enabled:
+            # ── Motor control (mode-dependent) ───────────────────────────
+            if self.drive_mode == "FSD":
+                # _drive_manual handles negative values for backup maneuver
+                self._drive_manual(left, right)
+            elif self.drive_mode == "LANE":
                 if self.car_state not in (State.FORK_WAITING, State.ARRIVED):
                     self._drive(left, right)
                 else:
                     self._stop_motors()
-            elif self.web_enabled:
-                self._apply_manual_drive(pi_server.get_manual_keys())
+            else:  # MANUAL
+                if self.web_enabled:
+                    self._apply_manual_drive(pi_server.get_manual_keys())
+                else:
+                    self._stop_motors()
 
             if self.web_enabled:
                 pi_server.push_frame(debug_frame)
                 pi_server.push_telemetry(self._build_telemetry(left, right, status))
 
             if self.show_display:
-                title = (f"VectorVance  "
-                         + ("AUTO" if self.autonomous_enabled else "MANUAL")
-                         + (f"  [{self.car_state}]"))
+                state_info = f"  [{self.car_state}]" if self.drive_mode == "LANE" else ""
+                title = f"VectorVance  [{self.drive_mode}]{state_info}"
                 cv2.imshow(title, debug_frame)
 
             if self.frame_count % 30 == 0:
@@ -657,8 +825,13 @@ class AutonomousVehicle:
                 if key == ord('q'):
                     break
                 elif key == ord(' '):
-                    self.autonomous_enabled = not self.autonomous_enabled
-                    print(f"Autonomous: {'ON' if self.autonomous_enabled else 'OFF'}")
+                    # Toggle between current auto mode and MANUAL
+                    if self.drive_mode == "MANUAL":
+                        self._set_drive_mode("LANE")
+                    else:
+                        self._set_drive_mode("MANUAL")
+                elif key == ord('f'):
+                    self._set_drive_mode("FSD")
                 elif key == ord('r'):
                     self._reset_all()
                 elif key == ord('s'):

@@ -159,7 +159,7 @@ def start_server(port: int = 5000) -> bool:
 
         action = body.get("action")
         valid = {"toggle_auto", "emergency_stop", "reset", "set_speed",
-                 "set_target_color", "manual_drive"}
+                 "set_target_color", "manual_drive", "set_mode"}
         if action not in valid:
             return jsonify({"error": f"Unknown action '{action}'"}), 400
 

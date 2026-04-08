@@ -49,9 +49,10 @@ class LaneDetector:
         self._direction_color = (0, 255, 0)
         self._direction_hold = 0
 
-        # ── ROI — trapezoid covering the road portion ────────────────
+        # ── ROI — trapezoid covering bottom 35% of frame only ────────
+        # Raised from 0.55 → 0.65 to exclude people/walls/ceilings.
         roi_bottom = height
-        roi_top = int(height * 0.55)
+        roi_top = int(height * 0.65)
         roi_top_width_fraction = 0.45
 
         self.roi_vertices = np.array([[
@@ -64,10 +65,10 @@ class LaneDetector:
         # ── VISION TUNING ────────────────────────────────────────────
         self.canny_low = 50
         self.canny_high = 150
-        self.hough_threshold = 30
-        self.hough_min_line_length = 40
-        self.hough_max_line_gap = 150
-        self.min_segment_length = 30
+        self.hough_threshold = 45        # raised: fewer false Hough lines
+        self.hough_min_line_length = 50  # raised: ignore short stray segments
+        self.hough_max_line_gap = 100
+        self.min_segment_length = 50     # raised: discard very short segments
 
         self.left_confidence = 0.0
         self.right_confidence = 0.0
@@ -75,7 +76,7 @@ class LaneDetector:
         # ── LANE FIT VALIDATION ──────────────────────────────────────
         self._prev_left_slope = None
         self._prev_right_slope = None
-        self._max_slope_change = 0.3
+        self._max_slope_change = 0.15   # tightened: reject big inter-frame slope jumps
 
         # ── CACHED DRAW POINTS ───────────────────────────────────────
         self._prev_left_pts = None
@@ -89,25 +90,25 @@ class LaneDetector:
         Extract white and yellow lane markings using HSV + HLS color spaces.
         Dramatically reduces false detections from non-lane objects.
         """
-        # --- WHITE LANES (HLS: high lightness, low saturation) ---
+        # --- WHITE LANES (HLS: very high lightness + low saturation) ---
+        # Raised lightness 180→200 and tightened saturation to exclude skin/clothing.
         hls = cv2.cvtColor(frame, cv2.COLOR_BGR2HLS)
-        white_lower = np.array([0, 180, 0], dtype=np.uint8)
-        white_upper = np.array([255, 255, 80], dtype=np.uint8)
-        white_mask = cv2.inRange(hls, white_lower, white_upper)
+        white_lower = np.array([0,   200, 0],  dtype=np.uint8)
+        white_upper = np.array([255, 255, 55], dtype=np.uint8)
+        white_mask  = cv2.inRange(hls, white_lower, white_upper)
 
-        # --- YELLOW LANES (HSV: hue 15-35 range) ---
+        # --- YELLOW LANES (HSV: tighter hue + higher saturation) ---
+        # Raised min saturation 80→120 to reject faint/pale yellows.
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        yellow_lower = np.array([15, 80, 120], dtype=np.uint8)
-        yellow_upper = np.array([35, 255, 255], dtype=np.uint8)
-        yellow_mask = cv2.inRange(hsv, yellow_lower, yellow_upper)
+        yellow_lower = np.array([18,  120, 140], dtype=np.uint8)
+        yellow_upper = np.array([32,  255, 255], dtype=np.uint8)
+        yellow_mask  = cv2.inRange(hsv, yellow_lower, yellow_upper)
 
-        # --- BRIGHT EDGE FALLBACK ---
+        # REMOVED: bright_mask — it picked up walls, skin, clothing at threshold 200.
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        _, bright_mask = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
 
         # Combine
         combined = cv2.bitwise_or(white_mask, yellow_mask)
-        combined = cv2.bitwise_or(combined, bright_mask)
 
         # Cleanup
         kernel = np.ones((3, 3), np.uint8)
@@ -180,7 +181,9 @@ class LaneDetector:
         self._update_confidence(raw_left_fit, raw_right_fit)
 
         # ── FAILSAFE 2: LOST LANES ───────────────────────────────────
-        if self.left_confidence < 0.2 and self.right_confidence < 0.2:
+        # Changed AND → OR: if EITHER lane drops below threshold, stop.
+        # Raised threshold 0.2 → 0.25 to trigger sooner.
+        if self.left_confidence < 0.25 or self.right_confidence < 0.25:
             self.ema_left_fit = None
             self.ema_right_fit = None
             return None, self._draw_warning_overlay(frame, "WARNING: LOST LANES")
@@ -243,11 +246,11 @@ class LaneDetector:
         if left_fit is not None:
             self.left_confidence = min(1.0, self.left_confidence + 0.15)
         else:
-            self.left_confidence = max(0.0, self.left_confidence - 0.05)
+            self.left_confidence = max(0.0, self.left_confidence - 0.10)  # faster decay
         if right_fit is not None:
             self.right_confidence = min(1.0, self.right_confidence + 0.15)
         else:
-            self.right_confidence = max(0.0, self.right_confidence - 0.05)
+            self.right_confidence = max(0.0, self.right_confidence - 0.10)  # faster decay
 
     # ─────────────────────────────────────────────────────────────────
     #  GEOMETRY
@@ -297,7 +300,7 @@ class LaneDetector:
             fit = np.polyfit(ys, xs, 1)
             predicted = np.polyval(fit, ys)
             residual = np.mean(np.abs(xs - predicted))
-            if residual > 40:
+            if residual > 25:   # tightened: reject noisy/scattered fits
                 return None
             return fit
         except np.linalg.LinAlgError:
@@ -333,7 +336,7 @@ class LaneDetector:
         if fit is None:
             return None
         y_bottom = self.height
-        y_top = int(self.height * 0.55)
+        y_top = int(self.height * 0.65)   # matches ROI top
         x_bottom = int(fit[0] * y_bottom + fit[1])
         x_top = int(fit[0] * y_top + fit[1])
         return (x_bottom, y_bottom), (x_top, y_top)

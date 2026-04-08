@@ -20,14 +20,18 @@ from collections import deque
 # ── HSV colour ranges ─────────────────────────────────────────────────────────
 _COLOR_RANGES: dict[str, list] = {
     "GREEN": [
-        (np.array([38,  60,  60]),  np.array([88,  255, 255])),
+        # Raised min saturation 60→100, min value 60→80 to reject pale greens/foliage.
+        (np.array([38,  100, 80]),  np.array([88,  255, 255])),
     ],
     "BLUE": [
-        (np.array([100, 80,  50]),  np.array([135, 255, 255])),
+        # Raised min saturation 80→110, min value 50→80 to reject dark/dull blues.
+        (np.array([100, 110, 80]),  np.array([135, 255, 255])),
     ],
     "RED": [
-        (np.array([0,   100, 60]),  np.array([10,  255, 255])),
-        (np.array([170, 100, 60]),  np.array([180, 255, 255])),
+        # Raised min saturation 100→140 and min value 60→100 to reject skin tones
+        # and dimly-lit red objects (power strips, chairs, clothing).
+        (np.array([0,   140, 100]), np.array([10,  255, 255])),
+        (np.array([170, 140, 100]), np.array([180, 255, 255])),
     ],
 }
 
@@ -39,10 +43,10 @@ _COLOR_BGR: dict[str, tuple] = {
 
 # RED tape at end — must be this big before we call it the destination
 DESTINATION_COLOR    = "RED"
-DESTINATION_MIN_AREA = 1200   # px²  — large enough to be right in front of car
-DESTINATION_CONFIRM  = 4      # must appear in 4 consecutive frames
+DESTINATION_MIN_AREA = 3000   # px²  — raised: tape must be large/close to trigger
+DESTINATION_CONFIRM  = 6      # raised: 6 consecutive frames to reject brief flashes
 
-MIN_AREA = 400   # px²  for path-colour tapes
+MIN_AREA = 900   # px²  raised: ignore small coloured blobs in background
 
 
 class ColorSignDetector:
@@ -57,8 +61,8 @@ class ColorSignDetector:
         # Which colour to steer toward (set by user via dashboard)
         self.target_color: str | None = None
 
-        # Bottom half of frame — tape is on the ground
-        self._roi_top = int(frame_height * 0.45)
+        # Bottom 45% of frame only — raised from 0.45→0.55 to exclude background
+        self._roi_top = int(frame_height * 0.55)
 
         # Smooth steering offset
         self._offset_history: deque = deque(maxlen=5)
