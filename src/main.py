@@ -1,7 +1,7 @@
 """
 main.py - VectorVance Autonomous Car (PRODUCTION)
 ──────────────────────────────────────────────────
-Hardware : Picamera2 + dual L298N motors + HC-SR04 ultrasonic
+Hardware : DORHEA USB fisheye camera (CMOS) + dual L298N motors + HC-SR04 ultrasonic
 Detection: MobileNet SSD v2 (always active)
 Control  : PID lane-follow + adaptive speed + obstacle avoidance
 Fork nav : Stops at fork, waits for user to pick colour on dashboard,
@@ -28,7 +28,6 @@ import lgpio
 import argparse
 
 from gpiozero import Motor
-from picamera2 import Picamera2
 
 from camera import FisheyeCamera
 from perception import LaneDetector, SmoothValue
@@ -758,13 +757,15 @@ class AutonomousVehicle:
                 print("[WebServer] Flask not installed — dashboard disabled")
                 self.web_enabled = False
 
-        picam2 = Picamera2()
-        picam2.configure(picam2.create_preview_configuration(
-            main={"format": "RGB888", "size": (640, 480)}
-        ))
-        picam2.start()
+        cap = cv2.VideoCapture(0)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        if not cap.isOpened():
+            raise RuntimeError("[Camera] Failed to open DORHEA USB camera (index 0). "
+                               "Check USB connection and /dev/video0.")
         time.sleep(1)
-        print("[Camera] 640×480 ready + MobileNet SSD")
+        print("[Camera] DORHEA USB fisheye 640×480 ready + MobileNet SSD")
         if self.show_display:
             print("Keys: [Q] Quit  [SPACE] Auto/Manual  [F] FSD  [R] Reset  "
                   "[S] Snap  [D] Debug  [G] Green path  [B] Blue path")
@@ -772,7 +773,10 @@ class AutonomousVehicle:
         self._start_time = time.time()
 
         while True:
-            frame = picam2.capture_array()
+            ret, frame = cap.read()
+            if not ret:
+                print("[Camera] Frame grab failed — retrying...")
+                continue
             frame = cv2.rotate(frame, cv2.ROTATE_180)  # camera mounted upside-down
             if self.undistort_enabled and self.camera:
                 frame = self.camera.undistort(frame)
@@ -852,7 +856,7 @@ class AutonomousVehicle:
                     if self.car_state == State.FORK_WAITING:
                         self.car_state = State.COLOR_FOLLOWING
 
-        picam2.stop()
+        cap.release()
         if self.show_display:
             cv2.destroyAllWindows()
         self._stop_motors()
@@ -876,7 +880,7 @@ def main():
     p.add_argument("--no-web",        action="store_true")
     p.add_argument("--no-display",    action="store_true")
     p.add_argument("--fov",           type=float, default=160.0,
-                   help="Camera FOV in degrees (default: 160)")
+                   help="Camera FOV in degrees (default: 160 for DORHEA fisheye)")
     p.add_argument("--no-undistort",  action="store_true",
                    help="Disable fisheye undistortion")
     p.add_argument("--calibration",   type=str,   default=None,
