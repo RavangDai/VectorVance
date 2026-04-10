@@ -49,26 +49,25 @@ class LaneDetector:
         self._direction_color = (0, 255, 0)
         self._direction_hold = 0
 
-        # ── ROI — trapezoid covering bottom 35% of frame only ────────
-        # Raised from 0.55 → 0.65 to exclude people/walls/ceilings.
+        # ── ROI — trapezoid covering bottom 55% of frame ────────────
         roi_bottom = height
-        roi_top = int(height * 0.65)
-        roi_top_width_fraction = 0.45
+        roi_top = int(height * 0.45)
+        roi_top_width_fraction = 0.60
 
         self.roi_vertices = np.array([[
-            (int(width * 0.05), roi_bottom),
+            (int(width * 0.02), roi_bottom),
             (int(width * (0.5 - roi_top_width_fraction / 2)), roi_top),
             (int(width * (0.5 + roi_top_width_fraction / 2)), roi_top),
-            (int(width * 0.95), roi_bottom)
+            (int(width * 0.98), roi_bottom)
         ]], dtype=np.int32)
 
         # ── VISION TUNING ────────────────────────────────────────────
         self.canny_low = 50
         self.canny_high = 150
-        self.hough_threshold = 45        # raised: fewer false Hough lines
-        self.hough_min_line_length = 50  # raised: ignore short stray segments
-        self.hough_max_line_gap = 100
-        self.min_segment_length = 50     # raised: discard very short segments
+        self.hough_threshold = 35
+        self.hough_min_line_length = 35
+        self.hough_max_line_gap = 120
+        self.min_segment_length = 35
 
         self.left_confidence = 0.0
         self.right_confidence = 0.0
@@ -76,7 +75,7 @@ class LaneDetector:
         # ── LANE FIT VALIDATION ──────────────────────────────────────
         self._prev_left_slope = None
         self._prev_right_slope = None
-        self._max_slope_change = 0.15   # tightened: reject big inter-frame slope jumps
+        self._max_slope_change = 0.30   # allow reasonable inter-frame slope variation
 
         # ── CACHED DRAW POINTS ───────────────────────────────────────
         self._prev_left_pts = None
@@ -90,25 +89,26 @@ class LaneDetector:
         Extract white and yellow lane markings using HSV + HLS color spaces.
         Dramatically reduces false detections from non-lane objects.
         """
-        # --- WHITE LANES (HLS: very high lightness + low saturation) ---
-        # Raised lightness 180→200 and tightened saturation to exclude skin/clothing.
+        # --- WHITE LANES (HLS: high lightness + low saturation) ---
         hls = cv2.cvtColor(frame, cv2.COLOR_BGR2HLS)
-        white_lower = np.array([0,   200, 0],  dtype=np.uint8)
-        white_upper = np.array([255, 255, 55], dtype=np.uint8)
+        white_lower = np.array([0,   160, 0],  dtype=np.uint8)
+        white_upper = np.array([255, 255, 70], dtype=np.uint8)
         white_mask  = cv2.inRange(hls, white_lower, white_upper)
 
-        # --- YELLOW LANES (HSV: tighter hue + higher saturation) ---
-        # Raised min saturation 80→120 to reject faint/pale yellows.
+        # --- YELLOW LANES (HSV: hue range + saturation) ---
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        yellow_lower = np.array([18,  120, 140], dtype=np.uint8)
-        yellow_upper = np.array([32,  255, 255], dtype=np.uint8)
+        yellow_lower = np.array([15,  80, 120], dtype=np.uint8)
+        yellow_upper = np.array([35, 255, 255], dtype=np.uint8)
         yellow_mask  = cv2.inRange(hsv, yellow_lower, yellow_upper)
 
-        # REMOVED: bright_mask — it picked up walls, skin, clothing at threshold 200.
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        # Bright-on-dark contrast mask (catches white tape on dark floors)
+        _, bright_mask = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY)
 
         # Combine
         combined = cv2.bitwise_or(white_mask, yellow_mask)
+        combined = cv2.bitwise_or(combined, bright_mask)
 
         # Cleanup
         kernel = np.ones((3, 3), np.uint8)
@@ -181,9 +181,8 @@ class LaneDetector:
         self._update_confidence(raw_left_fit, raw_right_fit)
 
         # ── FAILSAFE 2: LOST LANES ───────────────────────────────────
-        # Changed AND → OR: if EITHER lane drops below threshold, stop.
-        # Raised threshold 0.2 → 0.25 to trigger sooner.
-        if self.left_confidence < 0.25 or self.right_confidence < 0.25:
+        # Only trigger if BOTH lanes are lost (AND), not just one
+        if self.left_confidence < 0.15 and self.right_confidence < 0.15:
             self.ema_left_fit = None
             self.ema_right_fit = None
             return None, self._draw_warning_overlay(frame, "WARNING: LOST LANES")
@@ -246,11 +245,11 @@ class LaneDetector:
         if left_fit is not None:
             self.left_confidence = min(1.0, self.left_confidence + 0.15)
         else:
-            self.left_confidence = max(0.0, self.left_confidence - 0.10)  # faster decay
+            self.left_confidence = max(0.0, self.left_confidence - 0.05)
         if right_fit is not None:
             self.right_confidence = min(1.0, self.right_confidence + 0.15)
         else:
-            self.right_confidence = max(0.0, self.right_confidence - 0.10)  # faster decay
+            self.right_confidence = max(0.0, self.right_confidence - 0.05)
 
     # ─────────────────────────────────────────────────────────────────
     #  GEOMETRY
@@ -289,7 +288,7 @@ class LaneDetector:
         return self._fit_lane(left_lines), self._fit_lane(right_lines)
 
     def _fit_lane(self, line_segments):
-        if not line_segments or len(line_segments) < 2:
+        if not line_segments or len(line_segments) < 1:
             return None
         pts = []
         for x1, y1, x2, y2 in line_segments:
@@ -336,7 +335,7 @@ class LaneDetector:
         if fit is None:
             return None
         y_bottom = self.height
-        y_top = int(self.height * 0.65)   # matches ROI top
+        y_top = int(self.height * 0.45)   # matches ROI top
         x_bottom = int(fit[0] * y_bottom + fit[1])
         x_top = int(fit[0] * y_top + fit[1])
         return (x_bottom, y_bottom), (x_top, y_top)
@@ -380,6 +379,7 @@ class LaneDetector:
     # ─────────────────────────────────────────────────────────────────
     def _draw_premium_overlay(self, frame, left_fit, right_fit, lane_center, error, edges):
         debug = frame.copy()
+        h, w = debug.shape[:2]
         overlay = np.zeros_like(debug, dtype=np.uint8)
 
         raw_left_pts = self._make_lane_points(left_fit)
@@ -390,50 +390,67 @@ class LaneDetector:
         self._prev_left_pts = left_pts
         self._prev_right_pts = right_pts
 
-        # ── TESLA POLYGON ────────────────────────────────────────────
+        # ── LANE POLYGON (green tinted driving corridor) ─────────────
         if left_pts and right_pts:
             poly = np.array([left_pts[0], left_pts[1], right_pts[1], right_pts[0]], dtype=np.int32)
-            cv2.fillPoly(overlay, [poly], (250, 150, 0))
-            cv2.addWeighted(overlay, 0.35, debug, 1.0, 0, debug)
+            cv2.fillPoly(overlay, [poly], (0, 200, 80))
+            cv2.addWeighted(overlay, 0.25, debug, 1.0, 0, debug)
 
-        # ── NEON LANE LINES ──────────────────────────────────────────
+        # ── NEON LANE LINES (green glow + white core) ────────────────
         def draw_neon_line(img, p1, p2, glow_color):
             if p1 and p2:
-                cv2.line(img, p1, p2, glow_color, 8)
-                cv2.line(img, p1, p2, (255, 255, 255), 2)
+                cv2.line(img, p1, p2, glow_color, 10)
+                cv2.line(img, p1, p2, (200, 255, 200), 2)
 
         draw_neon_line(debug,
                        left_pts[0] if left_pts else None,
                        left_pts[1] if left_pts else None,
-                       (255, 150, 0))
+                       (0, 255, 100))
         draw_neon_line(debug,
                        right_pts[0] if right_pts else None,
                        right_pts[1] if right_pts else None,
-                       (255, 150, 0))
+                       (0, 255, 100))
 
-        # ── STEERING UI ──────────────────────────────────────────────
-        frame_center = self.width // 2
-        cv2.line(debug, (frame_center, self.height - 80),
-                 (frame_center, self.height), (150, 150, 150), 2)
+        # ── CENTER LINES (frame center = blue, lane center = red) ────
+        frame_center = w // 2
+        cv2.line(debug, (frame_center, h - 100),
+                 (frame_center, h), (255, 150, 0), 2)
         if lane_center is not None:
-            cv2.line(debug, (lane_center, self.height - 80),
-                     (lane_center, self.height), (0, 0, 255), 3)
-            cv2.line(debug, (frame_center, self.height - 40),
-                     (lane_center, self.height - 40), (0, 0, 255), 2)
+            cv2.line(debug, (lane_center, h - 100),
+                     (lane_center, h), (0, 0, 255), 3)
+            # Horizontal error line
+            cv2.line(debug, (frame_center, h - 50),
+                     (lane_center, h - 50), (0, 0, 255), 2)
+            # Target crosshair
+            cv2.circle(debug, (lane_center, h - 50), 6, (0, 0, 255), 2)
+            cv2.circle(debug, (frame_center, h - 50), 6, (255, 150, 0), 2)
 
-        # ── DIRECTION LABEL ──────────────────────────────────────────
-        direction, color = self._get_direction(error)
+        # ── DIRECTION INDICATOR (top area with arrow) ────────────────
+        direction, dir_color = self._get_direction(error)
         abs_err = abs(error)
-        cv2.putText(debug, f"STEER: {direction} ({abs_err}px)",
-                    (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+        arrow = "<--" if direction == "LEFT" else "-->" if direction == "RIGHT" else "| |"
 
-        self._draw_confidence_bars(debug)
+        # Dark banner behind direction text
+        cv2.rectangle(debug, (135, 8), (420, 40), (0, 0, 0), -1)
+        cv2.rectangle(debug, (135, 8), (420, 40), dir_color, 1)
+        cv2.putText(debug, f"{abs_err}px {arrow} {direction}",
+                    (145, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.65, dir_color, 2)
 
-        # ── EDGE MINIMAP ─────────────────────────────────────────────
+        # Lane center value
+        if lane_center is not None:
+            cv2.putText(debug, f"Lane: {lane_center}px",
+                        (145, 58), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 180, 255), 1)
+
+        # ── EDGE MINIMAP (top-left) ──────────────────────────────────
         edges_colored = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
         edges_small = cv2.resize(edges_colored, (120, 90))
         debug[10:100, 10:130] = edges_small
-        cv2.rectangle(debug, (10, 10), (130, 100), (255, 255, 255), 1)
+        cv2.rectangle(debug, (10, 10), (130, 100), (100, 100, 100), 1)
+        cv2.putText(debug, "Edge View", (12, 112),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.35, (120, 120, 120), 1)
+
+        # ── CONFIDENCE BARS (right side) ─────────────────────────────
+        self._draw_confidence_bars(debug)
 
         return debug
 
@@ -448,14 +465,26 @@ class LaneDetector:
         by = h - 60
 
         for (bx, conf, label) in [(lx, disp_left, "L"), (rx, disp_right, "R")]:
-            cv2.rectangle(frame, (bx, by - bar_h), (bx + bar_w, by), (40, 40, 40), -1)
+            # Background
+            cv2.rectangle(frame, (bx, by - bar_h), (bx + bar_w, by), (30, 30, 30), -1)
             fill = int(bar_h * conf)
-            color = (255, 150, 0) if conf > 0.5 else (0, 0, 255)
+            # Color: green > 0.5, orange 0.25-0.5, red < 0.25
+            if conf > 0.5:
+                color = (0, 230, 100)
+            elif conf > 0.25:
+                color = (0, 180, 255)
+            else:
+                color = (0, 0, 255)
             if fill > 0:
                 cv2.rectangle(frame, (bx, by - fill), (bx + bar_w, by), color, -1)
-            cv2.rectangle(frame, (bx, by - bar_h), (bx + bar_w, by), (100, 100, 100), 1)
-            cv2.putText(frame, label, (bx + 8, by - bar_h - 8),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            cv2.rectangle(frame, (bx, by - bar_h), (bx + bar_w, by), (80, 80, 80), 1)
+            # Label
+            cv2.putText(frame, label, (bx + 8, by - bar_h - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
+            # Value
+            cv2.putText(frame, f"{conf:.2f}",
+                        (bx - 2, by + 18),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1)
 
     def reset_smoothing(self):
         self.error_history.clear()

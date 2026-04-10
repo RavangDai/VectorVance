@@ -215,18 +215,41 @@
     .mode-badge.stopped { background: rgba(255,59,59,0.15);  color: var(--red);   border-color: var(--red); }
 
     /* ── Speed bars ── */
-    .speed-bars { display: flex; gap: 10px; align-items: flex-end; height: 60px; }
+    .speed-bars { display: flex; gap: 10px; align-items: flex-end; height: 80px; }
     .speed-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
     .speed-bar-bg {
-      width: 100%; height: 44px; background: #1e1f26;
-      border-radius: 4px; position: relative; overflow: hidden;
+      width: 100%; height: 60px; background: #1e1f26;
+      border-radius: 6px; position: relative; overflow: hidden;
+      border: 1px solid var(--border);
     }
     .speed-bar-fill {
       position: absolute; bottom: 0; left: 0; right: 0;
-      background: var(--cyan); border-radius: 4px; transition: height 0.15s ease;
+      background: linear-gradient(to top, var(--cyan), rgba(0,212,255,0.5));
+      border-radius: 5px; transition: height 0.2s ease;
     }
-    .speed-bar-label { font-size: 10px; color: var(--muted); }
-    .speed-bar-val { font-size: 11px; font-weight: 600; color: var(--text); }
+    .speed-bar-label { font-size: 11px; color: var(--muted); font-weight: 600; }
+    .speed-bar-val { font-size: 13px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+
+    /* ── DNN danger badge ── */
+    .danger-badge {
+      display: inline-block; padding: 3px 10px; border-radius: 6px;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.8px; margin-top: 8px;
+    }
+    .danger-CLEAR   { background: rgba(0,232,122,0.15); color: var(--green); border: 1px solid var(--green); }
+    .danger-CAUTION { background: rgba(255,209,102,0.15); color: var(--yellow); border: 1px solid var(--yellow); }
+    .danger-DANGER  { background: rgba(255,140,66,0.15); color: var(--orange); border: 1px solid var(--orange); }
+    .danger-STOP    { background: rgba(255,59,59,0.15); color: var(--red); border: 1px solid var(--red); }
+
+    /* ── Car state badge ── */
+    .state-badge {
+      display: inline-block; padding: 3px 10px; border-radius: 6px;
+      font-size: 10px; font-weight: 700; letter-spacing: 0.5px; margin-left: 6px;
+    }
+    .state-LANE_FOLLOW    { background: rgba(0,232,122,0.12); color: var(--green); }
+    .state-FORK_WAITING   { background: rgba(255,209,102,0.15); color: var(--yellow); }
+    .state-COLOR_FOLLOWING { background: rgba(0,212,255,0.15); color: var(--cyan); }
+    .state-ARRIVED        { background: rgba(0,232,122,0.2); color: var(--green); }
+    .state-FREE_ROAM      { background: rgba(255,140,66,0.15); color: var(--orange); }
 
     /* ── DNN detections ── */
     .detection-list { display: flex; flex-direction: column; gap: 6px; }
@@ -417,10 +440,13 @@
     <div class="card">
       <div class="card-title">Status</div>
       <div class="card-body">
-        <div style="margin-bottom:10px;">
+        <div style="margin-bottom:10px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
           <span id="mode-badge" class="mode-badge">—</span>
-          &nbsp;
-          <span id="status-text" style="font-size:12px;color:var(--muted)">—</span>
+          <span id="state-badge" class="state-badge">—</span>
+          <span id="danger-badge" class="danger-badge danger-CLEAR" style="display:none">CLEAR</span>
+        </div>
+        <div style="margin-bottom:8px;">
+          <span id="status-text" style="font-size:13px;font-weight:600;color:var(--text)">—</span>
         </div>
         <div class="stat-grid">
           <div class="stat-item">
@@ -684,11 +710,31 @@
     const statusEl = document.getElementById('status-text');
     const carState  = d.car_state || '';
     if (carState === 'ARRIVED') {
-      statusEl.textContent = '✓ ARRIVED AT DESTINATION';
+      statusEl.textContent = 'ARRIVED AT DESTINATION';
       statusEl.style.color = 'var(--green)';
     } else {
       statusEl.textContent = d.status || '—';
       statusEl.style.color = '';
+    }
+
+    // Car state badge
+    const stateBadge = document.getElementById('state-badge');
+    const stateLabels = {
+      LANE_FOLLOW: 'LANE FOLLOW', FORK_WAITING: 'FORK WAITING',
+      COLOR_FOLLOWING: 'FOLLOWING', ARRIVED: 'ARRIVED', FREE_ROAM: 'FREE ROAM'
+    };
+    stateBadge.textContent = stateLabels[carState] || carState || '—';
+    stateBadge.className = 'state-badge state-' + (carState || '');
+
+    // DNN danger badge
+    const dangerBadge = document.getElementById('danger-badge');
+    const dnnDanger = d.dnn_danger || '';
+    if (d.dnn_enabled && dnnDanger) {
+      dangerBadge.style.display = 'inline-block';
+      dangerBadge.textContent = dnnDanger;
+      dangerBadge.className = 'danger-badge danger-' + dnnDanger;
+    } else {
+      dangerBadge.style.display = 'none';
     }
 
     // Distance

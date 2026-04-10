@@ -1,7 +1,7 @@
 """
 main.py - VectorVance Autonomous Car (PRODUCTION)
 ──────────────────────────────────────────────────
-Hardware : DORHEA USB fisheye camera (CMOS) + dual L298N motors + HC-SR04 ultrasonic
+Hardware : DORHEA fisheye camera (CSI/Picamera2, CMOS, 160°) + dual L298N motors + HC-SR04 ultrasonic
 Detection: MobileNet SSD v2 (always active)
 Control  : PID lane-follow + adaptive speed + obstacle avoidance
 Fork nav : Stops at fork, waits for user to pick colour on dashboard,
@@ -624,60 +624,77 @@ class AutonomousVehicle:
                             base_speed, left_speed, right_speed,
                             status, sign_action):
         frame = vision_frame.copy()
+        h, w = frame.shape[:2]
         frame = self.safety.draw_overlay(frame)
         frame = self.detector.draw_overlay(frame)
         frame = self.color_detector.draw_overlay(frame)
-        frame = self._draw_motor_bars(
-            frame, self.smooth_left.value,
-            self.smooth_right.value, self.smooth_pid.value
-        )
-        frame = draw_speed_indicator(
-            frame, self.smooth_base_speed.value,
-            self.speed_control.target_speed,
-            self.speed_control.get_speed_category(abs(error)),
-        )
 
+        # ── SPEED BADGE (top-right) ──────────────────────────────────
+        speed_pct = int(self.smooth_base_speed.value * 100)
+        category = self.speed_control.get_speed_category(abs(error)).replace("_", " ").upper()
+
+        cv2.putText(frame, category, (w - 200, 22),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (150, 200, 150), 1)
+
+        badge_text = f"Speed: {speed_pct}%"
+        (tw, th), _ = cv2.getTextSize(badge_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
+        bx1, by1 = w - tw - 24, 28
+        bx2, by2 = w - 8, 28 + th + 14
+        if speed_pct >= 70:
+            badge_bg = (0, 180, 0)
+        elif speed_pct >= 40:
+            badge_bg = (0, 160, 255)
+        else:
+            badge_bg = (0, 80, 255)
+        cv2.rectangle(frame, (bx1, by1), (bx2, by2), badge_bg, -1)
+        cv2.rectangle(frame, (bx1, by1), (bx2, by2), (255, 255, 255), 1)
+        cv2.putText(frame, badge_text, (bx1 + 8, by2 - 6),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+
+        # ── STATUS (left side with background) ───────────────────────
         display_status = self._update_display_status(status)
         if self.car_state == State.FORK_WAITING:
-            status_color = (0, 200, 255)   # cyan — waiting
+            status_color, status_bg = (0, 230, 255), (0, 80, 100)
         elif self.car_state == State.ARRIVED:
-            status_color = (0, 255, 100)   # green — arrived
+            status_color, status_bg = (0, 255, 100), (0, 60, 0)
         elif "STOP" in display_status:
-            status_color = (0, 0, 255)     # red
-        elif "FOLLOWING" in display_status:
-            status_color = (0, 200, 255)   # cyan
+            status_color, status_bg = (0, 0, 255), (0, 0, 100)
+        elif "SLOW" in display_status:
+            status_color, status_bg = (0, 180, 255), (0, 60, 100)
         else:
-            status_color = (255, 255, 255)
+            status_color, status_bg = (200, 255, 200), (0, 60, 0)
 
-        cv2.putText(frame, f"Status: {display_status}",
-                    (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_color, 2)
+        status_text = f"Status: {display_status}"
+        (stw, sth), _ = cv2.getTextSize(status_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+        cv2.rectangle(frame, (8, 115), (stw + 20, 140), status_bg, -1)
+        cv2.rectangle(frame, (8, 115), (stw + 20, 140), status_color, 1)
+        cv2.putText(frame, status_text,
+                    (12, 135), cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_color, 2)
 
         # Big overlay banners for important states
-        h, w = frame.shape[:2]
         if self.car_state == State.FORK_WAITING:
             options = self.color_detector.get_fork_options()
             opt_str = " or ".join(options) if options else "colour"
             cv2.rectangle(frame, (0, h//2 - 30), (w, h//2 + 30), (0, 120, 200), -1)
-            cv2.putText(frame, f"FORK — SELECT: {opt_str}",
+            cv2.putText(frame, f"FORK -- SELECT: {opt_str}",
                         (w//2 - 180, h//2 + 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
-
         elif self.car_state == State.ARRIVED:
             cv2.rectangle(frame, (0, h//2 - 30), (w, h//2 + 30), (0, 160, 0), -1)
             cv2.putText(frame, "ARRIVED AT DESTINATION",
                         (w//2 - 210, h//2 + 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
 
-        # Sign / DNN status
+        # DNN status
         danger = self.detector.get_danger_level()
         danger_colors = {
-            "CLEAR":   (100, 200, 100),
+            "CLEAR":   (100, 220, 100),
             "CAUTION": (0,   200, 255),
             "DANGER":  (0,   100, 255),
             "STOP":    (0,   0,   255),
         }
-        cv2.putText(frame, f"DNN: {danger}",
-                    (10, 175), cv2.FONT_HERSHEY_SIMPLEX, 0.45,
+        cv2.putText(frame, f"DNN: {danger}", (12, 162),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45,
                     danger_colors.get(danger, (150, 150, 150)), 1)
 
         # Fork confidence
@@ -685,25 +702,46 @@ class AutonomousVehicle:
         if conf > 0.2:
             fork_color = (0, 255, 255) if conf > 0.45 else (100, 200, 200)
             cv2.putText(frame, f"Fork: {conf:.0%}",
-                        (10, 195), cv2.FONT_HERSHEY_SIMPLEX, 0.4, fork_color, 1)
+                        (12, 182), cv2.FONT_HERSHEY_SIMPLEX, 0.4, fork_color, 1)
+
+        # ── OBSTACLE BOTTOM BAR ──────────────────────────────────────
+        dist = self._last_distance
+        modifier = self.detector.get_speed_modifier()
+        if dist < 200 or modifier < 1.0:
+            bar_y = h - 30
+            cv2.rectangle(frame, (0, bar_y), (w, h), (0, 0, 0), -1)
+            cx = w // 2
+            circ_color = (0, 0, 255) if dist < 50 else (0, 165, 255) if dist < 100 else (0, 220, 100)
+            cv2.circle(frame, (cx, bar_y + 15), 10, circ_color, -1)
+            cv2.putText(frame, f"{dist:.0f}cm", (cx - 20, bar_y + 12),
+                        cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 255, 255), 1)
+            if modifier < 1.0:
+                obs_text = "OBSTACLE DETECTED -- SLOWING" if modifier > 0 else "OBSTACLE -- STOPPING"
+                obs_color = (0, 165, 255) if modifier > 0 else (0, 0, 255)
+                cv2.putText(frame, obs_text, (10, h - 8),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.55, obs_color, 2)
+
+        # Motor bars
+        frame = self._draw_motor_bars(
+            frame, self.smooth_left.value, self.smooth_right.value, self.smooth_pid.value)
 
         return frame
 
     def _draw_motor_bars(self, frame, left_speed, right_speed, pid_output):
         h, w        = frame.shape[:2]
-        bar_height  = 200
-        bar_x_left  = w - 120
-        bar_x_right = w - 60
-        bar_y       = h - bar_height - 50
-        bar_width   = 40
+        bar_width   = 35
+        bar_height  = 160
+        bar_x_left  = w - 105
+        bar_x_right = w - 50
+        bar_y       = h - bar_height - 55
 
         for bx in (bar_x_left, bar_x_right):
             cv2.rectangle(frame, (bx, bar_y),
-                          (bx + bar_width, bar_y + bar_height), (50, 50, 50), -1)
+                          (bx + bar_width, bar_y + bar_height), (30, 30, 30), -1)
 
         left_fill  = int(bar_height * max(0.0, min(1.0, left_speed)))
         right_fill = int(bar_height * max(0.0, min(1.0, right_speed)))
-        bar_color  = (0, 255, 0) if abs(pid_output) < 0.1 else (0, 165, 255)
+        bar_color  = (0, 230, 100) if abs(pid_output) < 0.1 else (0, 180, 255)
 
         if left_fill:
             cv2.rectangle(frame,
@@ -714,15 +752,19 @@ class AutonomousVehicle:
                           (bar_x_right, bar_y + bar_height - right_fill),
                           (bar_x_right + bar_width, bar_y + bar_height), bar_color, -1)
 
+        for bx in (bar_x_left, bar_x_right):
+            cv2.rectangle(frame, (bx, bar_y),
+                          (bx + bar_width, bar_y + bar_height), (80, 80, 80), 1)
+
         for bx, lbl in ((bar_x_left, "L"), (bar_x_right, "R")):
-            cv2.putText(frame, lbl, (bx + 12, bar_y - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            cv2.putText(frame, lbl, (bx + 10, bar_y - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
         cv2.putText(frame, f"{left_speed:.2f}",
-                    (bar_x_left,  bar_y + bar_height + 20),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                    (bar_x_left - 2,  bar_y + bar_height + 18),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
         cv2.putText(frame, f"{right_speed:.2f}",
-                    (bar_x_right, bar_y + bar_height + 20),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                    (bar_x_right - 2, bar_y + bar_height + 18),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
         return frame
 
     # ── Reset ─────────────────────────────────────────────────────────────────
@@ -757,15 +799,41 @@ class AutonomousVehicle:
                 print("[WebServer] Flask not installed — dashboard disabled")
                 self.web_enabled = False
 
-        cap = cv2.VideoCapture(0)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        if not cap.isOpened():
-            raise RuntimeError("[Camera] Failed to open DORHEA USB camera (index 0). "
-                               "Check USB connection and /dev/video0.")
+        # Try Picamera2 (CSI) first, fall back to V4L2 (USB)
+        self._use_picam2 = False
+        self._picam2 = None
+        self._cap = None
+
+        try:
+            from picamera2 import Picamera2
+            picam2 = Picamera2()
+            picam2.configure(picam2.create_preview_configuration(
+                main={"format": "RGB888", "size": (640, 480)}
+            ))
+            picam2.start()
+            self._picam2 = picam2
+            self._use_picam2 = True
+            print("[Camera] DORHEA fisheye (CSI/Picamera2) 640×480 ready")
+        except Exception as e:
+            print(f"[Camera] Picamera2 failed ({e}), trying V4L2...")
+            for idx in range(3):
+                _c = cv2.VideoCapture(idx)
+                if _c.isOpened():
+                    self._cap = _c
+                    print(f"[Camera] DORHEA fisheye (V4L2) found at index {idx}")
+                    break
+                _c.release()
+            if self._cap is None:
+                raise RuntimeError(
+                    "[Camera] No camera found!\n"
+                    "  CSI:  run 'sudo raspi-config' → Interface → Camera → Enable, then reboot\n"
+                    "  USB:  check cable is plugged in, run 'ls /dev/video*'")
+            self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
         time.sleep(1)
-        print("[Camera] DORHEA USB fisheye 640×480 ready + MobileNet SSD")
+        print("[Camera] 640×480 ready + MobileNet SSD")
         if self.show_display:
             print("Keys: [Q] Quit  [SPACE] Auto/Manual  [F] FSD  [R] Reset  "
                   "[S] Snap  [D] Debug  [G] Green path  [B] Blue path")
@@ -773,10 +841,13 @@ class AutonomousVehicle:
         self._start_time = time.time()
 
         while True:
-            ret, frame = cap.read()
-            if not ret:
-                print("[Camera] Frame grab failed — retrying...")
-                continue
+            if self._use_picam2:
+                frame = self._picam2.capture_array()
+            else:
+                ret, frame = self._cap.read()
+                if not ret:
+                    print("[Camera] Frame grab failed — retrying...")
+                    continue
             frame = cv2.rotate(frame, cv2.ROTATE_180)  # camera mounted upside-down
             if self.undistort_enabled and self.camera:
                 frame = self.camera.undistort(frame)
@@ -856,7 +927,10 @@ class AutonomousVehicle:
                     if self.car_state == State.FORK_WAITING:
                         self.car_state = State.COLOR_FOLLOWING
 
-        cap.release()
+        if self._use_picam2:
+            self._picam2.stop()
+        elif self._cap:
+            self._cap.release()
         if self.show_display:
             cv2.destroyAllWindows()
         self._stop_motors()
@@ -879,8 +953,8 @@ def main():
     p.add_argument("--port",          type=int,   default=5000)
     p.add_argument("--no-web",        action="store_true")
     p.add_argument("--no-display",    action="store_true")
-    p.add_argument("--fov",           type=float, default=160.0,
-                   help="Camera FOV in degrees (default: 160 for DORHEA fisheye)")
+    p.add_argument("--fov",           type=float, default=170.0,
+                   help="Camera FOV in degrees (default: 170 for ELP fisheye)")
     p.add_argument("--no-undistort",  action="store_true",
                    help="Disable fisheye undistortion")
     p.add_argument("--calibration",   type=str,   default=None,
@@ -888,7 +962,7 @@ def main():
     args = p.parse_args()
 
     AutonomousVehicle(
-        max_speed    = args.speed,
+        max_speed        = args.speed,
         dnn_model        = args.dnn_model,
         dnn_skip         = args.dnn_skip,
         enable_web       = not args.no_web,
