@@ -120,11 +120,6 @@ class LaneDetector:
     # ─────────────────────────────────────────────────────────────────
     #  FAILSAFE HELPERS
     # ─────────────────────────────────────────────────────────────────
-    def _is_camera_blocked(self, gray_frame):
-        mean_brightness = np.mean(gray_frame)
-        variance = np.var(gray_frame)
-        return mean_brightness < 10 or variance < 15
-
     def _draw_warning_overlay(self, frame, message):
         debug = frame.copy()
         overlay = np.zeros_like(debug, dtype=np.uint8)
@@ -148,12 +143,6 @@ class LaneDetector:
 
         # ── COLOR EXTRACTION ─────────────────────────────────────────
         color_mask, gray = self._extract_lane_colors(frame)
-
-        # ── FAILSAFE 1: CAMERA BLOCKED ───────────────────────────────
-        if self._is_camera_blocked(gray):
-            self.ema_left_fit = None
-            self.ema_right_fit = None
-            return None, self._draw_warning_overlay(frame, "CRITICAL: CAMERA BLIND")
 
         # Apply color mask BEFORE edge detection
         masked_gray = cv2.bitwise_and(gray, color_mask)

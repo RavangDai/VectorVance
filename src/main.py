@@ -1,7 +1,7 @@
 """
 main.py - VectorVance Autonomous Car (PRODUCTION)
 ──────────────────────────────────────────────────
-Hardware : DORHEA fisheye camera (CSI/Picamera2, CMOS, 160°) + dual L298N motors + HC-SR04 ultrasonic
+Hardware : Innomaker 1080P USB2.0 UVC 130° wide-angle camera (rear-mounted) + dual L298N motors + HC-SR04 ultrasonic
 Detection: MobileNet SSD v2 (always active)
 Control  : PID lane-follow + adaptive speed + obstacle avoidance
 Fork nav : Stops at fork, waits for user to pick colour on dashboard,
@@ -138,12 +138,12 @@ class AutonomousVehicle:
                  enable_web       = True,
                  web_port         = 5000,
                  show_display     = True,
-                 fov_deg          = 170.0,
+                 fov_deg          = 130.0,
                  undistort        = True,
                  calibration_file = None,
                  cam_index        = -1):
 
-        # ── Camera (fisheye undistortion for 160° lens) ──────────────
+        # ── Camera (wide-angle undistortion for 130° Innomaker lens) ────
         self.undistort_enabled = undistort
         if undistort:
             if calibration_file:
@@ -768,24 +768,26 @@ class AutonomousVehicle:
                 print("[WebServer] Flask not installed — dashboard disabled")
                 self.web_enabled = False
 
-        # ── ELP USB 170° fisheye camera (rear-mounted, single camera) ──
+        # ── Innomaker 1080P USB2.0 130° camera (rear-mounted, single camera) ──
         self._cap = None
         search = [self.cam_index] if self.cam_index >= 0 else range(4)
         for idx in search:
             _c = cv2.VideoCapture(idx)
             if _c.isOpened():
                 self._cap = _c
-                print(f"[Camera] ELP USB 170° fisheye found at /dev/video{idx}")
+                print(f"[Camera] Innomaker 130° USB camera found at /dev/video{idx}")
                 break
             _c.release()
         if self._cap is None:
             raise RuntimeError(
-                "[Camera] ELP USB camera not found!\n"
+                "[Camera] Innomaker USB camera not found!\n"
                 "  Check cable, then run: ls /dev/video*\n"
                 "  If found at a different index, set it with: --cam-index N"
             )
+        self._cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
         self._cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
         self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        self._cap.set(cv2.CAP_PROP_FPS, 30)
         self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
         time.sleep(1)
@@ -904,14 +906,14 @@ def main():
     p.add_argument("--port",          type=int,   default=5000)
     p.add_argument("--no-web",        action="store_true")
     p.add_argument("--no-display",    action="store_true")
-    p.add_argument("--fov",           type=float, default=170.0,
-                   help="Camera FOV in degrees (default: 170 for ELP fisheye)")
+    p.add_argument("--fov",           type=float, default=130.0,
+                   help="Camera FOV in degrees (default: 130 for Innomaker wide-angle)")
     p.add_argument("--no-undistort",  action="store_true",
-                   help="Disable fisheye undistortion")
+                   help="Disable wide-angle lens undistortion")
     p.add_argument("--calibration",   type=str,   default=None,
                    help="Path to calibration .npz file (uses approximation if omitted)")
     p.add_argument("--cam-index",     type=int,   default=-1,
-                   help="Force ELP USB camera device index (default: auto-detect)")
+                   help="Force Innomaker USB camera device index (default: auto-detect)")
     args = p.parse_args()
 
     AutonomousVehicle(

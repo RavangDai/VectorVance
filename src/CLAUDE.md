@@ -5,7 +5,7 @@
 VectorVance is a Raspberry Pi-based autonomous car that follows lanes, detects obstacles and traffic signs, navigates forks using colour-coded tape, and exposes a live web dashboard.
 
 **Entry point:** `main.py`
-**Platform:** Raspberry Pi (Linux/lgpio) + ELP USB 170° fisheye camera (rear-mounted) + dual L298N motor drivers
+**Platform:** Raspberry Pi (Linux/lgpio) + Innomaker 1080P USB2.0 UVC 130° wide-angle camera (rear-mounted) + dual L298N motor drivers
 
 ---
 
@@ -33,7 +33,7 @@ main.py  (AutonomousVehicle + run loop)
 | Component | Details |
 |-----------|---------|
 | SBC | Raspberry Pi (lgpio GPIO) |
-| Camera | ELP USB Fisheye Camera 170° 960P (UVC USB2.0), rear-mounted, `cv2.VideoCapture` auto-detect (index 0–3), rotated 180° in code |
+| Camera | Innomaker 1080P USB2.0 UVC 130° Wide Angle Camera, rear-mounted, `cv2.VideoCapture` auto-detect (index 0–3), rotated 180° in code |
 | Motors | 4× DC motors via dual L298N — FL, FR, RL, RR |
 | Rear ultrasonic | HC-SR04 on TRIG=GPIO4, ECHO=GPIO17 — **rear-facing** for collision/impact detection |
 | Rear collision | Alert triggered at < 20 cm; sends Telegram / SMS / email via `rear_monitor.py` |
@@ -63,16 +63,17 @@ TRIG=4,    ECHO=17
 ## Key Modules
 
 ### `camera.py` — `FisheyeCamera`
-- Corrects barrel distortion from the 160° wide-angle lens using `cv2.fisheye` undistortion
+- Camera: Innomaker 1080P USB2.0 UVC 130° wide-angle (replaced ELP 170° due to IR sensor issue)
+- Corrects barrel distortion from the 130° wide-angle lens using `cv2.fisheye` undistortion
 - Applied in `main.py` immediately after 180° rotation, before any other module sees the frame
-- Uses equidistant fisheye model: `r = f·θ` where `f ≈ 229` for 160° at 640×480
+- Uses equidistant fisheye model: `r = f·θ` where `f ≈ 212` for 130° at 640×480
 - Default K and D are **approximate** — run calibration for best accuracy:
   ```bash
   python camera.py --calibrate --images ./calibration_images/
   python main.py --calibration calibration.npz
   ```
 - `balance=0.0` (default): crops black borders, keeps clean image centre
-- CLI flags: `--fov 160`, `--no-undistort`, `--calibration path.npz`
+- CLI flags: `--fov 130`, `--no-undistort`, `--calibration path.npz`
 - Test undistortion on a single image: `python camera.py --test image.jpg`
 
 ### `perception.py` — `LaneDetector`
@@ -135,8 +136,8 @@ python main.py --no-web                 # disable web dashboard
 python main.py --no-display             # headless (no cv2 window)
 python main.py --speed 0.6              # set max speed (default 0.8)
 python main.py --dnn-skip 3             # DNN inference every 3 frames
-python main.py --no-undistort           # skip fisheye correction
-python main.py --fov 120                # override FOV (default 160°)
+python main.py --no-undistort           # skip wide-angle correction
+python main.py --fov 120                # override FOV (default 130°)
 python main.py --calibration calib.npz # use calibrated lens params
 ```
 
@@ -189,9 +190,9 @@ Key fields pushed to the dashboard every frame:
 
 ## Development Notes
 
-- Camera is the ELP USB 170° fisheye, rear-mounted. Frame is rotated 180° at capture (`cv2.ROTATE_180`) in `main.py` to compensate for upside-down mounting. `perception.py` does NOT rotate — caller handles it.
-- Frame pipeline in `main.py`: capture → rotate 180° → fisheye undistort (170°) → all other modules.
-- Default `FisheyeCamera` K/D are approximate for 170° at 640×480. Run `python camera.py --calibrate` for accurate coefficients.
+- Camera is the Innomaker 1080P USB2.0 130° wide-angle, rear-mounted (replaced ELP 170° due to IR sensor issue). Frame is rotated 180° at capture (`cv2.ROTATE_180`) in `main.py` to compensate for upside-down mounting. `perception.py` does NOT rotate — caller handles it.
+- Frame pipeline in `main.py`: capture → rotate 180° → wide-angle undistort (130°) → all other modules.
+- Default `FisheyeCamera` K/D are approximate for 130° at 640×480. Run `python camera.py --calibrate` for accurate coefficients — **strongly recommended** after swapping to the new camera.
 - `mainv2.py` is an alternate entry point (webcam/video file testing) — rotation is source-dependent there.
 - Camera auto-detects at `/dev/video0` through `/dev/video3`. Override with `--cam-index N` if needed.
 - `safety.py` `simulate_sensors()` method is for development only (derives fake distances from frame brightness). Production uses actual HC-SR04 readings set directly on `self.safety.sensors['front']['distance']`.

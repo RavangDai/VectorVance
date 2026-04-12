@@ -1,17 +1,18 @@
 """
-camera.py — Fisheye lens undistortion for 160° wide-angle camera
+camera.py — Wide-angle lens undistortion for 130° camera
 ─────────────────────────────────────────────────────────────────
-A 160° FOV camera introduces heavy barrel distortion that bends
-straight lane lines into curves, throwing off Hough detection and
-PID steering.  This module corrects that before any other module
-sees the frame.
+A 130° FOV camera introduces barrel distortion that bends straight
+lane lines into curves, throwing off Hough detection and PID steering.
+This module corrects that before any other module sees the frame.
+
+Camera: Innomaker 1080P USB2.0 UVC, 130° Wide Angle (rear-mounted)
 
 How it works
 ────────────
 Uses OpenCV's fisheye model (equidistant projection):
   r = f * θ   (r = pixel radius, f = focal length, θ = angle from centre)
 
-Default K and D are APPROXIMATE for a generic 160° lens at 640×480.
+Default K and D are APPROXIMATE for the Innomaker 130° lens at 640×480.
 They will work but for best accuracy run a one-time calibration:
 
   python camera.py --calibrate --images ./calibration_images/
@@ -32,20 +33,29 @@ import cv2
 import numpy as np
 
 
-# ── Default approximate parameters for a 160° lens at 640×480 ────────────────
-# Equidistant model: f = half_width / (half_fov_rad)
-# half_fov_rad = 80° = 1.396 rad → f = 320 / 1.396 ≈ 229
-_DEFAULT_FOV_DEG = 160
+# ── Default approximate parameters for the Innomaker 130° USB lens at 640×480 ─
+# cv2.fisheye uses the equidistant projection:  r = f * θ
+#   where r = pixel radius from centre, θ = angle from optical axis (radians)
+# So: f = (sensor_radius) / (half_fov_radians)
+#   sensor_radius = min(w, h) / 2 = 240 px
+#   half_fov_rad  = 65° = 1.1345 rad
+#   f             = 240 / 1.1345 ≈ 212 px
+#
+# The old code used math.tan() — correct only for rectilinear lenses, not fisheye.
+_DEFAULT_FOV_DEG = 130
 _DEFAULT_W, _DEFAULT_H = 640, 480
 
 def _default_K(w=_DEFAULT_W, h=_DEFAULT_H, fov_deg=_DEFAULT_FOV_DEG) -> np.ndarray:
-    f = (w / 2) / math.tan(math.radians(fov_deg / 2))
+    # Equidistant fisheye model: f = r_max / theta_max
+    f = (min(w, h) / 2) / math.radians(fov_deg / 2)
     return np.array([[f,   0., w / 2],
                      [0.,  f,  h / 2],
                      [0.,  0., 1.   ]], dtype=np.float64)
 
-# Estimated distortion coefficients (k1, k2, k3, k4) for fisheye model
-_DEFAULT_D = np.array([[-0.38], [0.14], [-0.03], [0.0]], dtype=np.float64)
+# Approximate distortion coefficients (k1, k2, k3, k4) for the Innomaker 130° lens.
+# Less barrel distortion than 170° fisheye — k1 is smaller in magnitude.
+# Run  python camera.py --calibrate --images ./calibration_images/  for accuracy.
+_DEFAULT_D = np.array([[-0.15], [0.04], [0.0], [0.0]], dtype=np.float64)
 
 
 class FisheyeCamera:
@@ -67,7 +77,7 @@ class FisheyeCamera:
                  balance: float = 0.0):
         """
         width, height : frame resolution (must match camera config)
-        fov_deg       : camera field of view in degrees (160 for your lens)
+        fov_deg       : camera field of view in degrees (130 for Innomaker lens)
         K             : 3×3 camera matrix (uses approximation if None)
         D             : 4×1 fisheye distortion coefficients (approx if None)
         balance       : 0.0 = crop black borders, 1.0 = keep all pixels
@@ -83,7 +93,7 @@ class FisheyeCamera:
         self._build_maps()
 
         mode = "calibrated" if K is not None else "approximate"
-        print(f"[Camera] FisheyeCamera — {fov_deg}° FOV, {mode} params, "
+        print(f"[Camera] WideAngleCamera — {fov_deg}° FOV, {mode} params, "
               f"balance={balance:.1f}")
 
     def _build_maps(self):
