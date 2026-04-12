@@ -370,6 +370,17 @@
       text-align: center; letter-spacing: 1px;
     }
     #obstacle-banner.warn { background: var(--orange); }
+    #rear-collision-banner {
+      display: none; padding: 6px 12px;
+      background: linear-gradient(90deg, #7c0000, #ff3b3b, #7c0000);
+      color: #fff; font-size: 12px; font-weight: 700;
+      text-align: center; letter-spacing: 1.5px;
+      animation: pulse-red 0.8s ease-in-out infinite;
+    }
+    @keyframes pulse-red {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.75; }
+    }
     #fork-banner {
       display: none; padding: 10px 20px; background: #00529e;
       color: #fff; font-size: 14px; font-weight: 700;
@@ -422,14 +433,15 @@
 </header>
 
 <div id="obstacle-banner">OBSTACLE DETECTED</div>
+<div id="rear-collision-banner">REAR COLLISION DETECTED</div>
 <div id="fork-banner">CAR IS AT FORK — SELECT PATH BELOW</div>
 
 <div class="main">
 
   <!-- ── Video feed ── -->
   <div class="video-panel">
-    <div class="panel-title">Live Feed</div>
-    <img src="/video_feed" alt="Live camera feed" id="video-feed"
+    <div class="panel-title">Camera Feed — ELP USB 170° (Rear-Mounted)</div>
+    <img src="/video_feed" alt="Camera feed" id="video-feed"
          onerror="this.src='/video_feed'" />
   </div>
 
@@ -450,7 +462,7 @@
         </div>
         <div class="stat-grid">
           <div class="stat-item">
-            <span class="stat-label">Distance</span>
+            <span class="stat-label">Rear Dist</span>
             <span class="stat-value" id="val-dist">—</span>
           </div>
           <div class="stat-item">
@@ -462,8 +474,8 @@
             <span class="stat-value" id="val-err">—</span>
           </div>
           <div class="stat-item">
-            <span class="stat-label">Stop Signs</span>
-            <span class="stat-value" id="val-stops">—</span>
+            <span class="stat-label">Rear Alerts</span>
+            <span class="stat-value" id="val-rear-alerts">0</span>
           </div>
         </div>
         <div style="margin-top:12px;">
@@ -737,16 +749,33 @@
       dangerBadge.style.display = 'none';
     }
 
-    // Distance
-    const dist   = d.distance_cm;
+    // Rear distance
+    const dist   = d.rear_distance_cm;
     const distEl = document.getElementById('val-dist');
-    distEl.textContent = dist >= 999 ? '—' : dist + ' cm';
+    distEl.textContent = (dist == null || dist >= 299) ? '—' : dist + ' cm';
     distEl.className   = 'stat-value' +
-      (dist < 25 ? ' danger' : dist < 50 ? ' warn' : ' good');
+      (dist < 20 ? ' danger' : dist < 50 ? ' warn' : ' good');
+
+    // Rear alert count
+    const alerts = d.rear_alert_count ?? 0;
+    const alertEl = document.getElementById('val-rear-alerts');
+    alertEl.textContent = alerts;
+    alertEl.className   = 'stat-value' + (alerts > 0 ? ' danger' : '');
+
+    // Rear collision banner — show for 5 s after alert count increases
+    if (alerts > (window._lastRearAlerts ?? 0)) {
+      window._lastRearAlerts = alerts;
+      const rcb = document.getElementById('rear-collision-banner');
+      rcb.textContent = `REAR COLLISION DETECTED — Alert #${alerts}`;
+      rcb.style.display = 'block';
+      clearTimeout(window._rearBannerTimer);
+      window._rearBannerTimer = setTimeout(() => { rcb.style.display = 'none'; }, 5000);
+    } else {
+      window._lastRearAlerts = window._lastRearAlerts ?? alerts;
+    }
 
     document.getElementById('val-fps').textContent   = d.fps ?? '—';
     document.getElementById('val-err').textContent   = d.steering_error != null ? d.steering_error + 'px' : '—';
-    document.getElementById('val-stops').textContent = d.stop_signs_detected ?? '—';
 
     // Motor bars
     const l = d.speed_left  ?? 0;

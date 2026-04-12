@@ -24,7 +24,6 @@ KEYBOARD (when display is on):
 
 import cv2
 import time
-import lgpio
 import argparse
 
 from gpiozero import Motor
@@ -37,6 +36,7 @@ from safety import ObstacleDetector
 from dnn_detector import DNNDetector
 from intersection_detector import IntersectionDetector
 from color_sign_detector import ColorSignDetector
+from rear_monitor import RearMonitor
 import pi_server
 
 # ── GPIO pin assignments ──────────────────────────────────────────────────────
@@ -138,9 +138,10 @@ class AutonomousVehicle:
                  enable_web       = True,
                  web_port         = 5000,
                  show_display     = True,
-                 fov_deg          = 160.0,
+                 fov_deg          = 170.0,
                  undistort        = True,
-                 calibration_file = None):
+                 calibration_file = None,
+                 cam_index        = -1):
 
         # ── Camera (fisheye undistortion for 160° lens) ──────────────
         self.undistort_enabled = undistort
@@ -180,13 +181,9 @@ class AutonomousVehicle:
         self.rear_right  = Motor(forward=RR_FWD, backward=RR_BWD)
         print("[Motors] All 4 motors OK")
 
-        # ── Ultrasonic ────────────────────────────────────────────────
-        self._gpio = lgpio.gpiochip_open(0)
-        lgpio.gpio_claim_output(self._gpio, TRIG_PIN)
-        lgpio.gpio_claim_input(self._gpio, ECHO_PIN)
-        lgpio.gpio_write(self._gpio, TRIG_PIN, 0)
-        time.sleep(0.1)
-        print("[Ultrasonic] HC-SR04 OK")
+        # ── Rear ultrasonic + collision alerts ───────────────────────
+        self.rear_monitor = RearMonitor(trig=TRIG_PIN, echo=ECHO_PIN)
+        self.rear_monitor.start()
 
         # ── Web / display ─────────────────────────────────────────────
         self.web_enabled  = enable_web
@@ -200,6 +197,7 @@ class AutonomousVehicle:
         self.smooth_pid        = SmoothValue(0.0, alpha=0.12)
 
         # ── Status hold ──────────────────────────────────────────────
+        self.cam_index           = cam_index
         self._display_status     = "READY"
         self._status_hold_frames = 0
         self._STATUS_MIN_HOLD    = 6
@@ -212,7 +210,6 @@ class AutonomousVehicle:
         self.frame_count          = 0
         self.total_error          = 0
         self.stop_signs_detected  = 0
-        self._last_distance       = 999.0
         self._last_steering_error = 0.0
         self._start_time          = 0.0
 
@@ -253,24 +250,6 @@ class AutonomousVehicle:
         print(f"[Mode] {prev} → {mode}")
 
     # ── Hardware helpers ──────────────────────────────────────────────────────
-
-    def _get_distance(self) -> float:
-        lgpio.gpio_write(self._gpio, TRIG_PIN, 1)
-        time.sleep(0.00001)
-        lgpio.gpio_write(self._gpio, TRIG_PIN, 0)
-        timeout = time.time() + 0.04
-        start   = time.time()
-        while lgpio.gpio_read(self._gpio, ECHO_PIN) == 0:
-            start = time.time()
-            if time.time() > timeout:
-                return 999.0
-        stop    = time.time()
-        timeout = time.time() + 0.04
-        while lgpio.gpio_read(self._gpio, ECHO_PIN) == 1:
-            stop = time.time()
-            if time.time() > timeout:
-                return 999.0
-        return round((stop - start) * 34300 / 2, 1)
 
     def _drive(self, left_speed: float, right_speed: float):
         left_speed  = max(0.0, min(1.0, left_speed))
@@ -331,7 +310,7 @@ class AutonomousVehicle:
         for m in (self.front_left, self.rear_left,
                   self.front_right, self.rear_right):
             m.close()
-        lgpio.gpiochip_close(self._gpio)
+        self.rear_monitor.stop()
         print("[Hardware] GPIO released")
 
     # ── FSD frame processing ─────────────────────────────────────────────────
@@ -340,18 +319,12 @@ class AutonomousVehicle:
         """Lane-free frame loop for FSD mode. Uses DNN + ultrasonic only."""
         self.frame_count += 1
 
-        # Ultrasonic (every 3 frames)
-        if self.frame_count % 3 == 0:
-            self._last_distance = self._get_distance()
-        self.safety.sensors['front']['distance'] = self._last_distance
-        self.safety._check_obstacles()
-
         # DNN obstacle detection (internally caches on skip_frames)
         self.detector.detect(frame)
 
-        # FreeRoam decision
+        # FreeRoam decision — no front ultrasonic (sensor is rear-facing)
         left, right, status = self.free_roam.compute(
-            self.detector, self._last_distance
+            self.detector, 999.0
         )
 
         self.smooth_left.update(abs(left))
@@ -372,7 +345,7 @@ class AutonomousVehicle:
                     (0, 165, 255) if "TURN" in status else (0, 212, 255)
         cv2.putText(debug, f"[FSD] {status}",
                     (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, fsd_color, 2)
-        cv2.putText(debug, f"Dist: {self._last_distance:.0f} cm",
+        cv2.putText(debug, f"Rear: {self.rear_monitor.distance_cm:.0f} cm",
                     (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
 
         danger = self.detector.get_danger_level()
@@ -453,7 +426,8 @@ class AutonomousVehicle:
             "speed_right":           round(right, 3),
             "base_speed":            round(self.smooth_base_speed.value, 3),
             "steering_error":        round(self._last_steering_error, 1),
-            "distance_cm":           self._last_distance,
+            "rear_distance_cm":       self.rear_monitor.distance_cm,
+            "rear_alert_count":       self.rear_monitor.get_status()["rear_alert_count"],
             "fps":                   round(self.frame_count / elapsed, 1),
             "frame_count":           self.frame_count,
             "stop_signs_detected":   self.stop_signs_detected,
@@ -487,12 +461,6 @@ class AutonomousVehicle:
 
         self.total_error          += abs(steering_error)
         self._last_steering_error  = steering_error
-
-        # ── Ultrasonic (every 3 frames) ────────────────────────────────
-        if self.frame_count % 3 == 0:
-            self._last_distance = self._get_distance()
-        self.safety.sensors['front']['distance'] = self._last_distance
-        self.safety._check_obstacles()
 
         # ── Sign / obstacle detection ──────────────────────────────────
         self.detector.detect(frame)
@@ -704,17 +672,18 @@ class AutonomousVehicle:
             cv2.putText(frame, f"Fork: {conf:.0%}",
                         (12, 182), cv2.FONT_HERSHEY_SIMPLEX, 0.4, fork_color, 1)
 
-        # ── OBSTACLE BOTTOM BAR ──────────────────────────────────────
-        dist = self._last_distance
-        modifier = self.detector.get_speed_modifier()
-        if dist < 200 or modifier < 1.0:
+        # ── BOTTOM BAR — rear distance + DNN obstacle ────────────────
+        rear_dist = self.rear_monitor.distance_cm
+        modifier  = self.detector.get_speed_modifier()
+        if rear_dist < SLOW_DISTANCE or modifier < 1.0:
             bar_y = h - 30
             cv2.rectangle(frame, (0, bar_y), (w, h), (0, 0, 0), -1)
-            cx = w // 2
-            circ_color = (0, 0, 255) if dist < 50 else (0, 165, 255) if dist < 100 else (0, 220, 100)
-            cv2.circle(frame, (cx, bar_y + 15), 10, circ_color, -1)
-            cv2.putText(frame, f"{dist:.0f}cm", (cx - 20, bar_y + 12),
-                        cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 255, 255), 1)
+            if rear_dist < SLOW_DISTANCE:
+                cx = w // 2
+                circ_color = (0, 0, 255) if rear_dist < STOP_DISTANCE else (0, 165, 255)
+                cv2.circle(frame, (cx, bar_y + 15), 10, circ_color, -1)
+                cv2.putText(frame, f"REAR {rear_dist:.0f}cm", (cx - 30, bar_y + 12),
+                            cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 255, 255), 1)
             if modifier < 1.0:
                 obs_text = "OBSTACLE DETECTED -- SLOWING" if modifier > 0 else "OBSTACLE -- STOPPING"
                 obs_color = (0, 165, 255) if modifier > 0 else (0, 0, 255)
@@ -799,38 +768,25 @@ class AutonomousVehicle:
                 print("[WebServer] Flask not installed — dashboard disabled")
                 self.web_enabled = False
 
-        # Try Picamera2 (CSI) first, fall back to V4L2 (USB)
-        self._use_picam2 = False
-        self._picam2 = None
+        # ── ELP USB 170° fisheye camera (rear-mounted, single camera) ──
         self._cap = None
-
-        try:
-            from picamera2 import Picamera2
-            picam2 = Picamera2()
-            picam2.configure(picam2.create_preview_configuration(
-                main={"format": "RGB888", "size": (640, 480)}
-            ))
-            picam2.start()
-            self._picam2 = picam2
-            self._use_picam2 = True
-            print("[Camera] DORHEA fisheye (CSI/Picamera2) 640×480 ready")
-        except Exception as e:
-            print(f"[Camera] Picamera2 failed ({e}), trying V4L2...")
-            for idx in range(3):
-                _c = cv2.VideoCapture(idx)
-                if _c.isOpened():
-                    self._cap = _c
-                    print(f"[Camera] DORHEA fisheye (V4L2) found at index {idx}")
-                    break
-                _c.release()
-            if self._cap is None:
-                raise RuntimeError(
-                    "[Camera] No camera found!\n"
-                    "  CSI:  run 'sudo raspi-config' → Interface → Camera → Enable, then reboot\n"
-                    "  USB:  check cable is plugged in, run 'ls /dev/video*'")
-            self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-            self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-            self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        search = [self.cam_index] if self.cam_index >= 0 else range(4)
+        for idx in search:
+            _c = cv2.VideoCapture(idx)
+            if _c.isOpened():
+                self._cap = _c
+                print(f"[Camera] ELP USB 170° fisheye found at /dev/video{idx}")
+                break
+            _c.release()
+        if self._cap is None:
+            raise RuntimeError(
+                "[Camera] ELP USB camera not found!\n"
+                "  Check cable, then run: ls /dev/video*\n"
+                "  If found at a different index, set it with: --cam-index N"
+            )
+        self._cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
+        self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
         time.sleep(1)
         print("[Camera] 640×480 ready + MobileNet SSD")
@@ -841,13 +797,10 @@ class AutonomousVehicle:
         self._start_time = time.time()
 
         while True:
-            if self._use_picam2:
-                frame = self._picam2.capture_array()
-            else:
-                ret, frame = self._cap.read()
-                if not ret:
-                    print("[Camera] Frame grab failed — retrying...")
-                    continue
+            ret, frame = self._cap.read()
+            if not ret:
+                print("[Camera] Frame grab failed — retrying...")
+                continue
             frame = cv2.rotate(frame, cv2.ROTATE_180)  # camera mounted upside-down
             if self.undistort_enabled and self.camera:
                 frame = self.camera.undistort(frame)
@@ -892,7 +845,7 @@ class AutonomousVehicle:
                 print(f"Frame {self.frame_count:04d} | "
                       f"State:{self.car_state:18s} | "
                       f"L:{left:.2f} R:{right:.2f} | "
-                      f"Dist:{self._last_distance:.0f}cm | "
+                      f"Rear:{self.rear_monitor.distance_cm:.0f}cm | "
                       f"FPS:{fps:.1f} | AvgErr:{avg_err:.1f}px")
 
             if self.show_display:
@@ -927,9 +880,7 @@ class AutonomousVehicle:
                     if self.car_state == State.FORK_WAITING:
                         self.car_state = State.COLOR_FOLLOWING
 
-        if self._use_picam2:
-            self._picam2.stop()
-        elif self._cap:
+        if self._cap:
             self._cap.release()
         if self.show_display:
             cv2.destroyAllWindows()
@@ -959,6 +910,8 @@ def main():
                    help="Disable fisheye undistortion")
     p.add_argument("--calibration",   type=str,   default=None,
                    help="Path to calibration .npz file (uses approximation if omitted)")
+    p.add_argument("--cam-index",     type=int,   default=-1,
+                   help="Force ELP USB camera device index (default: auto-detect)")
     args = p.parse_args()
 
     AutonomousVehicle(
@@ -971,6 +924,7 @@ def main():
         fov_deg          = args.fov,
         undistort        = not args.no_undistort,
         calibration_file = args.calibration,
+        cam_index        = args.cam_index,
     ).run()
 
 

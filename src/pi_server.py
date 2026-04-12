@@ -33,6 +33,9 @@ import json
 _frame_lock    = threading.Lock()
 _latest_frame  = None          # latest numpy BGR frame from main loop
 
+_rear_frame_lock   = threading.Lock()
+_latest_rear_frame = None      # latest numpy BGR frame from rear ELP camera
+
 _telem_lock    = threading.Lock()
 _telemetry     = {}            # latest telemetry dict from main loop
 
@@ -50,6 +53,13 @@ def push_frame(frame):
     global _latest_frame
     with _frame_lock:
         _latest_frame = frame.copy() if frame is not None else None
+
+
+def push_rear_frame(frame):
+    """Push the latest rear camera frame. Called from the rear camera thread."""
+    global _latest_rear_frame
+    with _rear_frame_lock:
+        _latest_rear_frame = frame.copy() if frame is not None else None
 
 
 def push_telemetry(data: dict):
@@ -91,10 +101,36 @@ def _encode_frame_jpeg(quality: int = 75) -> bytes | None:
         return buf.tobytes() if ret else None
 
 
+def _encode_rear_frame_jpeg(quality: int = 70) -> bytes | None:
+    with _rear_frame_lock:
+        if _latest_rear_frame is None:
+            return None
+        ret, buf = cv2.imencode(
+            '.jpg', _latest_rear_frame,
+            [cv2.IMWRITE_JPEG_QUALITY, quality]
+        )
+        return buf.tobytes() if ret else None
+
+
 def _mjpeg_generator():
     """Yields MJPEG boundary frames for the /video_feed route."""
     while True:
         jpeg = _encode_frame_jpeg()
+        if jpeg:
+            yield (
+                b'--frame\r\n'
+                b'Content-Type: image/jpeg\r\n\r\n'
+                + jpeg +
+                b'\r\n'
+            )
+        else:
+            time.sleep(0.05)
+
+
+def _rear_mjpeg_generator():
+    """Yields MJPEG boundary frames for the /rear_video_feed route."""
+    while True:
+        jpeg = _encode_rear_frame_jpeg()
         if jpeg:
             yield (
                 b'--frame\r\n'
@@ -140,6 +176,13 @@ def start_server(port: int = 5000) -> bool:
     def video_feed():
         return Response(
             _mjpeg_generator(),
+            mimetype='multipart/x-mixed-replace; boundary=frame'
+        )
+
+    @app.route('/rear_video_feed')
+    def rear_video_feed():
+        return Response(
+            _rear_mjpeg_generator(),
             mimetype='multipart/x-mixed-replace; boundary=frame'
         )
 

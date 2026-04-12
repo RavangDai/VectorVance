@@ -5,7 +5,7 @@
 VectorVance is a Raspberry Pi-based autonomous car that follows lanes, detects obstacles and traffic signs, navigates forks using colour-coded tape, and exposes a live web dashboard.
 
 **Entry point:** `main.py`
-**Platform:** Raspberry Pi (Linux/lgpio) + Picamera2 + dual L298N motor drivers
+**Platform:** Raspberry Pi (Linux/lgpio) + ELP USB 170° fisheye camera (rear-mounted) + dual L298N motor drivers
 
 ---
 
@@ -13,11 +13,12 @@ VectorVance is a Raspberry Pi-based autonomous car that follows lanes, detects o
 
 ```
 main.py  (AutonomousVehicle + run loop)
-├── camera.py            — fisheye undistortion for 160° wide-angle lens (cv2.fisheye)
+├── camera.py            — fisheye undistortion for wide-angle lenses (cv2.fisheye)
+├── rear_monitor.py      — rear HC-SR04 collision detection + Telegram/SMS/email alerts
 ├── perception.py        — lane detection (colour mask → Canny → Hough → EMA fit)
 ├── controller.py        — PID steering controller
 ├── speed_controller.py  — adaptive speed based on steering error
-├── safety.py            — ultrasonic-fed obstacle detector + HUD overlay
+├── safety.py            — DNN-fed obstacle detector + HUD overlay (no front ultrasonic)
 ├── dnn_detector.py      — SSD MobileNet v2 sign/obstacle detection (cv2.dnn, COCO)
 ├── color_sign_detector.py — colour tape detection (GREEN/BLUE forks, RED destination)
 ├── intersection_detector.py — fork/intersection detection from vision data
@@ -32,10 +33,10 @@ main.py  (AutonomousVehicle + run loop)
 | Component | Details |
 |-----------|---------|
 | SBC | Raspberry Pi (lgpio GPIO) |
-| Camera | Picamera2, 640×480 RGB888, mounted upside-down (rotated 180° in code), 160° FOV fisheye lens |
+| Camera | ELP USB Fisheye Camera 170° 960P (UVC USB2.0), rear-mounted, `cv2.VideoCapture` auto-detect (index 0–3), rotated 180° in code |
 | Motors | 4× DC motors via dual L298N — FL, FR, RL, RR |
-| Ultrasonic | HC-SR04 on TRIG=GPIO4, ECHO=GPIO17 |
-| Emergency stop | < 20 cm; slow-down warning < 50 cm |
+| Rear ultrasonic | HC-SR04 on TRIG=GPIO4, ECHO=GPIO17 — **rear-facing** for collision/impact detection |
+| Rear collision | Alert triggered at < 20 cm; sends Telegram / SMS / email via `rear_monitor.py` |
 
 ### GPIO pin map
 ```
@@ -188,9 +189,10 @@ Key fields pushed to the dashboard every frame:
 
 ## Development Notes
 
-- Camera is physically mounted upside-down; frame is rotated 180° at capture (`cv2.ROTATE_180`) in `main.py`. `perception.py` does NOT rotate — caller handles it.
-- Frame pipeline in `main.py`: capture → rotate 180° → fisheye undistort → all other modules.
-- Default `FisheyeCamera` K/D are approximate for 160° at 640×480. Run `python camera.py --calibrate` for accurate coefficients.
+- Camera is the ELP USB 170° fisheye, rear-mounted. Frame is rotated 180° at capture (`cv2.ROTATE_180`) in `main.py` to compensate for upside-down mounting. `perception.py` does NOT rotate — caller handles it.
+- Frame pipeline in `main.py`: capture → rotate 180° → fisheye undistort (170°) → all other modules.
+- Default `FisheyeCamera` K/D are approximate for 170° at 640×480. Run `python camera.py --calibrate` for accurate coefficients.
 - `mainv2.py` is an alternate entry point (webcam/video file testing) — rotation is source-dependent there.
+- Camera auto-detects at `/dev/video0` through `/dev/video3`. Override with `--cam-index N` if needed.
 - `safety.py` `simulate_sensors()` method is for development only (derives fake distances from frame brightness). Production uses actual HC-SR04 readings set directly on `self.safety.sensors['front']['distance']`.
 - `use_tracking` parameter retained in `DNNDetector` for API compatibility but is unused (SSD is single-shot, no tracking).
