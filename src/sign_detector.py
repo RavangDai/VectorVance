@@ -270,3 +270,116 @@ class TrafficSignDetector:
         self.confirmed_signs = []
         self.detection_history.clear()
         self.debug_mask = None
+
+    def red_detected(self) -> bool:
+        """True if any red region was found this frame (used as DNN hint)."""
+        return len(self.detected_signs) > 0
+
+
+# ── ArUco Speed Limit Detector ────────────────────────────────────────────────
+#
+#  Print markers from: https://chev.me/arucogen/
+#  Dictionary: 4x4_50
+#
+#  Marker ID → Speed limit:
+#    ID 1  →  10 km/h  (SLOW)
+#    ID 2  →  20 km/h  (AVG)
+#    ID 3  →  30 km/h  (NORMAL)
+#    ID 4  →  50 km/h  (MAX / madmax)
+#
+# ─────────────────────────────────────────────────────────────────────────────
+
+ARUCO_SPEED_MAP = {
+    1: 10,
+    2: 20,
+    3: 30,
+    4: 50,
+}
+
+SPEED_MODE_LABEL = {10: "SLOW", 20: "AVG", 30: "NORMAL", 50: "MAX"}
+
+
+class ArucoSpeedDetector:
+    """
+    Detects printed ArUco markers and maps them to speed limits.
+    Zero ML — pure OpenCV marker detection, runs in < 1 ms.
+
+    detect(frame)       → int | None  (speed limit in km/h, or None)
+    get_speed_limit()   → int | None
+    get_speed_fraction()→ float | None  (motor fraction for the limit)
+    draw_overlay(frame) → annotated frame
+    reset()             → clear state
+    """
+
+    # Motor fractions matching SPEED_LIMIT_MAP in dnn_detector
+    SPEED_FRACTIONS = {10: 0.30, 20: 0.50, 30: 0.75, 50: 1.00}
+
+    HOLD_FRAMES = 45   # keep limit active for N frames after last sighting
+
+    def __init__(self):
+        aruco_dict   = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
+        aruco_params = cv2.aruco.DetectorParameters()
+        try:
+            # OpenCV 4.7+
+            self._detector     = cv2.aruco.ArucoDetector(aruco_dict, aruco_params)
+            self._use_new_api  = True
+        except AttributeError:
+            # OpenCV ≤ 4.6
+            self._aruco_dict   = aruco_dict
+            self._aruco_params = aruco_params
+            self._use_new_api  = False
+
+        self._speed_limit   = None
+        self._hold_counter  = 0
+        self._last_ids      = []
+
+        print("[ArUco] Speed-limit detector ready (DICT_4X4_50)")
+        print("[ArUco] IDs: 1=10 km/h  2=20 km/h  3=30 km/h  4=50 km/h")
+
+    def detect(self, frame: np.ndarray) -> "int | None":
+        """Run ArUco detection. Returns speed limit km/h or None."""
+        if self._use_new_api:
+            corners, ids, _ = self._detector.detectMarkers(frame)
+        else:
+            corners, ids, _ = cv2.aruco.detectMarkers(
+                frame, self._aruco_dict, parameters=self._aruco_params
+            )
+
+        self._last_ids = []
+        if ids is not None:
+            for marker_id in ids.flatten().tolist():
+                self._last_ids.append(marker_id)
+                if marker_id in ARUCO_SPEED_MAP:
+                    self._speed_limit  = ARUCO_SPEED_MAP[marker_id]
+                    self._hold_counter = self.HOLD_FRAMES
+
+        # Count down hold timer
+        if self._hold_counter > 0:
+            self._hold_counter -= 1
+        else:
+            self._speed_limit = None
+
+        return self._speed_limit
+
+    def get_speed_limit(self) -> "int | None":
+        return self._speed_limit
+
+    def get_speed_fraction(self) -> "float | None":
+        if self._speed_limit is None:
+            return None
+        return self.SPEED_FRACTIONS.get(self._speed_limit)
+
+    def draw_overlay(self, frame: np.ndarray) -> np.ndarray:
+        if self._speed_limit is not None:
+            label = SPEED_MODE_LABEL.get(self._speed_limit, "")
+            text  = f"LIMIT {self._speed_limit} km/h [{label}]"
+            (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+            cv2.rectangle(frame, (8, 200), (tw + 18, 226), (0, 80, 120), -1)
+            cv2.putText(frame, text, (12, 220),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 220, 255), 2)
+        return frame
+
+    def reset(self):
+        self._speed_limit  = None
+        self._hold_counter = 0
+        self._last_ids     = []

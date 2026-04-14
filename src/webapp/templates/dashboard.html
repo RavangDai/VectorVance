@@ -370,7 +370,7 @@
       text-align: center; letter-spacing: 1px;
     }
     #obstacle-banner.warn { background: var(--orange); }
-    #rear-collision-banner {
+    #stop-sign-banner {
       display: none; padding: 6px 12px;
       background: linear-gradient(90deg, #7c0000, #ff3b3b, #7c0000);
       color: #fff; font-size: 12px; font-weight: 700;
@@ -433,14 +433,14 @@
 </header>
 
 <div id="obstacle-banner">OBSTACLE DETECTED</div>
-<div id="rear-collision-banner">REAR COLLISION DETECTED</div>
+<div id="stop-sign-banner">STOP SIGN DETECTED</div>
 <div id="fork-banner">CAR IS AT FORK — SELECT PATH BELOW</div>
 
 <div class="main">
 
   <!-- ── Video feed ── -->
   <div class="video-panel">
-    <div class="panel-title">Camera Feed — ELP USB 170° (Rear-Mounted)</div>
+    <div class="panel-title">Camera Feed — Innomaker 130° (Front-Mounted)</div>
     <img src="/video_feed" alt="Camera feed" id="video-feed"
          onerror="this.src='/video_feed'" />
   </div>
@@ -462,7 +462,7 @@
         </div>
         <div class="stat-grid">
           <div class="stat-item">
-            <span class="stat-label">Rear Dist</span>
+            <span class="stat-label">Front Dist</span>
             <span class="stat-value" id="val-dist">—</span>
           </div>
           <div class="stat-item">
@@ -474,8 +474,8 @@
             <span class="stat-value" id="val-err">—</span>
           </div>
           <div class="stat-item">
-            <span class="stat-label">Rear Alerts</span>
-            <span class="stat-value" id="val-rear-alerts">0</span>
+            <span class="stat-label">Speed Limit</span>
+            <span class="stat-value" id="val-speed-limit">—</span>
           </div>
         </div>
         <div style="margin-top:12px;">
@@ -500,9 +500,9 @@
       </div>
     </div>
 
-    <!-- DNN Detections -->
+    <!-- Sign Detections -->
     <div class="card">
-      <div class="card-title">DNN Detections</div>
+      <div class="card-title">Sign Detections</div>
       <div class="card-body">
         <div class="detection-list" id="detection-list">
           <div class="no-detections">No detections</div>
@@ -738,41 +738,38 @@
     stateBadge.textContent = stateLabels[carState] || carState || '—';
     stateBadge.className = 'state-badge state-' + (carState || '');
 
-    // DNN danger badge
+    // Stop sign / danger badge
     const dangerBadge = document.getElementById('danger-badge');
-    const dnnDanger = d.dnn_danger || '';
-    if (d.dnn_enabled && dnnDanger) {
+    if (d.stop_sign_active) {
       dangerBadge.style.display = 'inline-block';
-      dangerBadge.textContent = dnnDanger;
-      dangerBadge.className = 'danger-badge danger-' + dnnDanger;
+      dangerBadge.textContent   = 'STOP SIGN';
+      dangerBadge.className     = 'danger-badge danger-STOP';
     } else {
       dangerBadge.style.display = 'none';
     }
 
-    // Rear distance
-    const dist   = d.rear_distance_cm;
+    // Front distance
+    const dist   = d.front_distance_cm;
     const distEl = document.getElementById('val-dist');
     distEl.textContent = (dist == null || dist >= 299) ? '—' : dist + ' cm';
     distEl.className   = 'stat-value' +
       (dist < 20 ? ' danger' : dist < 50 ? ' warn' : ' good');
 
-    // Rear alert count
-    const alerts = d.rear_alert_count ?? 0;
-    const alertEl = document.getElementById('val-rear-alerts');
-    alertEl.textContent = alerts;
-    alertEl.className   = 'stat-value' + (alerts > 0 ? ' danger' : '');
-
-    // Rear collision banner — show for 5 s after alert count increases
-    if (alerts > (window._lastRearAlerts ?? 0)) {
-      window._lastRearAlerts = alerts;
-      const rcb = document.getElementById('rear-collision-banner');
-      rcb.textContent = `REAR COLLISION DETECTED — Alert #${alerts}`;
-      rcb.style.display = 'block';
-      clearTimeout(window._rearBannerTimer);
-      window._rearBannerTimer = setTimeout(() => { rcb.style.display = 'none'; }, 5000);
+    // Speed limit
+    const limit    = d.speed_limit_kmh;
+    const limitEl  = document.getElementById('val-speed-limit');
+    const modeMap  = {10: 'SLOW', 20: 'AVG', 30: 'NORMAL', 50: 'MAX'};
+    if (limit != null) {
+      limitEl.textContent = `${limit} km/h (${modeMap[limit] || ''})`;
+      limitEl.className   = 'stat-value warn';
     } else {
-      window._lastRearAlerts = window._lastRearAlerts ?? alerts;
+      limitEl.textContent = '—';
+      limitEl.className   = 'stat-value';
     }
+
+    // Stop sign banner — show while stop sign is active
+    const ssb = document.getElementById('stop-sign-banner');
+    ssb.style.display = d.stop_sign_active ? 'block' : 'none';
 
     document.getElementById('val-fps').textContent   = d.fps ?? '—';
     document.getElementById('val-err').textContent   = d.steering_error != null ? d.steering_error + 'px' : '—';
@@ -785,30 +782,27 @@
     document.getElementById('bar-left-val').textContent  = l.toFixed(2);
     document.getElementById('bar-right-val').textContent = r.toFixed(2);
 
-    // Obstacle banner
+    // Obstacle banner (from front ultrasonic)
     const modifier = d.obstacle_modifier ?? 1;
     const banner   = document.getElementById('obstacle-banner');
     if (modifier < 1.0) {
       banner.style.display = 'block';
       banner.className     = modifier === 0 ? '' : 'warn';
       banner.textContent   = modifier === 0
-        ? 'OBSTACLE — STOPPING'
-        : `OBSTACLE DETECTED — speed ×${modifier.toFixed(1)}`;
+        ? 'OBSTACLE IN FRONT — STOPPING'
+        : `OBSTACLE IN FRONT — speed ×${modifier.toFixed(1)}`;
     } else {
       banner.style.display = 'none';
     }
 
-    // DNN detections
+    // Sign detections list
     const dl   = document.getElementById('detection-list');
     const dets = d.dnn_detections || [];
     if (!d.dnn_enabled || dets.length === 0) {
-      dl.innerHTML = `<div class="no-detections">${d.dnn_enabled ? 'No detections' : 'DNN disabled'}</div>`;
+      dl.innerHTML = `<div class="no-detections">${d.dnn_enabled ? 'No signs detected' : 'Sign detector disabled'}</div>`;
     } else {
       dl.innerHTML = dets.map(det => {
-        const cls = det.label === 'stop sign' ? 'stop-sign'
-                  : det.label === 'person'    ? 'person'
-                  : ['car','bus','truck','bicycle','motorcycle'].includes(det.label) ? 'vehicle'
-                  : '';
+        const cls = det.label === 'stop sign' ? 'stop-sign' : '';
         return `<div class="detection-item ${cls}">
           <span class="detection-name">${det.label}</span>
           <span class="detection-conf">${Math.round(det.conf * 100)}%</span>

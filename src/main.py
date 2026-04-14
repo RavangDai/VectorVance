@@ -1,7 +1,7 @@
 """
 main.py - VectorVance Autonomous Car (PRODUCTION)
 ──────────────────────────────────────────────────
-Hardware : Innomaker 1080P USB2.0 UVC 130° wide-angle camera (rear-mounted) + dual L298N motors + HC-SR04 ultrasonic
+Hardware : Innomaker 1080P USB2.0 UVC 130° wide-angle camera (front-mounted, upside-down) + dual L298N motors + HC-SR04 ultrasonic (front-facing)
 Detection: MobileNet SSD v2 (always active)
 Control  : PID lane-follow + adaptive speed + obstacle avoidance
 Fork nav : Stops at fork, waits for user to pick colour on dashboard,
@@ -25,6 +25,8 @@ KEYBOARD (when display is on):
 import cv2
 import time
 import argparse
+import threading
+import lgpio
 
 from gpiozero import Motor
 
@@ -33,11 +35,14 @@ from perception import LaneDetector, SmoothValue
 from controller import PIDController
 from speed_controller import AdaptiveSpeedController, draw_speed_indicator
 from safety import ObstacleDetector
-from dnn_detector import DNNDetector
+from dnn_detector import StopSignConfirmer
+from sign_detector import TrafficSignDetector, ArucoSpeedDetector, ARUCO_SPEED_MAP
 from intersection_detector import IntersectionDetector
 from color_sign_detector import ColorSignDetector
-from rear_monitor import RearMonitor
 import pi_server
+
+# Speed limit → motor fraction (mirrors ArucoSpeedDetector.SPEED_FRACTIONS)
+SPEED_LIMIT_MAP = {10: 0.30, 20: 0.50, 30: 0.75, 50: 1.00}
 
 # ── GPIO pin assignments ──────────────────────────────────────────────────────
 FL_FWD, FL_BWD = 25, 27
@@ -55,6 +60,79 @@ class State:
     COLOR_FOLLOWING = "COLOR_FOLLOWING"  # steering toward chosen tape
     ARRIVED         = "ARRIVED"          # RED tape seen, stopped at destination
     FREE_ROAM       = "FREE_ROAM"        # FSD: obstacle-avoiding free roam, no lane
+
+
+# ── Front HC-SR04 ultrasonic sensor (background thread) ──────────────────────
+class FrontSensor:
+    """
+    Reads the front-facing HC-SR04 in a background thread.
+    distance_cm property is always safe to read from the main loop.
+    """
+    MAX_RANGE     = 300     # cm — treat readings above this as no-echo
+    POLL_INTERVAL = 0.10    # seconds between reads
+
+    def __init__(self, trig: int = 4, echo: int = 17):
+        self._trig = trig
+        self._echo = echo
+        self._gpio = lgpio.gpiochip_open(0)
+        lgpio.gpio_claim_output(self._gpio, trig)
+        lgpio.gpio_claim_input(self._gpio, echo)
+        lgpio.gpio_write(self._gpio, trig, 0)
+        time.sleep(0.05)
+        self._distance = float(self.MAX_RANGE)
+        self._lock   = threading.Lock()
+        self._stop   = threading.Event()
+        self._thread = None
+
+    def start(self):
+        self._thread = threading.Thread(target=self._loop, daemon=True,
+                                        name="FrontSensor")
+        self._thread.start()
+        print(f"[FrontSensor] Started  TRIG={self._trig}  ECHO={self._echo}  "
+              f"(front-facing obstacle detection)")
+
+    def stop(self):
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=2)
+        try:
+            lgpio.gpiochip_close(self._gpio)
+        except Exception:
+            pass
+        print("[FrontSensor] Stopped")
+
+    @property
+    def distance_cm(self) -> float:
+        with self._lock:
+            return self._distance
+
+    def _loop(self):
+        while not self._stop.is_set():
+            dist = self._read()
+            with self._lock:
+                self._distance = dist
+            time.sleep(self.POLL_INTERVAL)
+
+    def _read(self) -> float:
+        try:
+            lgpio.gpio_write(self._gpio, self._trig, 1)
+            time.sleep(0.00001)
+            lgpio.gpio_write(self._gpio, self._trig, 0)
+            deadline = time.time() + 0.04
+            start = time.time()
+            while lgpio.gpio_read(self._gpio, self._echo) == 0:
+                start = time.time()
+                if time.time() > deadline:
+                    return float(self.MAX_RANGE)
+            stop = time.time()
+            deadline = time.time() + 0.04
+            while lgpio.gpio_read(self._gpio, self._echo) == 1:
+                stop = time.time()
+                if time.time() > deadline:
+                    return float(self.MAX_RANGE)
+            return round((stop - start) * 34300 / 2, 1)
+        except Exception:
+            return float(self.MAX_RANGE)
 
 
 # ── FSD free-roam controller ──────────────────────────────────────────────────
@@ -79,10 +157,11 @@ class FreeRoamController:
         self.committed_frames = 0
         self.backing_up       = 0
 
-    def compute(self, detector, distance_cm: float):
+    def compute(self, distance_cm: float):
         """
         Returns (left_speed, right_speed, status_str).
         Negative values = reverse — caller must use _drive_manual().
+        Uses front ultrasonic distance only (no DNN obstacle zones).
         """
         # Backup countdown
         if self.backing_up > 0:
@@ -100,19 +179,8 @@ class FreeRoamController:
         if self.committed_frames > 0:
             self.committed_frames -= 1
         else:
-            zones          = detector.get_zone_threats()
-            center_blocked = len(zones["center"]) > 0
-            left_blocked   = len(zones["left"])   > 0
-            right_blocked  = len(zones["right"])  > 0
-            near_obstacle  = distance_cm < 50
-
-            if center_blocked or near_obstacle:
-                if left_blocked and not right_blocked:
-                    new_dir = 1    # right side clear → turn right
-                elif right_blocked and not left_blocked:
-                    new_dir = -1   # left side clear  → turn left
-                else:
-                    new_dir = 1 if self.turn_direction <= 0 else -1
+            if distance_cm < 50:
+                new_dir = 1 if self.turn_direction <= 0 else -1
                 self.turn_direction   = new_dir
                 self.committed_frames = self.COMMIT_FRAMES
             else:
@@ -163,8 +231,12 @@ class AutonomousVehicle:
         )
         self.intersection_detector = IntersectionDetector()
 
-        # ── Sign / obstacle detector ──────────────────────────────────
-        self.detector = DNNDetector(model_name=dnn_model, skip_frames=dnn_skip)
+        # ── Two-stage sign detection ──────────────────────────────────
+        # Stage 1 — fast CV (every frame, <1 ms)
+        self.sign_cv  = TrafficSignDetector()
+        self.aruco    = ArucoSpeedDetector()
+        # Stage 2 — DNN confirmation (gated by Stage 1 red-hint)
+        self.detector = StopSignConfirmer(model_name=dnn_model, skip_frames=dnn_skip)
 
         # ── Colour tape detector ──────────────────────────────────────
         self.color_detector = ColorSignDetector(frame_width=640, frame_height=480)
@@ -181,9 +253,9 @@ class AutonomousVehicle:
         self.rear_right  = Motor(forward=RR_FWD, backward=RR_BWD)
         print("[Motors] All 4 motors OK")
 
-        # ── Rear ultrasonic + collision alerts ───────────────────────
-        self.rear_monitor = RearMonitor(trig=TRIG_PIN, echo=ECHO_PIN)
-        self.rear_monitor.start()
+        # ── Front ultrasonic (HC-SR04 facing forward) ────────────────
+        self.front_sensor = FrontSensor(trig=TRIG_PIN, echo=ECHO_PIN)
+        self.front_sensor.start()
 
         # ── Web / display ─────────────────────────────────────────────
         self.web_enabled  = enable_web
@@ -205,6 +277,7 @@ class AutonomousVehicle:
         # ── Runtime counters ──────────────────────────────────────────
         self.autonomous_enabled   = True
         self.current_speed_limit  = max_speed
+        self.active_speed_limit   = None   # km/h from sign (10/20/30/50), or None
         self.stop_sign_timer      = 0
         self.stop_sign_cooldown   = 0
         self.frame_count          = 0
@@ -310,22 +383,28 @@ class AutonomousVehicle:
         for m in (self.front_left, self.rear_left,
                   self.front_right, self.rear_right):
             m.close()
-        self.rear_monitor.stop()
+        self.front_sensor.stop()
         print("[Hardware] GPIO released")
 
     # ── FSD frame processing ─────────────────────────────────────────────────
 
     def process_frame_fsd(self, frame):
-        """Lane-free frame loop for FSD mode. Uses DNN + ultrasonic only."""
+        """Lane-free frame loop for FSD mode. Uses front ultrasonic only."""
         self.frame_count += 1
 
-        # DNN obstacle detection (internally caches on skip_frames)
-        self.detector.detect(frame)
+        # Stage 1: fast CV
+        self.sign_cv.detect_signs(frame)
+        self.aruco.detect(frame)
+        # Stage 2: DNN gated by red hint
+        self.detector.detect(frame, red_hint=self.sign_cv.red_detected())
 
-        # FreeRoam decision — no front ultrasonic (sensor is rear-facing)
-        left, right, status = self.free_roam.compute(
-            self.detector, 999.0
-        )
+        # Read front distance and update safety overlay data
+        front_dist = self.front_sensor.distance_cm
+        self.safety.sensors['front']['distance'] = front_dist
+        self.safety._check_obstacles()
+
+        # FreeRoam decision — ultrasonic is now front-facing
+        left, right, status = self.free_roam.compute(front_dist)
 
         self.smooth_left.update(abs(left))
         self.smooth_right.update(abs(right))
@@ -336,26 +415,21 @@ class AutonomousVehicle:
         # Build debug frame
         debug = frame.copy()
         debug = self.safety.draw_overlay(debug)
+        debug = self.sign_cv.draw_overlay(debug)
         debug = self.detector.draw_overlay(debug)
-        debug = self._draw_motor_bars(
-            debug, abs(left), abs(right), 0.0
-        )
+        debug = self.aruco.draw_overlay(debug)
+        debug = self._draw_motor_bars(debug, abs(left), abs(right), 0.0)
 
         fsd_color = (0, 0, 255) if "BACKUP" in status else \
                     (0, 165, 255) if "TURN" in status else (0, 212, 255)
         cv2.putText(debug, f"[FSD] {status}",
                     (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, fsd_color, 2)
-        cv2.putText(debug, f"Rear: {self.rear_monitor.distance_cm:.0f} cm",
+        cv2.putText(debug, f"Front: {front_dist:.0f} cm",
                     (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
 
-        danger = self.detector.get_danger_level()
-        danger_colors = {
-            "CLEAR":   (100, 200, 100), "CAUTION": (0, 200, 255),
-            "DANGER":  (0, 100, 255),   "STOP":    (0, 0, 255),
-        }
-        cv2.putText(debug, f"DNN: {danger}",
-                    (10, 175), cv2.FONT_HERSHEY_SIMPLEX, 0.45,
-                    danger_colors.get(danger, (150, 150, 150)), 1)
+        if self.detector.stop_sign_detected():
+            cv2.putText(debug, "STOP SIGN", (10, 175),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 1)
 
         return debug, (left, right, status)
 
@@ -404,10 +478,14 @@ class AutonomousVehicle:
     # ── Telemetry ─────────────────────────────────────────────────────────────
 
     def _build_telemetry(self, left: float, right: float, status: str) -> dict:
-        elapsed   = max(time.time() - self._start_time, 0.1)
-        dnn_dets = [{"label": d[1], "conf": round(d[3], 2)}
-                    for d in self.detector.all_detections]
-        dnn_danger = self.detector.get_danger_level()
+        elapsed  = max(time.time() - self._start_time, 0.1)
+        # Merge CV confirmed signs + DNN detections for the dashboard
+        sign_dets = (
+            [{"label": "stop sign (CV)", "conf": round(c, 2)}
+             for _, _, c in self.sign_cv.confirmed_signs]
+            + [{"label": d[0] + " (DNN)", "conf": round(d[2], 2)}
+               for d in self.detector.all_detections]
+        )
 
         color_dets = [
             {"color": c, "side": det["side"]}
@@ -426,15 +504,16 @@ class AutonomousVehicle:
             "speed_right":           round(right, 3),
             "base_speed":            round(self.smooth_base_speed.value, 3),
             "steering_error":        round(self._last_steering_error, 1),
-            "rear_distance_cm":       self.rear_monitor.distance_cm,
-            "rear_alert_count":       self.rear_monitor.get_status()["rear_alert_count"],
+            "front_distance_cm":     round(self.front_sensor.distance_cm, 1),
             "fps":                   round(self.frame_count / elapsed, 1),
             "frame_count":           self.frame_count,
             "stop_signs_detected":   self.stop_signs_detected,
-            "dnn_enabled":           True,
-            "dnn_detections":        dnn_dets,
-            "dnn_danger":            dnn_danger,
-            "obstacle_modifier":     round(self.detector.get_speed_modifier(), 2),
+            "stop_sign_active":      (bool(self.sign_cv.confirmed_signs)
+                                      or self.detector.stop_sign_detected()),
+            "dnn_enabled":           self.detector.available,
+            "dnn_detections":        sign_dets,
+            "speed_limit_kmh":       self.aruco.get_speed_limit(),
+            "obstacle_modifier":     round(self.safety.get_speed_modifier(), 2),
             "fork_confidence":       round(self.intersection_detector.fork_confidence, 2),
             "color_target":          self.color_detector.target_color,
             "color_detections":      color_dets,
@@ -454,7 +533,7 @@ class AutonomousVehicle:
                 s.update(0.0)
             return (
                 self._create_debug_frame(
-                    vision_frame, 0, 0.0, 0.0, 0.0, 0.0, "EMERGENCY STOP", "NONE"
+                    vision_frame, 0, 0.0, 0.0, 0.0, 0.0, "EMERGENCY STOP"
                 ),
                 (0.0, 0.0, "EMERGENCY STOP"),
             )
@@ -462,19 +541,44 @@ class AutonomousVehicle:
         self.total_error          += abs(steering_error)
         self._last_steering_error  = steering_error
 
-        # ── Sign / obstacle detection ──────────────────────────────────
-        self.detector.detect(frame)
-        obstacle_modifier = self.detector.get_speed_modifier()
+        # ── Stage 1: fast CV (every frame) ────────────────────────────
+        self.sign_cv.detect_signs(frame)
+        red_hint = self.sign_cv.red_detected()
 
-        sign_action, _ = self.detector.get_action()
+        # ArUco speed limit (every frame, < 1 ms)
+        detected_limit = self.aruco.detect(frame)
+        if detected_limit is not None:
+            self.active_speed_limit = detected_limit
+
+        # ── Stage 2: DNN confirmation (gated — runs rarely) ───────────
+        self.detector.detect(frame, red_hint=red_hint)
+
+        # ── Front ultrasonic obstacle modifier ────────────────────────
+        front_dist = self.front_sensor.distance_cm
+        self.safety.sensors['front']['distance'] = front_dist
+        self.safety._check_obstacles()
+        obstacle_modifier = self.safety.get_speed_modifier()
+
+        # ── Stop sign: CV confirmed OR DNN confirmed ───────────────────
+        stop_confirmed = (
+            bool(self.sign_cv.confirmed_signs)
+            or self.detector.stop_sign_detected()
+        )
         if self.stop_sign_cooldown > 0:
             self.stop_sign_cooldown -= 1
-        if sign_action == "STOP" and self.stop_sign_cooldown == 0:
+        if stop_confirmed and self.stop_sign_cooldown == 0:
             if self.stop_sign_timer == 0:
                 self.stop_sign_timer    = 60
                 self.stop_sign_cooldown = 120
                 self.stop_signs_detected += 1
-                print("STOP SIGN — holding 2 s")
+                source = "DNN" if self.detector.stop_sign_detected() else "CV"
+                print(f"STOP SIGN [{source}] — holding 2 s")
+
+        # ── Effective speed cap from sign ─────────────────────────────
+        if self.active_speed_limit is not None:
+            effective_max = self.current_speed_limit * SPEED_LIMIT_MAP[self.active_speed_limit]
+        else:
+            effective_max = self.current_speed_limit
 
         # ── Colour tape detection (every frame, cheap) ─────────────────
         self.color_detector.detect(frame)
@@ -521,7 +625,7 @@ class AutonomousVehicle:
 
         else:
             base_speed = self.speed_control.calculate_speed(steering_error, obstacle_modifier)
-            base_speed = min(base_speed, self.current_speed_limit)
+            base_speed = min(base_speed, effective_max)
             status     = self.speed_control.get_speed_category(
                 abs(steering_error)
             ).replace("_", " ")
@@ -563,7 +667,7 @@ class AutonomousVehicle:
         return (
             self._create_debug_frame(
                 vision_frame, steering_error, pid_output,
-                base_speed, left_speed, right_speed, status, sign_action
+                base_speed, left_speed, right_speed, status
             ),
             (left_speed, right_speed, status),
         )
@@ -590,11 +694,13 @@ class AutonomousVehicle:
 
     def _create_debug_frame(self, vision_frame, error, pid_output,
                             base_speed, left_speed, right_speed,
-                            status, sign_action):
+                            status):
         frame = vision_frame.copy()
         h, w = frame.shape[:2]
         frame = self.safety.draw_overlay(frame)
+        frame = self.sign_cv.draw_overlay(frame)
         frame = self.detector.draw_overlay(frame)
+        frame = self.aruco.draw_overlay(frame)
         frame = self.color_detector.draw_overlay(frame)
 
         # ── SPEED BADGE (top-right) ──────────────────────────────────
@@ -653,17 +759,15 @@ class AutonomousVehicle:
                         (w//2 - 210, h//2 + 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
 
-        # DNN status
-        danger = self.detector.get_danger_level()
-        danger_colors = {
-            "CLEAR":   (100, 220, 100),
-            "CAUTION": (0,   200, 255),
-            "DANGER":  (0,   100, 255),
-            "STOP":    (0,   0,   255),
-        }
-        cv2.putText(frame, f"DNN: {danger}", (12, 162),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.45,
-                    danger_colors.get(danger, (150, 150, 150)), 1)
+        # Sign detector status
+        if self.detector.stop_sign_detected():
+            cv2.putText(frame, "STOP SIGN", (12, 162),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 1)
+        if self.active_speed_limit is not None:
+            mode_map = {10: "SLOW", 20: "AVG", 30: "NORMAL", 50: "MAX"}
+            tag = mode_map.get(self.active_speed_limit, "")
+            cv2.putText(frame, f"LIMIT {self.active_speed_limit}km/h {tag}",
+                        (12, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 200, 255), 1)
 
         # Fork confidence
         conf = self.intersection_detector.fork_confidence
@@ -672,20 +776,20 @@ class AutonomousVehicle:
             cv2.putText(frame, f"Fork: {conf:.0%}",
                         (12, 182), cv2.FONT_HERSHEY_SIMPLEX, 0.4, fork_color, 1)
 
-        # ── BOTTOM BAR — rear distance + DNN obstacle ────────────────
-        rear_dist = self.rear_monitor.distance_cm
-        modifier  = self.detector.get_speed_modifier()
-        if rear_dist < SLOW_DISTANCE or modifier < 1.0:
+        # ── BOTTOM BAR — front distance obstacle warning ─────────────
+        front_dist = self.front_sensor.distance_cm
+        modifier   = self.safety.get_speed_modifier()
+        if front_dist < SLOW_DISTANCE:
             bar_y = h - 30
             cv2.rectangle(frame, (0, bar_y), (w, h), (0, 0, 0), -1)
-            if rear_dist < SLOW_DISTANCE:
-                cx = w // 2
-                circ_color = (0, 0, 255) if rear_dist < STOP_DISTANCE else (0, 165, 255)
-                cv2.circle(frame, (cx, bar_y + 15), 10, circ_color, -1)
-                cv2.putText(frame, f"REAR {rear_dist:.0f}cm", (cx - 30, bar_y + 12),
-                            cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 255, 255), 1)
+            cx = w // 2
+            circ_color = (0, 0, 255) if front_dist < STOP_DISTANCE else (0, 165, 255)
+            cv2.circle(frame, (cx, bar_y + 15), 10, circ_color, -1)
+            dist_label = "STOP" if front_dist < STOP_DISTANCE else "SLOW"
+            cv2.putText(frame, f"FRONT {front_dist:.0f}cm -- {dist_label}",
+                        (cx - 60, bar_y + 12), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 255, 255), 1)
             if modifier < 1.0:
-                obs_text = "OBSTACLE DETECTED -- SLOWING" if modifier > 0 else "OBSTACLE -- STOPPING"
+                obs_text = "OBSTACLE -- SLOWING" if modifier > 0 else "OBSTACLE -- STOPPING"
                 obs_color = (0, 165, 255) if modifier > 0 else (0, 0, 255)
                 cv2.putText(frame, obs_text, (10, h - 8),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.55, obs_color, 2)
@@ -743,6 +847,8 @@ class AutonomousVehicle:
         self.speed_control.reset()
         self.safety.reset()
         self.perception.reset_smoothing()
+        self.sign_cv.reset()
+        self.aruco.reset()
         self.detector.reset()
         self.color_detector.reset()
         self.intersection_detector.reset()
@@ -751,6 +857,7 @@ class AutonomousVehicle:
         self.drive_mode          = "LANE"
         self.autonomous_enabled  = True
         self.current_speed_limit = 0.8
+        self.active_speed_limit  = None
         self.stop_sign_timer     = 0
         self.smooth_left.set_immediate(0.0)
         self.smooth_right.set_immediate(0.0)
@@ -768,7 +875,7 @@ class AutonomousVehicle:
                 print("[WebServer] Flask not installed — dashboard disabled")
                 self.web_enabled = False
 
-        # ── Innomaker 1080P USB2.0 130° camera (rear-mounted, single camera) ──
+        # ── Innomaker 1080P USB2.0 130° camera (front-mounted, upside-down) ──
         self._cap = None
         search = [self.cam_index] if self.cam_index >= 0 else range(4)
         for idx in search:
@@ -791,7 +898,7 @@ class AutonomousVehicle:
         self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
         time.sleep(1)
-        print("[Camera] 640×480 ready + MobileNet SSD")
+        print("[Camera] 640×480 ready (front-mounted, 180° rotation applied)")
         if self.show_display:
             print("Keys: [Q] Quit  [SPACE] Auto/Manual  [F] FSD  [R] Reset  "
                   "[S] Snap  [D] Debug  [G] Green path  [B] Blue path")
@@ -844,11 +951,12 @@ class AutonomousVehicle:
                 elapsed = time.time() - self._start_time
                 fps     = self.frame_count / max(elapsed, 0.1)
                 avg_err = self.total_error / max(self.frame_count, 1)
+                limit_str = f" Limit:{self.active_speed_limit}km/h" if self.active_speed_limit else ""
                 print(f"Frame {self.frame_count:04d} | "
                       f"State:{self.car_state:18s} | "
                       f"L:{left:.2f} R:{right:.2f} | "
-                      f"Rear:{self.rear_monitor.distance_cm:.0f}cm | "
-                      f"FPS:{fps:.1f} | AvgErr:{avg_err:.1f}px")
+                      f"Front:{self.front_sensor.distance_cm:.0f}cm | "
+                      f"FPS:{fps:.1f} | AvgErr:{avg_err:.1f}px{limit_str}")
 
             if self.show_display:
                 key = cv2.waitKey(1) & 0xFF
@@ -871,8 +979,10 @@ class AutonomousVehicle:
                 elif key == ord('d'):
                     print(f"State: {self.car_state}")
                     print(f"Tape detections: {self.color_detector.detections}")
-                    print(f"DNN: {len(self.detector.all_detections)} dets | "
-                          f"danger={self.detector.get_danger_level()}")
+                    print(f"CV stop: {bool(self.sign_cv.confirmed_signs)} | "
+                          f"DNN stop: {self.detector.stop_sign_detected()} | "
+                          f"ArUco limit: {self.aruco.get_speed_limit()} km/h | "
+                          f"front: {self.front_sensor.distance_cm:.0f}cm")
                 elif key == ord('g'):
                     self.color_detector.set_target("GREEN")
                     if self.car_state == State.FORK_WAITING:
