@@ -317,7 +317,7 @@ class ArucoSpeedDetector:
     HOLD_FRAMES = 45   # keep limit active for N frames after last sighting
 
     def __init__(self):
-        aruco_dict   = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
+        aruco_dict   = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_1000)
         aruco_params = cv2.aruco.DetectorParameters()
         try:
             # OpenCV 4.7+
@@ -333,7 +333,7 @@ class ArucoSpeedDetector:
         self._hold_counter  = 0
         self._last_ids      = []
 
-        print("[ArUco] Speed-limit detector ready (DICT_4X4_50)")
+        print("[ArUco] Speed-limit detector ready (DICT_4X4_1000)")
         print("[ArUco] IDs: 1=10 km/h  2=20 km/h  3=30 km/h  4=50 km/h")
 
     def detect(self, frame: np.ndarray) -> "int | None":

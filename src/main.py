@@ -1018,8 +1018,8 @@ def main():
     p.add_argument("--no-display",    action="store_true")
     p.add_argument("--fov",           type=float, default=130.0,
                    help="Camera FOV in degrees (default: 130 for Innomaker wide-angle)")
-    p.add_argument("--no-undistort",  action="store_true",
-                   help="Disable wide-angle lens undistortion")
+    p.add_argument("--no-undistort",  action="store_true", default=True,
+                   help="Disable wide-angle lens undistortion (default: OFF until calibrated)")
     p.add_argument("--calibration",   type=str,   default=None,
                    help="Path to calibration .npz file (uses approximation if omitted)")
     p.add_argument("--cam-index",     type=int,   default=-1,

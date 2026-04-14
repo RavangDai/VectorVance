@@ -74,7 +74,7 @@ class FisheyeCamera:
                  fov_deg: float = _DEFAULT_FOV_DEG,
                  K: np.ndarray = None,
                  D: np.ndarray = None,
-                 balance: float = 0.0):
+                 balance: float = 0.5):
         """
         width, height : frame resolution (must match camera config)
         fov_deg       : camera field of view in degrees (130 for Innomaker lens)
