@@ -68,8 +68,9 @@ class FrontSensor:
     Reads the front-facing HC-SR04 in a background thread.
     distance_cm property is always safe to read from the main loop.
     """
-    MAX_RANGE     = 300     # cm — treat readings above this as no-echo
-    POLL_INTERVAL = 0.10    # seconds between reads
+    MAX_RANGE       = 300   # cm — treat readings above this as no-echo
+    POLL_INTERVAL   = 0.10  # seconds between reads
+    CAMERA_OFFSET   = 5.0   # cm — camera body sits this far in front of the sensor face
 
     def __init__(self, trig: int = 4, echo: int = 17):
         self._trig = trig
@@ -104,7 +105,12 @@ class FrontSensor:
     @property
     def distance_cm(self) -> float:
         with self._lock:
-            return self._distance
+            raw = self._distance
+        # Subtract the camera body offset.  Readings at or below the offset are
+        # reflections off the camera housing itself — treat them as clear (max range).
+        if raw <= self.CAMERA_OFFSET:
+            return self.MAX_RANGE
+        return raw - self.CAMERA_OFFSET
 
     def _loop(self):
         while not self._stop.is_set():
@@ -364,19 +370,23 @@ class AutonomousVehicle:
 
     def _apply_manual_drive(self, keys: dict):
         """Translate WASD key state into motor commands."""
-        spd = 0.65
+        spd = 0.85
         w, a, s, d = keys.get("w"), keys.get("a"), keys.get("s"), keys.get("d")
         if w:
-            if a:   self._drive_manual(spd * 0.25, spd)    # forward-left
-            elif d: self._drive_manual(spd, spd * 0.25)    # forward-right
-            else:   self._drive_manual(spd, spd)            # straight forward
+            if a:   l, r = spd * 0.25, spd      # forward-left
+            elif d: l, r = spd,        spd * 0.25  # forward-right
+            else:   l, r = spd,        spd          # straight forward
         elif s:
-            if a:   self._drive_manual(-spd * 0.25, -spd)  # reverse-left
-            elif d: self._drive_manual(-spd, -spd * 0.25)  # reverse-right
-            else:   self._drive_manual(-spd, -spd)          # straight reverse
-        elif a:     self._drive_manual(-spd * 0.5,  spd * 0.5)  # spin left
-        elif d:     self._drive_manual( spd * 0.5, -spd * 0.5)  # spin right
-        else:       self._stop_motors()
+            if a:   l, r = -spd * 0.25, -spd     # reverse-left
+            elif d: l, r = -spd, -spd * 0.25      # reverse-right
+            else:   l, r = -spd, -spd              # straight reverse
+        elif a:     l, r = -spd * 0.5,  spd * 0.5  # spin left
+        elif d:     l, r =  spd * 0.5, -spd * 0.5  # spin right
+        else:       l, r = 0.0, 0.0
+        self._drive_manual(l, r)
+        # Update smooth values so motor bars on the dashboard reflect actual commands
+        self.smooth_left.update(abs(l))
+        self.smooth_right.update(abs(r))
 
     def _cleanup_hardware(self):
         self._stop_motors()
@@ -801,43 +811,47 @@ class AutonomousVehicle:
         return frame
 
     def _draw_motor_bars(self, frame, left_speed, right_speed, pid_output):
-        h, w        = frame.shape[:2]
-        bar_width   = 35
-        bar_height  = 160
-        bar_x_left  = w - 105
-        bar_x_right = w - 50
-        bar_y       = h - bar_height - 55
+        h, w = frame.shape[:2]
+        bw   = 25    # bar width
+        bh   = 130   # bar height
+        gap  = 4     # gap within a pair
+        pgap = 12    # gap between left and right pair
+        by   = h - 55          # bottom of all bars
 
-        for bx in (bar_x_left, bar_x_right):
-            cv2.rectangle(frame, (bx, bar_y),
-                          (bx + bar_width, bar_y + bar_height), (30, 30, 30), -1)
+        # Positions from right edge: RR, FR, [pgap], RL, FL
+        x_rr = w - 45
+        x_fr = x_rr - gap - bw
+        x_rl = x_fr - pgap - bw
+        x_fl = x_rl - gap - bw
 
-        left_fill  = int(bar_height * max(0.0, min(1.0, left_speed)))
-        right_fill = int(bar_height * max(0.0, min(1.0, right_speed)))
-        bar_color  = (0, 230, 100) if abs(pid_output) < 0.1 else (0, 180, 255)
+        bar_color = (0, 230, 100) if abs(pid_output) < 0.1 else (0, 180, 255)
+        left_fill  = int(bh * max(0.0, min(1.0, left_speed)))
+        right_fill = int(bh * max(0.0, min(1.0, right_speed)))
 
-        if left_fill:
-            cv2.rectangle(frame,
-                          (bar_x_left,  bar_y + bar_height - left_fill),
-                          (bar_x_left  + bar_width, bar_y + bar_height), bar_color, -1)
-        if right_fill:
-            cv2.rectangle(frame,
-                          (bar_x_right, bar_y + bar_height - right_fill),
-                          (bar_x_right + bar_width, bar_y + bar_height), bar_color, -1)
+        for bx, fill, label in (
+            (x_fl, left_fill,  "FL"),
+            (x_rl, left_fill,  "RL"),
+            (x_fr, right_fill, "FR"),
+            (x_rr, right_fill, "RR"),
+        ):
+            # background
+            cv2.rectangle(frame, (bx, by - bh), (bx + bw, by), (30, 30, 30), -1)
+            # fill
+            if fill:
+                cv2.rectangle(frame, (bx, by - fill), (bx + bw, by), bar_color, -1)
+            # border
+            cv2.rectangle(frame, (bx, by - bh), (bx + bw, by), (80, 80, 80), 1)
+            # label above
+            cv2.putText(frame, label, (bx, by - bh - 6),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, (200, 200, 200), 1)
 
-        for bx in (bar_x_left, bar_x_right):
-            cv2.rectangle(frame, (bx, bar_y),
-                          (bx + bar_width, bar_y + bar_height), (80, 80, 80), 1)
-
-        for bx, lbl in ((bar_x_left, "L"), (bar_x_right, "R")):
-            cv2.putText(frame, lbl, (bx + 10, bar_y - 8),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
+        # Speed values below each pair
         cv2.putText(frame, f"{left_speed:.2f}",
-                    (bar_x_left - 2,  bar_y + bar_height + 18),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
+                    (x_fl, by + 16),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, (200, 200, 200), 1)
         cv2.putText(frame, f"{right_speed:.2f}",
-                    (bar_x_right - 2, bar_y + bar_height + 18),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
+                    (x_fr, by + 16),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, (200, 200, 200), 1)
         return frame
 
     # ── Reset ─────────────────────────────────────────────────────────────────
@@ -910,7 +924,7 @@ class AutonomousVehicle:
             if not ret:
                 print("[Camera] Frame grab failed — retrying...")
                 continue
-            frame = cv2.rotate(frame, cv2.ROTATE_180)  # camera mounted upside-down
+            # camera is mounted right-side up — no rotation needed
             if self.undistort_enabled and self.camera:
                 frame = self.camera.undistort(frame)
 

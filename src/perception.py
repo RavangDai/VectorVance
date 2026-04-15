@@ -103,8 +103,9 @@ class LaneDetector:
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-        # Bright-on-dark contrast mask (catches white tape on dark floors)
-        _, bright_mask = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY)
+        # Bright-on-dark contrast mask (catches white tape on dark floors).
+        # Threshold at 220 (not 180) to avoid picking up walls/doors indoors.
+        _, bright_mask = cv2.threshold(gray, 220, 255, cv2.THRESH_BINARY)
 
         # Combine
         combined = cv2.bitwise_or(white_mask, yellow_mask)
@@ -265,7 +266,7 @@ class LaneDetector:
             slope = (y2 - y1) / (x2 - x1)
             angle = abs(np.degrees(np.arctan(slope)))
 
-            if angle < 20 or angle > 75:
+            if angle < 25 or angle > 70:
                 continue
 
             mid_x = (x1 + x2) / 2
@@ -277,7 +278,7 @@ class LaneDetector:
         return self._fit_lane(left_lines), self._fit_lane(right_lines)
 
     def _fit_lane(self, line_segments):
-        if not line_segments or len(line_segments) < 1:
+        if not line_segments or len(line_segments) < 2:
             return None
         pts = []
         for x1, y1, x2, y2 in line_segments:
@@ -379,6 +380,10 @@ class LaneDetector:
         self._prev_left_pts = left_pts
         self._prev_right_pts = right_pts
 
+        # ── FOV TRAPEZOID (camera field-of-view boundary) ────────────
+        cv2.polylines(debug, self.roi_vertices, isClosed=True,
+                      color=(0, 220, 255), thickness=2)
+
         # ── LANE POLYGON (green tinted driving corridor) ─────────────
         if left_pts and right_pts:
             poly = np.array([left_pts[0], left_pts[1], right_pts[1], right_pts[0]], dtype=np.int32)
@@ -448,16 +453,15 @@ class LaneDetector:
         disp_right = self.smooth_right_conf.update(self.right_confidence)
 
         h, w = frame.shape[:2]
-        bar_w, bar_h = 30, 150
-        lx = w - 110
-        rx = w - 55
-        by = h - 60
+        # Compact bars in top-right corner — away from the 4-motor bars at bottom-right
+        bar_w, bar_h = 22, 70
+        lx = w - 65
+        rx = w - 38
+        by = 115  # top of frame area
 
         for (bx, conf, label) in [(lx, disp_left, "L"), (rx, disp_right, "R")]:
-            # Background
             cv2.rectangle(frame, (bx, by - bar_h), (bx + bar_w, by), (30, 30, 30), -1)
             fill = int(bar_h * conf)
-            # Color: green > 0.5, orange 0.25-0.5, red < 0.25
             if conf > 0.5:
                 color = (0, 230, 100)
             elif conf > 0.25:
@@ -467,13 +471,11 @@ class LaneDetector:
             if fill > 0:
                 cv2.rectangle(frame, (bx, by - fill), (bx + bar_w, by), color, -1)
             cv2.rectangle(frame, (bx, by - bar_h), (bx + bar_w, by), (80, 80, 80), 1)
-            # Label
-            cv2.putText(frame, label, (bx + 8, by - bar_h - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
-            # Value
+            cv2.putText(frame, label, (bx + 6, by - bar_h - 6),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 180), 1)
             cv2.putText(frame, f"{conf:.2f}",
-                        (bx - 2, by + 18),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1)
+                        (bx - 2, by + 14),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.35, (150, 150, 150), 1)
 
     def reset_smoothing(self):
         self.error_history.clear()

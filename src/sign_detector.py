@@ -41,7 +41,7 @@ class TrafficSignDetector:
         self.roi_top_fraction = 0.0
         self.roi_bottom_fraction = 0.90
 
-        print("🛑 STOP Sign Detector Initialized (STRICT MODE + ROTATED 180)")
+        print("STOP Sign Detector Initialized (STRICT MODE)")
         print("   Requires: Octagon + Red + White text")
 
     def detect_signs(self, frame):
@@ -52,27 +52,17 @@ class TrafficSignDetector:
         roi_top = int(h * self.roi_top_fraction)
         roi_bottom = int(h * self.roi_bottom_fraction)
         roi_frame = frame[roi_top:roi_bottom, :]
-        roi_h = roi_bottom - roi_top
-        
-        # ── THE FIX: Rotate the ROI 180 degrees so the detector processes it right-side up ──
-        roi_frame_rotated = cv2.rotate(roi_frame, cv2.ROTATE_180)
-        hsv = cv2.cvtColor(roi_frame_rotated, cv2.COLOR_BGR2HSV)
-        
-        # Store debug mask (this will display right-side up in your corner)
+
+        hsv = cv2.cvtColor(roi_frame, cv2.COLOR_BGR2HSV)
         self.debug_mask = self._get_red_mask(hsv)
-        
-        # Detect candidates using the ROTATED frame
-        candidates = self._detect_stop_candidates(roi_frame_rotated, hsv)
-        
-        # ── Map the detected coordinates BACK to your upside-down video feed ──
-        mapped_candidates = []
-        for sign_type, (rx, ry, rw, rh), conf in candidates:
-            # Un-rotate the bounding box coordinates
-            orig_x = w - rx - rw
-            orig_y = roi_h - ry - rh + roi_top
-            mapped_candidates.append((sign_type, (orig_x, orig_y, rw, rh), conf))
-            
-        self.detected_signs = mapped_candidates
+
+        candidates = self._detect_stop_candidates(roi_frame, hsv)
+
+        # Map ROI-local y coordinates back to full-frame coordinates
+        self.detected_signs = [
+            (sign_type, (rx, ry + roi_top, rw, rh), conf)
+            for sign_type, (rx, ry, rw, rh), conf in candidates
+        ]
         
         # ── Temporal filtering ───────────────────────────────────────
         current_centers = [(x + w//2, y + h//2) for (_, (x, y, w, h), _) in self.detected_signs]
