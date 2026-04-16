@@ -36,35 +36,6 @@
       flex-direction: column;
     }
 
-    /* ── SPLASH ─────────────────────────────────────────────────────── */
-    #conn-splash {
-      position: fixed; inset: 0; background: var(--bg); z-index: 999;
-      display: flex; align-items: center; justify-content: center;
-      flex-direction: column; gap: 18px;
-      transition: opacity 0.5s ease;
-    }
-    #conn-splash.fade-out { opacity: 0; pointer-events: none; }
-    .splash-logo {
-      font-size: 30px; font-weight: 800; letter-spacing: 6px;
-      color: var(--cyan); text-transform: uppercase;
-      text-shadow: 0 0 40px rgba(0,212,255,0.45);
-    }
-    .splash-sub { color: var(--muted); font-size: 11px; letter-spacing: 2.5px; text-transform: uppercase; }
-    .splash-spinner {
-      width: 32px; height: 32px;
-      border: 2px solid var(--border2); border-top-color: var(--cyan);
-      border-radius: 50%; animation: spin 0.85s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    #splash-msg { font-size: 11px; color: var(--muted); }
-    .splash-dots { display: flex; gap: 6px; }
-    .splash-dot {
-      width: 6px; height: 6px; border-radius: 50%; background: var(--border2);
-      animation: dpulse 1.4s ease-in-out infinite;
-    }
-    .splash-dot:nth-child(2) { animation-delay: 0.22s; }
-    .splash-dot:nth-child(3) { animation-delay: 0.44s; }
-    @keyframes dpulse { 50% { background: var(--cyan); } }
 
     /* ── HEADER ─────────────────────────────────────────────────────── */
     header {
@@ -353,17 +324,6 @@
 </head>
 <body>
 
-<!-- ── SPLASH ── -->
-<div id="conn-splash">
-  <div class="splash-logo">VectorVance</div>
-  <div class="splash-sub">Autonomous Vehicle System</div>
-  <div class="splash-spinner"></div>
-  <div id="splash-msg">Connecting to Pi&hellip;</div>
-  <div class="splash-dots">
-    <div class="splash-dot"></div><div class="splash-dot"></div><div class="splash-dot"></div>
-  </div>
-</div>
-
 <!-- ── HEADER ── -->
 <header>
   <div class="brand">
@@ -556,35 +516,19 @@
 
   const manualKeys = { w: false, a: false, s: false, d: false };
 
-  // ── Connection handshake ───────────────────────────────────────────
+  // ── Connection ─────────────────────────────────────────────────────
   async function tryConnect() {
     try {
       const res = await fetch('/api/ping', { signal: AbortSignal.timeout(2000) });
       if (res.ok) {
-        hideSplash();
-        enableModeTabs();
-        startPolling();
+        document.querySelectorAll('.mode-tab').forEach(btn => { btn.disabled = false; });
+        setInterval(fetchTelemetry, 500);
+        fetchTelemetry();
         addLog('Connected to Pi');
         return;
       }
     } catch {}
-    document.getElementById('splash-msg').textContent = 'Retrying connection…';
     setTimeout(tryConnect, 1500);
-  }
-
-  function hideSplash() {
-    const splash = document.getElementById('conn-splash');
-    splash.classList.add('fade-out');
-    setTimeout(() => { splash.style.display = 'none'; }, 500);
-  }
-
-  function enableModeTabs() {
-    document.querySelectorAll('.mode-tab').forEach(btn => { btn.disabled = false; });
-  }
-
-  function startPolling() {
-    setInterval(fetchTelemetry, 500);
-    fetchTelemetry();
   }
 
   // ── Telemetry polling ──────────────────────────────────────────────
