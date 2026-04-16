@@ -69,6 +69,7 @@
     .mode-tab.active[data-mode="FSD"]    { background: rgba(0,212,255,0.1);  color: var(--cyan);   border-color: rgba(0,212,255,0.35); }
     .mode-tab.active[data-mode="LANE"]   { background: rgba(0,232,122,0.1);  color: var(--green);  border-color: rgba(0,232,122,0.35); }
     .mode-tab.active[data-mode="MANUAL"] { background: rgba(255,144,64,0.1); color: var(--orange); border-color: rgba(255,144,64,0.35); }
+    .mode-tab.active[data-mode="TRACK"]  { background: rgba(255,209,102,0.1);color: var(--yellow); border-color: rgba(255,209,102,0.4);  }
 
     .conn-row { display: flex; align-items: center; gap: 7px; }
     .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); transition: all 0.3s; }
@@ -164,6 +165,7 @@
     .b-fsd    { background: rgba(0,212,255,0.1);  color: var(--cyan);   border-color: rgba(0,212,255,0.3); }
     .b-lane   { background: rgba(0,232,122,0.1);  color: var(--green);  border-color: rgba(0,232,122,0.3); }
     .b-manual { background: rgba(255,144,64,0.1); color: var(--orange); border-color: rgba(255,144,64,0.3); }
+    .b-track  { background: rgba(255,209,102,0.1);color: var(--yellow); border-color: rgba(255,209,102,0.35); }
     .b-state  { background: rgba(255,255,255,0.04); color: var(--muted); border-color: var(--border); }
     .b-stop   { background: rgba(255,59,85,0.12); color: var(--red);    border-color: rgba(255,59,85,0.35); }
 
@@ -240,6 +242,62 @@
     .nv { color: var(--text); font-weight: 600; }
     .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
     .chip { padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; border: 1px solid; }
+
+    /* ── TRACK ITEM CARD ────────────────────────────────────────────── */
+    #track-card { display: none; }
+    .track-row { display: flex; gap: 5px; margin-bottom: 6px; }
+    .track-select {
+      flex: 1; padding: 5px 7px; border-radius: 6px;
+      background: var(--bg); color: var(--text);
+      border: 1px solid rgba(255,209,102,0.3);
+      font-size: 11px; font-weight: 600; cursor: pointer;
+      text-transform: capitalize;
+    }
+    .track-select:focus { outline: none; border-color: var(--yellow); }
+    .track-clear {
+      padding: 5px 9px; border: 1px solid var(--border2); border-radius: 6px;
+      background: var(--bg); color: var(--muted);
+      font-size: 11px; font-weight: 600; cursor: pointer;
+    }
+    .track-clear:hover { color: var(--red); border-color: rgba(255,59,85,0.35); }
+    .track-click-btn {
+      padding: 5px 9px; border: 1px solid rgba(255,209,102,0.3); border-radius: 6px;
+      background: rgba(255,209,102,0.08); color: var(--yellow);
+      font-size: 11px; font-weight: 700; cursor: pointer;
+    }
+    .track-click-btn:hover   { background: rgba(255,209,102,0.18); }
+    .track-click-btn.armed   { background: var(--yellow); color: #000; }
+    .video-wrapper.aim       { cursor: crosshair; }
+    .video-wrapper.aim img   { cursor: crosshair; }
+    #aim-banner {
+      position: absolute; left: 50%; transform: translateX(-50%);
+      top: 36px; padding: 4px 12px; border-radius: 14px;
+      background: rgba(255,209,102,0.92); color: #000;
+      font-size: 10px; font-weight: 800; letter-spacing: 1.5px;
+      text-transform: uppercase; z-index: 20; pointer-events: none;
+      display: none;
+    }
+    #aim-banner.on { display: block; }
+    .track-lock-row {
+      display: flex; align-items: center; gap: 7px;
+      font-size: 11px; font-weight: 600;
+    }
+    .track-lock-dot {
+      width: 9px; height: 9px; border-radius: 50%; background: var(--dim);
+      transition: all 0.2s;
+    }
+    .track-lock-dot.locked {
+      background: var(--yellow); box-shadow: 0 0 8px var(--yellow);
+      animation: blink 1s infinite;
+    }
+    .track-lock-dot.searching { background: var(--orange); }
+    #val-track-lock { color: var(--muted); }
+    #val-track-lock.locked    { color: var(--yellow); }
+    #val-track-lock.searching { color: var(--orange); }
+    .track-hint {
+      font-size: 10px; color: var(--muted); margin-top: 4px;
+      line-height: 1.35;
+    }
 
     /* ── MANUAL CARD ────────────────────────────────────────────────── */
     .wasd-hint { font-size: 10px; color: var(--muted); margin-bottom: 5px; }
@@ -334,6 +392,7 @@
   <div class="mode-tabs" id="mode-tabs">
     <button class="mode-tab" data-mode="FSD"    onclick="setMode('FSD')"    disabled>FSD</button>
     <button class="mode-tab" data-mode="LANE"   onclick="setMode('LANE')"   disabled>Lane</button>
+    <button class="mode-tab" data-mode="TRACK"  onclick="setMode('TRACK')"  disabled>Track</button>
     <button class="mode-tab" data-mode="MANUAL" onclick="setMode('MANUAL')" disabled>Manual</button>
   </div>
 
@@ -357,10 +416,11 @@
       <div class="vid-banner" id="stop-sign-banner">&#9101; Stop Sign Detected</div>
       <div class="vid-banner" id="fork-banner">Fork — Select Path in Sidebar</div>
     </div>
-    <div class="video-wrapper">
+    <div class="video-wrapper" id="video-wrapper">
       <img src="/video_feed" alt="Camera feed" id="video-feed"
            onerror="this.src='/video_feed'" />
     </div>
+    <div id="aim-banner">Click the target on the video</div>
   </div>
 
   <!-- SIDEBAR -->
@@ -447,6 +507,32 @@
         </div>
         <div class="chips" id="color-det-row">
           <span style="color:var(--dim);font-size:10px;">no tape detected</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- TRACK ITEM -->
+    <div class="card" id="track-card">
+      <div class="card-head"><span>Track Item</span></div>
+      <div class="card-body">
+        <div class="track-row">
+          <select id="track-select" class="track-select"
+                  onchange="onTrackChange(this.value)">
+            <option value="">— pick item —</option>
+          </select>
+          <button class="track-clear" onclick="onTrackChange('')">Clear</button>
+        </div>
+        <div class="track-row">
+          <button id="track-click-btn" class="track-click-btn"
+                  onclick="toggleClickAim()" style="flex:1">Click to Pick</button>
+        </div>
+        <div class="track-lock-row">
+          <div class="track-lock-dot" id="track-lock-dot"></div>
+          <span id="val-track-lock">No target</span>
+          <span id="val-track-conf" style="margin-left:auto;color:var(--muted);font-size:10px;"></span>
+        </div>
+        <div class="track-hint" id="track-hint">
+          Pick an item, then place it in front of the camera. The car will lock on and chase.
         </div>
       </div>
     </div>
@@ -575,7 +661,8 @@
     badge.textContent = mode;
     badge.className = 'badge ' +
       (mode === 'FSD'    ? 'b-fsd'    :
-       mode === 'MANUAL' ? 'b-manual' : 'b-lane');
+       mode === 'MANUAL' ? 'b-manual' :
+       mode === 'TRACK'  ? 'b-track'  : 'b-lane');
 
     const wasd = document.getElementById('wasd-section');
     const dpad = document.getElementById('dpad-container');
@@ -590,6 +677,11 @@
 
     document.getElementById('color-nav-card').style.opacity =
       mode === 'LANE' ? '1' : '0.45';
+
+    document.getElementById('track-card').style.display =
+      mode === 'TRACK' ? 'block' : 'none';
+
+    if (mode !== 'TRACK' && clickAimOn) toggleClickAim();
   }
 
   // ── UI update ──────────────────────────────────────────────────────
@@ -611,7 +703,8 @@
     // State badge
     const stateLabels = {
       LANE_FOLLOW: 'Lane Follow', FORK_WAITING: 'Fork Waiting',
-      COLOR_FOLLOWING: 'Following', ARRIVED: 'Arrived', FREE_ROAM: 'Free Roam'
+      COLOR_FOLLOWING: 'Following', ARRIVED: 'Arrived', FREE_ROAM: 'Free Roam',
+      TRACKING: 'Tracking'
     };
     const sb = document.getElementById('state-badge');
     sb.textContent = stateLabels[carState] || carState || '—';
@@ -733,12 +826,125 @@
     }
 
     updateKeyVisual();
+    updateTrackUI(d);
 
     if (d.status && d.status !== lastStatus) {
       lastStatus = d.status;
       addLog(d.status);
     }
   }
+
+  // ── TRACK mode UI ─────────────────────────────────────────────────
+  let trackDropdownFilled = false;
+
+  function fillTrackDropdown(classes) {
+    if (trackDropdownFilled || !classes || !classes.length) return;
+    const sel = document.getElementById('track-select');
+    classes.forEach(name => {
+      const o = document.createElement('option');
+      o.value       = name;
+      o.textContent = name;
+      sel.appendChild(o);
+    });
+    trackDropdownFilled = true;
+  }
+
+  function updateTrackUI(d) {
+    fillTrackDropdown(d.track_classes);
+
+    const sel     = document.getElementById('track-select');
+    const dot     = document.getElementById('track-lock-dot');
+    const lbl     = document.getElementById('val-track-lock');
+    const conf    = document.getElementById('val-track-conf');
+    const clickBtn = document.getElementById('track-click-btn');
+
+    const mode   = d.track_mode || 'CLASS';
+    const target = d.track_target || '';
+    // Dropdown only reflects COCO class targets; in CLICK mode leave it blank.
+    const dropVal = mode === 'CLASS' ? target : '';
+    if (sel && sel.value !== dropVal) sel.value = dropVal;
+
+    // Disable click button if OpenCV CSRT is unavailable on the Pi
+    if (d.track_click_available === false) {
+      clickBtn.disabled = true;
+      clickBtn.textContent = 'Click (unavailable)';
+      clickBtn.style.opacity = '0.4';
+    }
+
+    const label = mode === 'CLICK' ? 'ROI' : target;
+    let state, cls;
+    if (!d.track_available && mode === 'CLASS') {
+      state = 'Detector unavailable'; cls = '';
+    } else if (!target) {
+      state = 'No target';           cls = '';
+    } else if (d.track_locked) {
+      state = 'Locked on ' + label;  cls = 'locked';
+    } else if ((d.track_lost_frames ?? 999) < 60) {
+      state = 'Searching ' + label;  cls = 'searching';
+    } else {
+      state = 'Lost ' + label;       cls = '';
+    }
+    lbl.textContent = state;
+    lbl.className   = cls;
+    dot.className   = 'track-lock-dot ' + cls;
+    conf.textContent = d.track_locked && d.track_conf
+      ? Math.round(d.track_conf * 100) + '%' : '';
+  }
+
+  function onTrackChange(value) {
+    sendCmd('set_track_target', value);
+    addLog(value ? 'Track → ' + value : 'Track cleared');
+  }
+
+  // ── Click-to-track (CSRT) ─────────────────────────────────────────
+  const FRAME_W = 640, FRAME_H = 480;
+  let clickAimOn = false;
+
+  function toggleClickAim() {
+    if (currentMode !== 'TRACK') {
+      addLog('Switch to TRACK mode first');
+      return;
+    }
+    clickAimOn = !clickAimOn;
+    document.getElementById('video-wrapper').classList.toggle('aim',     clickAimOn);
+    document.getElementById('track-click-btn').classList.toggle('armed', clickAimOn);
+    document.getElementById('aim-banner').classList.toggle('on',         clickAimOn);
+    document.getElementById('track-click-btn').textContent =
+      clickAimOn ? 'Cancel Aim' : 'Click to Pick';
+  }
+
+  function onVideoClick(e) {
+    if (!clickAimOn) return;
+    const img  = document.getElementById('video-feed');
+    const rect = img.getBoundingClientRect();
+    // object-fit:contain → the drawn image is letter/pillar-boxed inside rect.
+    const natAspect = FRAME_W / FRAME_H;          // 4:3
+    const elAspect  = rect.width / rect.height;
+    let drawW, drawH, offX, offY;
+    if (elAspect > natAspect) {
+      drawH = rect.height; drawW = drawH * natAspect;
+      offX  = (rect.width - drawW) / 2; offY = 0;
+    } else {
+      drawW = rect.width;  drawH = drawW / natAspect;
+      offX  = 0;           offY  = (rect.height - drawH) / 2;
+    }
+    const lx = e.clientX - rect.left - offX;
+    const ly = e.clientY - rect.top  - offY;
+    if (lx < 0 || ly < 0 || lx > drawW || ly > drawH) return;
+
+    const fx = Math.round(lx / drawW * FRAME_W);
+    const fy = Math.round(ly / drawH * FRAME_H);
+
+    fetch('/api/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'track_click', x: fx, y: fy })
+    }).catch(() => {});
+    addLog(`Click target @ ${fx},${fy}`);
+    toggleClickAim();  // disarm after one pick
+  }
+
+  document.getElementById('video-wrapper').addEventListener('click', onVideoClick);
 
   function addLog(msg) {
     const ts = new Date().toTimeString().slice(0, 8);

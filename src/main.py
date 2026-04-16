@@ -35,10 +35,11 @@ from perception import LaneDetector, SmoothValue
 from controller import PIDController
 from speed_controller import AdaptiveSpeedController, draw_speed_indicator
 from safety import ObstacleDetector
-from dnn_detector import StopSignConfirmer
+from dnn_detector import StopSignConfirmer, load_ssd_net
 from sign_detector import TrafficSignDetector, ArucoSpeedDetector, ARUCO_SPEED_MAP
 from intersection_detector import IntersectionDetector
 from color_sign_detector import ColorSignDetector
+from item_tracker import ItemTracker, TRACK_TARGETS
 import pi_server
 
 # Speed limit → motor fraction (mirrors ArucoSpeedDetector.SPEED_FRACTIONS)
@@ -60,6 +61,7 @@ class State:
     COLOR_FOLLOWING = "COLOR_FOLLOWING"  # steering toward chosen tape
     ARRIVED         = "ARRIVED"          # RED tape seen, stopped at destination
     FREE_ROAM       = "FREE_ROAM"        # FSD: obstacle-avoiding free roam, no lane
+    TRACKING        = "TRACKING"         # TRACK: chase the locked COCO target
 
 
 # ── Front HC-SR04 ultrasonic sensor (background thread) ──────────────────────
@@ -139,6 +141,48 @@ class FrontSensor:
             return round((stop - start) * 34300 / 2, 1)
         except Exception:
             return float(self.MAX_RANGE)
+
+
+# ── Camera grabber (background thread, latest-frame policy) ──────────────────
+class CameraGrabber:
+    """
+    Drains cv2.VideoCapture in a daemon thread and always exposes the most
+    recent frame. Pi 3's USB camera read can cost 20-40 ms per call — doing
+    it in-line on the perception loop starves PID + DNN of CPU time.
+    latest() never blocks; it returns (ok, frame).
+    """
+    def __init__(self, cap):
+        self._cap   = cap
+        self._lock  = threading.Lock()
+        self._frame = None
+        self._stop  = threading.Event()
+        self._thread = threading.Thread(target=self._loop, daemon=True,
+                                        name="CameraGrabber")
+
+    def start(self):
+        self._thread.start()
+        print("[Camera] Grabber thread started")
+
+    def stop(self):
+        self._stop.set()
+        self._thread.join(timeout=1.5)
+
+    def latest(self):
+        with self._lock:
+            if self._frame is None:
+                return False, None
+            # Hand out a view — perception is read-only; any module that
+            # mutates must .copy() first (process_frame_* do this already).
+            return True, self._frame
+
+    def _loop(self):
+        while not self._stop.is_set():
+            ok, f = self._cap.read()
+            if not ok:
+                time.sleep(0.01)
+                continue
+            with self._lock:
+                self._frame = f
 
 
 # ── FSD free-roam controller ──────────────────────────────────────────────────
@@ -242,10 +286,21 @@ class AutonomousVehicle:
         self.sign_cv  = TrafficSignDetector()
         self.aruco    = ArucoSpeedDetector()
         # Stage 2 — DNN confirmation (gated by Stage 1 red-hint)
-        self.detector = StopSignConfirmer(model_name=dnn_model, skip_frames=dnn_skip)
+        #
+        # Load the 67 MB SSD MobileNet v2 net ONCE and share it between the
+        # stop-sign confirmer and the item tracker — halves RAM + startup.
+        shared_net     = load_ssd_net(dnn_model)
+        self.detector  = StopSignConfirmer(
+            model_name=dnn_model, skip_frames=dnn_skip, net=shared_net)
 
         # ── Colour tape detector ──────────────────────────────────────
         self.color_detector = ColorSignDetector(frame_width=640, frame_height=480)
+
+        # ── Item tracker (TRACK mode) ─────────────────────────────────
+        self.track_detector = ItemTracker(
+            model_name=dnn_model, frame_width=640, frame_height=480,
+            skip_frames=3, net=shared_net, prefer_tracker="KCF",
+        )
 
         # ── State machine ─────────────────────────────────────────────
         self.car_state  = State.LANE_FOLLOW
@@ -307,8 +362,8 @@ class AutonomousVehicle:
     # ── Drive-mode switcher ───────────────────────────────────────────────────
 
     def _set_drive_mode(self, mode: str):
-        """Switch between FSD / LANE / MANUAL modes safely."""
-        if mode not in ("FSD", "LANE", "MANUAL"):
+        """Switch between FSD / LANE / MANUAL / TRACK modes safely."""
+        if mode not in ("FSD", "LANE", "MANUAL", "TRACK"):
             print(f"[Mode] Unknown mode '{mode}' — ignored")
             return
         prev = self.drive_mode
@@ -319,12 +374,21 @@ class AutonomousVehicle:
             self._stop_motors()
         elif mode == "LANE":
             self.autonomous_enabled = True
-            if self.car_state == State.FREE_ROAM:
+            if self.car_state in (State.FREE_ROAM, State.TRACKING):
                 self.car_state = State.LANE_FOLLOW
         elif mode == "FSD":
             self.autonomous_enabled = True
             self.car_state = State.FREE_ROAM
             self.free_roam.reset()
+        elif mode == "TRACK":
+            self.autonomous_enabled = True
+            self.car_state = State.TRACKING
+            # Clear any stale lock from a previous TRACK session
+            self.track_detector.last_bbox   = None
+            self.track_detector.last_conf   = 0.0
+            self.track_detector.lost_frames = 999
+            if not self.track_detector.available:
+                print("[Mode] TRACK unavailable — SSD weights missing")
 
         print(f"[Mode] {prev} → {mode}")
 
@@ -443,6 +507,70 @@ class AutonomousVehicle:
 
         return debug, (left, right, status)
 
+    # ── TRACK mode frame processing ──────────────────────────────────────────
+
+    def process_frame_track(self, frame):
+        """Lock onto the selected COCO class and chase it. Front-ultrasonic safe."""
+        self.frame_count += 1
+
+        # DNN lock + overlay data
+        self.track_detector.detect(frame)
+
+        # Ultrasonic safety
+        front_dist = self.front_sensor.distance_cm
+        self.safety.sensors['front']['distance'] = front_dist
+        self.safety._check_obstacles()
+
+        target = self.track_detector.target_class
+        locked = self.track_detector.target_locked()
+
+        if target is None:
+            left, right, status = 0.0, 0.0, "TRACK: pick an item"
+        elif front_dist < STOP_DISTANCE:
+            left, right, status = 0.0, 0.0, "TRACK: obstacle -- stopped"
+        elif not locked:
+            hint = "seeking" if self.track_detector.lost_frames < 60 else "lost"
+            left, right, status = 0.0, 0.0, f"TRACK: {hint} {target}..."
+        else:
+            offset   = self.track_detector.get_steering_offset() or 0.0
+            distance = self.track_detector.get_distance_proxy()  or 0.0
+
+            # bbox height ≥ 55% of frame → we're right on top of it; stop.
+            if distance > 0.55:
+                left = right = 0.0
+                status = f"TRACK: arrived at {target}"
+            else:
+                # Closer target → slower approach. 0.7 max drops to 0.25 near the
+                # stop threshold, then clamped by the user's speed slider.
+                base = max(0.25, 0.70 * (1.0 - distance * 1.3))
+                if front_dist < SLOW_DISTANCE:
+                    base *= 0.6
+                base  = min(base, self.current_speed_limit)
+                steer = offset * 0.45
+                left  = max(0.0, min(1.0, base + steer))
+                right = max(0.0, min(1.0, base - steer))
+                side  = "center" if abs(offset) < 0.12 else ("left" if offset < 0 else "right")
+                status = f"TRACK: chasing {target} ({side})"
+
+        self.smooth_left.update(left)
+        self.smooth_right.update(right)
+        self.smooth_base_speed.update((left + right) / 2)
+        self.smooth_pid.update(0.0)
+        self._last_steering_error = 0.0
+
+        debug = frame.copy()
+        debug = self.safety.draw_overlay(debug)
+        debug = self.track_detector.draw_overlay(debug)
+        debug = self._draw_motor_bars(debug, left, right, 0.0)
+
+        hdr_color = (0, 220, 255) if locked else (120, 180, 200)
+        cv2.putText(debug, f"[TRACK] {status}", (10, 120),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, hdr_color, 2)
+        cv2.putText(debug, f"Front: {front_dist:.0f} cm",
+                    (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+
+        return debug, (left, right, status)
+
     # ── Web command handler ───────────────────────────────────────────────────
 
     def _handle_web_commands(self):
@@ -482,6 +610,22 @@ class AutonomousVehicle:
         elif action == "set_mode":
             mode = str(cmd.get("value", "LANE")).upper()
             self._set_drive_mode(mode)
+
+        elif action == "set_track_target":
+            val = cmd.get("value")
+            # Empty string or null → clear target (car stops)
+            self.track_detector.set_target(val if val else None)
+
+        elif action == "track_click":
+            try:
+                x = int(cmd.get("x", -1))
+                y = int(cmd.get("y", -1))
+            except (TypeError, ValueError):
+                x = y = -1
+            if 0 <= x < 640 and 0 <= y < 480:
+                self.track_detector.set_click_target(x, y)
+            else:
+                print(f"[Web] Invalid track_click coords ({x}, {y})")
 
         pi_server.clear_command()
 
@@ -528,6 +672,14 @@ class AutonomousVehicle:
             "color_target":          self.color_detector.target_color,
             "color_detections":      color_dets,
             "color_target_visible":  self.color_detector.target_visible(),
+            "track_available":       self.track_detector.available,
+            "track_click_available": self.track_detector.click_available,
+            "track_mode":            self.track_detector.mode,
+            "track_target":          self.track_detector.target_class,
+            "track_locked":          self.track_detector.target_locked(),
+            "track_conf":            round(self.track_detector.last_conf, 2),
+            "track_lost_frames":     self.track_detector.lost_frames,
+            "track_classes":         list(TRACK_TARGETS.keys()),
         }
 
     # ── Main perception + decision loop ──────────────────────────────────────
@@ -867,6 +1019,7 @@ class AutonomousVehicle:
         self.color_detector.reset()
         self.intersection_detector.reset()
         self.free_roam.reset()
+        self.track_detector.reset()
         self.car_state           = State.LANE_FOLLOW
         self.drive_mode          = "LANE"
         self.autonomous_enabled  = True
@@ -917,12 +1070,17 @@ class AutonomousVehicle:
             print("Keys: [Q] Quit  [SPACE] Auto/Manual  [F] FSD  [R] Reset  "
                   "[S] Snap  [D] Debug  [G] Green path  [B] Blue path")
 
+        # Drain the camera in a background thread so perception never blocks
+        # on USB I/O.  Big win on Pi 3.
+        self._grabber = CameraGrabber(self._cap)
+        self._grabber.start()
+
         self._start_time = time.time()
 
         while True:
-            ret, frame = self._cap.read()
+            ret, frame = self._grabber.latest()
             if not ret:
-                print("[Camera] Frame grab failed — retrying...")
+                time.sleep(0.005)   # wait for the first frame
                 continue
             # camera is mounted right-side up — no rotation needed
             if self.undistort_enabled and self.camera:
@@ -931,6 +1089,8 @@ class AutonomousVehicle:
             # ── Frame processing (mode-dependent) ────────────────────────
             if self.drive_mode == "FSD":
                 debug_frame, (left, right, status) = self.process_frame_fsd(frame)
+            elif self.drive_mode == "TRACK":
+                debug_frame, (left, right, status) = self.process_frame_track(frame)
             else:
                 debug_frame, (left, right, status) = self.process_frame(frame)
 
@@ -941,6 +1101,8 @@ class AutonomousVehicle:
             if self.drive_mode == "FSD":
                 # _drive_manual handles negative values for backup maneuver
                 self._drive_manual(left, right)
+            elif self.drive_mode == "TRACK":
+                self._drive(left, right)
             elif self.drive_mode == "LANE":
                 if self.car_state not in (State.FORK_WAITING, State.ARRIVED):
                     self._drive(left, right)
@@ -1006,6 +1168,8 @@ class AutonomousVehicle:
                     if self.car_state == State.FORK_WAITING:
                         self.car_state = State.COLOR_FOLLOWING
 
+        if hasattr(self, "_grabber"):
+            self._grabber.stop()
         if self._cap:
             self._cap.release()
         if self.show_display:

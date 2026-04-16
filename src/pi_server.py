@@ -90,7 +90,7 @@ def get_manual_keys() -> dict:
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
-def _encode_frame_jpeg(quality: int = 75) -> bytes | None:
+def _encode_frame_jpeg(quality: int = 55) -> bytes | None:
     with _frame_lock:
         if _latest_frame is None:
             return None
@@ -112,9 +112,17 @@ def _encode_rear_frame_jpeg(quality: int = 70) -> bytes | None:
         return buf.tobytes() if ret else None
 
 
+_STREAM_FPS = 15          # hard cap — protects Pi 3 CPU during heavy perception
+_STREAM_PERIOD = 1.0 / _STREAM_FPS
+
 def _mjpeg_generator():
-    """Yields MJPEG boundary frames for the /video_feed route."""
+    """Yields MJPEG boundary frames for the /video_feed route, FPS-capped."""
+    next_ts = 0.0
     while True:
+        wait = next_ts - time.time()
+        if wait > 0:
+            time.sleep(wait)
+        next_ts = time.time() + _STREAM_PERIOD
         jpeg = _encode_frame_jpeg()
         if jpeg:
             yield (
@@ -202,7 +210,8 @@ def start_server(port: int = 5000) -> bool:
 
         action = body.get("action")
         valid = {"toggle_auto", "emergency_stop", "reset", "set_speed",
-                 "set_target_color", "manual_drive", "set_mode"}
+                 "set_target_color", "manual_drive", "set_mode",
+                 "set_track_target", "track_click"}
         if action not in valid:
             return jsonify({"error": f"Unknown action '{action}'"}), 400
 

@@ -34,6 +34,31 @@ _STOP_CONFIRM_COUNT = 2
 _INPUT_SIZE = (300, 300)
 
 
+def load_ssd_net(model_name: str = "ssd_mobilenet_v2_coco.pb"):
+    """
+    Load the SSD MobileNet v2 weights once and return the cv2.dnn.Net.
+    Returns None if the files are missing or OpenCV fails to load them.
+    Sharing one Net across StopSignConfirmer + ItemTracker halves the
+    67 MB memory footprint on the Pi and skips a second ~3 s warm-up.
+    """
+    import os
+    pb_path    = model_name
+    pbtxt_path = os.path.splitext(model_name)[0] + ".pbtxt"
+    if not os.path.isfile(pb_path) or not os.path.isfile(pbtxt_path):
+        print(f"[DNN] Model not found: {pb_path}")
+        print("[DNN] Run: python dnn_detector.py --download")
+        return None
+    try:
+        net = cv2.dnn.readNetFromTensorflow(pb_path, pbtxt_path)
+        net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
+        net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
+        print("[DNN] SSD MobileNet v2 loaded (shared)")
+        return net
+    except cv2.error as e:
+        print(f"[DNN] Failed to load model: {e}")
+        return None
+
+
 class StopSignConfirmer:
     """
     DNN confirmation layer for stop signs.
@@ -53,11 +78,14 @@ class StopSignConfirmer:
                  conf_threshold: float = 0.55,
                  frame_width: int      = 640,
                  frame_height: int     = 480,
-                 skip_frames: int      = 15):
+                 skip_frames: int      = 15,
+                 net = None):
         """
         skip_frames  : DNN runs at most every N frames
         red_hint     : when False AND not on an inference frame, skip entirely
                        → DNN load is (1/skip_frames) × (fraction of frames with red)
+        net          : optional pre-loaded cv2.dnn.Net (share with ItemTracker
+                       on memory-constrained boards)
         """
         self.conf_threshold = conf_threshold
         self.frame_width    = frame_width
@@ -70,26 +98,19 @@ class StopSignConfirmer:
         self._stop_history:  list = []
         self._stop_confirmed: bool = False
 
-        pb_path    = model_name
-        pbtxt_path = os.path.splitext(model_name)[0] + ".pbtxt"
-
-        if not os.path.isfile(pb_path) or not os.path.isfile(pbtxt_path):
-            print(f"[DNN] Model not found: {pb_path}")
-            print("[DNN] Run: python dnn_detector.py --download")
-            print("[DNN] Running in disabled mode — CV-only stop sign detection")
+        if net is not None:
+            self._net = net
+            self.available = True
+            print(f"[DNN] Stop-sign confirmer using shared net "
+                  f"(skip={skip_frames})")
             return
 
-        print(f"[DNN] Loading SSD MobileNet v2 (stop-sign confirmer) ...")
-        try:
-            self._net = cv2.dnn.readNetFromTensorflow(pb_path, pbtxt_path)
-            self._net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
-            self._net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
-            self.available = True
-            print(f"[DNN] Ready — confirming stop signs every {skip_frames} frames "
-                  f"(gated by CV red-hint)")
-        except cv2.error as e:
-            print(f"[DNN] Failed to load model: {e}")
-            print("[DNN] Running in disabled mode")
+        self._net = load_ssd_net(model_name)
+        if self._net is None:
+            print("[DNN] Running in disabled mode — CV-only stop sign detection")
+            return
+        self.available = True
+        print(f"[DNN] Stop-sign confirmer ready (skip={skip_frames})")
 
     # ── Public API ────────────────────────────────────────────────────────────
 
