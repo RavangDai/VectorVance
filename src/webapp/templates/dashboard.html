@@ -3,426 +3,377 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>VectorVance Dashboard</title>
+  <title>VectorVance — Dashboard</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:       #0d0d0f;
-      --surface:  #16171c;
-      --border:   #2a2b32;
-      --text:     #e8e9f0;
-      --muted:    #6b6d7a;
-      --cyan:     #00d4ff;
-      --green:    #00e87a;
-      --orange:   #ff8c42;
-      --red:      #ff3b3b;
-      --yellow:   #ffd166;
-      --radius:   10px;
+      --bg:      #07090d;
+      --surface: #0d0f16;
+      --card:    #10131c;
+      --border:  #1a1e2e;
+      --border2: #252a3d;
+      --text:    #d8ddf0;
+      --muted:   #52587a;
+      --dim:     #30364f;
+      --cyan:    #00d4ff;
+      --green:   #00e87a;
+      --orange:  #ff9040;
+      --red:     #ff3b55;
+      --yellow:  #ffd166;
+      --blue:    #4d9fff;
+      --r:       8px;
     }
+
+    html, body { height: 100%; overflow: hidden; }
 
     body {
       background: var(--bg);
       color: var(--text);
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      font-size: 14px;
-      min-height: 100vh;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 13px;
       display: flex;
       flex-direction: column;
     }
 
-    /* ── Connection splash ── */
+    /* ── SPLASH ─────────────────────────────────────────────────────── */
     #conn-splash {
-      position: fixed;
-      inset: 0;
-      background: var(--bg);
-      z-index: 999;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-direction: column;
-      gap: 24px;
+      position: fixed; inset: 0; background: var(--bg); z-index: 999;
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 18px;
       transition: opacity 0.5s ease;
     }
     #conn-splash.fade-out { opacity: 0; pointer-events: none; }
     .splash-logo {
-      font-size: 36px;
-      font-weight: 800;
-      letter-spacing: 4px;
-      color: var(--cyan);
-      text-transform: uppercase;
+      font-size: 30px; font-weight: 800; letter-spacing: 6px;
+      color: var(--cyan); text-transform: uppercase;
+      text-shadow: 0 0 40px rgba(0,212,255,0.45);
     }
-    .splash-sub { color: var(--muted); font-size: 13px; letter-spacing: 1px; }
+    .splash-sub { color: var(--muted); font-size: 11px; letter-spacing: 2.5px; text-transform: uppercase; }
     .splash-spinner {
-      width: 40px; height: 40px;
-      border: 3px solid var(--border);
-      border-top-color: var(--cyan);
-      border-radius: 50%;
-      animation: spin 0.9s linear infinite;
+      width: 32px; height: 32px;
+      border: 2px solid var(--border2); border-top-color: var(--cyan);
+      border-radius: 50%; animation: spin 0.85s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    #splash-msg { font-size: 13px; color: var(--muted); }
-    .splash-dot-row { display: flex; gap: 6px; }
+    #splash-msg { font-size: 11px; color: var(--muted); }
+    .splash-dots { display: flex; gap: 6px; }
     .splash-dot {
-      width: 8px; height: 8px; border-radius: 50%; background: var(--border);
-      animation: splash-pulse 1.2s ease-in-out infinite;
+      width: 6px; height: 6px; border-radius: 50%; background: var(--border2);
+      animation: dpulse 1.4s ease-in-out infinite;
     }
-    .splash-dot:nth-child(2) { animation-delay: 0.2s; }
-    .splash-dot:nth-child(3) { animation-delay: 0.4s; }
-    @keyframes splash-pulse {
-      0%, 100% { background: var(--border); }
-      50%       { background: var(--cyan); }
-    }
+    .splash-dot:nth-child(2) { animation-delay: 0.22s; }
+    .splash-dot:nth-child(3) { animation-delay: 0.44s; }
+    @keyframes dpulse { 50% { background: var(--cyan); } }
 
-    /* ── Header ── */
+    /* ── HEADER ─────────────────────────────────────────────────────── */
     header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 10px 20px;
+      height: 42px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 14px; gap: 12px;
       background: var(--surface);
       border-bottom: 1px solid var(--border);
-      gap: 12px;
     }
-    .header-brand h1 {
-      font-size: 18px;
-      font-weight: 700;
-      letter-spacing: 2px;
-      color: var(--cyan);
-      text-transform: uppercase;
+    .brand { display: flex; align-items: baseline; gap: 9px; }
+    .brand-name {
+      font-size: 15px; font-weight: 800; letter-spacing: 3px;
+      color: var(--cyan); text-transform: uppercase;
+      text-shadow: 0 0 20px rgba(0,212,255,0.3);
     }
-    .header-brand .subtitle { color: var(--muted); font-size: 11px; margin-top: 2px; }
+    .brand-sub { font-size: 10px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
 
-    /* ── Mode tabs ── */
     .mode-tabs {
-      display: flex;
-      gap: 4px;
-      background: var(--bg);
-      padding: 4px;
-      border-radius: 10px;
+      display: flex; gap: 3px;
+      background: var(--bg); padding: 3px; border-radius: 9px;
       border: 1px solid var(--border);
     }
     .mode-tab {
-      padding: 7px 18px;
-      border: none;
-      border-radius: 7px;
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.8px;
-      cursor: pointer;
-      background: transparent;
-      color: var(--muted);
-      transition: background 0.15s, color 0.15s;
+      padding: 4px 13px; border: 1px solid transparent; border-radius: 6px;
+      font-size: 11px; font-weight: 700; letter-spacing: 1px;
+      cursor: pointer; background: transparent; color: var(--muted);
+      transition: all 0.15s; text-transform: uppercase;
     }
-    .mode-tab:disabled { cursor: not-allowed; opacity: 0.35; }
+    .mode-tab:disabled { cursor: not-allowed; opacity: 0.28; }
     .mode-tab:not(:disabled):hover { color: var(--text); background: var(--border); }
-    .mode-tab.active[data-mode="FSD"]    { background: rgba(0,212,255,0.15); color: var(--cyan);   border: 1px solid var(--cyan); }
-    .mode-tab.active[data-mode="LANE"]   { background: rgba(0,232,122,0.15); color: var(--green);  border: 1px solid var(--green); }
-    .mode-tab.active[data-mode="MANUAL"] { background: rgba(255,140,66,0.15); color: var(--orange); border: 1px solid var(--orange); }
+    .mode-tab.active[data-mode="FSD"]    { background: rgba(0,212,255,0.1);  color: var(--cyan);   border-color: rgba(0,212,255,0.35); }
+    .mode-tab.active[data-mode="LANE"]   { background: rgba(0,232,122,0.1);  color: var(--green);  border-color: rgba(0,232,122,0.35); }
+    .mode-tab.active[data-mode="MANUAL"] { background: rgba(255,144,64,0.1); color: var(--orange); border-color: rgba(255,144,64,0.35); }
 
-    /* ── Connection indicator ── */
-    .conn-row { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-    .dot {
-      width: 10px; height: 10px; border-radius: 50%;
-      background: var(--muted);
-      transition: background 0.3s;
-    }
-    .dot.live { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .conn-row { display: flex; align-items: center; gap: 7px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); transition: all 0.3s; }
+    .dot.live { background: var(--green); box-shadow: 0 0 8px var(--green); }
     .dot.dead { background: var(--red); }
-    #conn-label { font-size: 12px; color: var(--muted); }
+    #conn-label { font-size: 11px; color: var(--muted); }
 
-    /* ── Main layout ── */
+    /* ── MAIN GRID ──────────────────────────────────────────────────── */
     .main {
-      flex: 1;
+      flex: 1; min-height: 0;
       display: grid;
-      grid-template-columns: 1fr 320px;
-      gap: 12px;
-      padding: 12px;
+      grid-template-columns: 1fr 262px;
+      gap: 8px; padding: 8px;
+      overflow: hidden;
     }
 
-    /* ── Video panel ── */
+    /* ── VIDEO PANEL ────────────────────────────────────────────────── */
     .video-panel {
-      background: #000;
-      border-radius: var(--radius);
+      display: flex; flex-direction: column;
+      background: #000; border-radius: var(--r);
       border: 1px solid var(--border);
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      position: relative;
+      overflow: hidden; position: relative; min-height: 0;
+      transition: border-color 0.4s;
     }
-    .video-panel .panel-title {
-      padding: 8px 12px;
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      color: var(--muted);
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-    }
-    .video-panel img {
-      width: 100%;
-      display: block;
-      object-fit: contain;
-    }
+    .video-panel.live { border-color: rgba(0,212,255,0.22); box-shadow: 0 0 24px rgba(0,212,255,0.05); }
 
-    /* ── Right sidebar ── */
-    .sidebar {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      overflow-y: auto;
+    .video-title {
+      height: 26px; flex-shrink: 0;
+      padding: 0 10px;
+      display: flex; align-items: center; gap: 8px;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      font-size: 10px; font-weight: 600; letter-spacing: 1px;
+      text-transform: uppercase; color: var(--muted);
     }
+    .rec-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); transition: all 0.3s; flex-shrink: 0; }
+    .rec-dot.live { background: var(--red); box-shadow: 0 0 5px var(--red); animation: blink 1.8s infinite; }
+    @keyframes blink { 50% { opacity: 0.35; } }
 
-    /* ── Cards ── */
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      overflow: hidden;
-    }
-    .card-title {
-      padding: 8px 12px;
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      color: var(--muted);
-      border-bottom: 1px solid var(--border);
-    }
-    .card-body { padding: 10px 12px; }
-
-    /* ── Status grid ── */
-    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .stat-item { display: flex; flex-direction: column; gap: 2px; }
-    .stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
-    .stat-value {
-      font-size: 18px; font-weight: 700;
-      font-variant-numeric: tabular-nums; color: var(--cyan);
-    }
-    .stat-value.good   { color: var(--green); }
-    .stat-value.warn   { color: var(--orange); }
-    .stat-value.danger { color: var(--red); }
-
-    /* ── Mode badge ── */
-    .mode-badge {
-      display: inline-block; padding: 4px 10px; border-radius: 20px;
-      font-size: 12px; font-weight: 700; letter-spacing: 1px;
-      background: rgba(0,212,255,0.15); color: var(--cyan); border: 1px solid var(--cyan);
-    }
-    .mode-badge.lane    { background: rgba(0,232,122,0.15); color: var(--green);  border-color: var(--green); }
-    .mode-badge.manual  { background: rgba(255,140,66,0.15); color: var(--orange); border-color: var(--orange); }
-    .mode-badge.stopped { background: rgba(255,59,59,0.15);  color: var(--red);   border-color: var(--red); }
-
-    /* ── Speed bars ── */
-    .speed-bars { display: flex; gap: 10px; align-items: flex-end; height: 80px; }
-    .speed-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
-    .speed-bar-bg {
-      width: 100%; height: 60px; background: #1e1f26;
-      border-radius: 6px; position: relative; overflow: hidden;
-      border: 1px solid var(--border);
-    }
-    .speed-bar-fill {
-      position: absolute; bottom: 0; left: 0; right: 0;
-      background: linear-gradient(to top, var(--cyan), rgba(0,212,255,0.5));
-      border-radius: 5px; transition: height 0.2s ease;
-    }
-    .speed-bar-label { font-size: 11px; color: var(--muted); font-weight: 600; }
-    .speed-bar-val { font-size: 13px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
-
-    /* ── DNN danger badge ── */
-    .danger-badge {
-      display: inline-block; padding: 3px 10px; border-radius: 6px;
-      font-size: 11px; font-weight: 700; letter-spacing: 0.8px; margin-top: 8px;
-    }
-    .danger-CLEAR   { background: rgba(0,232,122,0.15); color: var(--green); border: 1px solid var(--green); }
-    .danger-CAUTION { background: rgba(255,209,102,0.15); color: var(--yellow); border: 1px solid var(--yellow); }
-    .danger-DANGER  { background: rgba(255,140,66,0.15); color: var(--orange); border: 1px solid var(--orange); }
-    .danger-STOP    { background: rgba(255,59,59,0.15); color: var(--red); border: 1px solid var(--red); }
-
-    /* ── Car state badge ── */
-    .state-badge {
-      display: inline-block; padding: 3px 10px; border-radius: 6px;
-      font-size: 10px; font-weight: 700; letter-spacing: 0.5px; margin-left: 6px;
-    }
-    .state-LANE_FOLLOW    { background: rgba(0,232,122,0.12); color: var(--green); }
-    .state-FORK_WAITING   { background: rgba(255,209,102,0.15); color: var(--yellow); }
-    .state-COLOR_FOLLOWING { background: rgba(0,212,255,0.15); color: var(--cyan); }
-    .state-ARRIVED        { background: rgba(0,232,122,0.2); color: var(--green); }
-    .state-FREE_ROAM      { background: rgba(255,140,66,0.15); color: var(--orange); }
-
-    /* ── DNN detections ── */
-    .detection-list { display: flex; flex-direction: column; gap: 6px; }
-    .detection-item {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 5px 8px; background: #1e1f26; border-radius: 6px;
-      border-left: 3px solid var(--cyan);
-    }
-    .detection-item.stop-sign { border-left-color: var(--red); }
-    .detection-item.person    { border-left-color: var(--orange); }
-    .detection-item.vehicle   { border-left-color: var(--green); }
-    .detection-name { font-size: 12px; font-weight: 600; }
-    .detection-conf { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
-    .no-detections { color: var(--muted); font-size: 12px; text-align: center; padding: 8px 0; }
-
-    /* ── Color navigation ── */
-    .color-btn-row { display: flex; gap: 6px; margin-bottom: 10px; }
-    .color-btn {
-      flex: 1; padding: 7px 0; border: 2px solid transparent; border-radius: 7px;
-      font-size: 12px; font-weight: 700; cursor: pointer; letter-spacing: 0.5px;
-      opacity: 0.45; transition: opacity 0.2s, filter 0.2s;
-    }
-    .color-btn.active { opacity: 1; filter: brightness(1.2); }
-    .color-btn:hover  { opacity: 0.8; }
-    .btn-green { background: rgba(0,232,122,0.15); color: #00e87a; border-color: #00e87a; }
-    .btn-blue  { background: rgba(77,166,255,0.15); color: #4da6ff; border-color: #4da6ff; }
-    .color-det-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-    .color-det-chip {
-      padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;
-    }
-    .nav-row { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: var(--muted); }
-    .nav-row span { color: var(--text); font-weight: 600; }
-
-    /* ── Manual control card ── */
-    .manual-card-body { padding: 10px 12px; }
-
-    /* WASD key display (shown when mode != MANUAL) */
-    .wasd-hint { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
-    .wasd-grid { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-bottom: 8px; }
-    .wasd-row { display: flex; gap: 4px; }
-    .key-box {
-      width: 36px; height: 36px; background: #1e1f26;
-      border: 1px solid var(--border); border-radius: 6px;
+    .video-wrapper {
+      flex: 1; min-height: 0;
       display: flex; align-items: center; justify-content: center;
-      font-size: 13px; font-weight: 700; color: var(--muted);
-      transition: background 0.1s, color 0.1s, border-color 0.1s; user-select: none;
+      overflow: hidden; background: #000;
+    }
+    .video-wrapper img { max-width: 100%; max-height: 100%; display: block; object-fit: contain; }
+
+    /* Overlay banners — sit on top of video, don't push layout */
+    .vid-banners {
+      position: absolute; top: 26px; left: 0; right: 0;
+      display: flex; flex-direction: column; pointer-events: none; z-index: 10;
+    }
+    .vid-banner {
+      display: none; padding: 5px 14px;
+      font-size: 11px; font-weight: 700; letter-spacing: 1.5px;
+      text-align: center; text-transform: uppercase; backdrop-filter: blur(4px);
+    }
+    #obstacle-banner         { background: rgba(255,59,85,0.82); color: #fff; }
+    #obstacle-banner.warn    { background: rgba(255,144,64,0.82); }
+    #stop-sign-banner        { background: rgba(110,0,20,0.88); color: #ff9090; animation: pred 0.85s ease-in-out infinite; }
+    @keyframes pred           { 50% { opacity: 0.65; } }
+    #fork-banner             { background: rgba(0,55,120,0.88); color: #80caff; animation: pblue 1s infinite; }
+    @keyframes pblue          { 50% { background: rgba(0,75,160,0.88); } }
+
+    /* ── SIDEBAR ────────────────────────────────────────────────────── */
+    .sidebar {
+      display: flex; flex-direction: column;
+      gap: 6px; min-height: 0; overflow: hidden;
+    }
+
+    /* ── CARD ───────────────────────────────────────────────────────── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      flex-shrink: 0; overflow: hidden;
+    }
+    .card-head {
+      height: 22px; padding: 0 10px;
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(255,255,255,0.018);
+      border-bottom: 1px solid var(--border);
+      font-size: 9px; font-weight: 700; letter-spacing: 1.8px;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .card-body { padding: 7px 10px; }
+
+    /* ── STATUS CARD ────────────────────────────────────────────────── */
+    .badge-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-bottom: 4px; }
+    .badge {
+      padding: 2px 7px; border-radius: 4px;
+      font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+      border: 1px solid transparent;
+    }
+    .b-fsd    { background: rgba(0,212,255,0.1);  color: var(--cyan);   border-color: rgba(0,212,255,0.3); }
+    .b-lane   { background: rgba(0,232,122,0.1);  color: var(--green);  border-color: rgba(0,232,122,0.3); }
+    .b-manual { background: rgba(255,144,64,0.1); color: var(--orange); border-color: rgba(255,144,64,0.3); }
+    .b-state  { background: rgba(255,255,255,0.04); color: var(--muted); border-color: var(--border); }
+    .b-stop   { background: rgba(255,59,85,0.12); color: var(--red);    border-color: rgba(255,59,85,0.35); }
+
+    #status-text {
+      font-size: 11px; font-weight: 600; color: var(--text);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    /* ── TELEMETRY CARD ─────────────────────────────────────────────── */
+    .metrics {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 5px 10px;
+    }
+    .metric { display: flex; flex-direction: column; gap: 1px; }
+    .mlabel { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; }
+    .mvalue {
+      font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums;
+      color: var(--cyan); line-height: 1.15;
+    }
+    .mvalue.good   { color: var(--green); }
+    .mvalue.warn   { color: var(--orange); }
+    .mvalue.danger { color: var(--red); text-shadow: 0 0 8px rgba(255,59,85,0.35); }
+
+    /* ── MOTORS CARD ────────────────────────────────────────────────── */
+    .mrow {
+      display: flex; align-items: center; gap: 7px;
+    }
+    .mrow + .mrow { margin-top: 5px; }
+    .mltr { font-size: 10px; font-weight: 700; color: var(--muted); width: 11px; flex-shrink: 0; }
+    .mbar-bg {
+      flex: 1; height: 11px; background: var(--bg);
+      border-radius: 4px; overflow: hidden; border: 1px solid var(--border);
+    }
+    .mbar-fill {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, var(--cyan), rgba(0,212,255,0.55));
+      border-radius: 3px; transition: width 0.18s ease;
+    }
+    .mval {
+      font-size: 10px; font-weight: 700; color: var(--text);
+      font-variant-numeric: tabular-nums; width: 27px; text-align: right; flex-shrink: 0;
+    }
+
+    /* ── SIGNS CARD ─────────────────────────────────────────────────── */
+    .det-list { display: flex; flex-direction: column; gap: 4px; }
+    .det-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 3px 7px; border-radius: 5px;
+      background: var(--bg); border-left: 2px solid var(--cyan);
+    }
+    .det-item.stop    { border-left-color: var(--red); }
+    .det-item.person  { border-left-color: var(--orange); }
+    .det-item.vehicle { border-left-color: var(--green); }
+    .det-name { font-size: 11px; font-weight: 600; }
+    .det-conf { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .no-det { font-size: 10px; color: var(--dim); text-align: center; padding: 3px 0; }
+
+    /* ── NAVIGATION CARD ────────────────────────────────────────────── */
+    .cbtn-row { display: flex; gap: 5px; margin-bottom: 6px; }
+    .cbtn {
+      flex: 1; padding: 5px 0; border: 1px solid transparent; border-radius: 6px;
+      font-size: 11px; font-weight: 700; cursor: pointer; letter-spacing: 0.5px;
+      opacity: 0.38; transition: all 0.15s; text-transform: uppercase;
+    }
+    .cbtn:hover  { opacity: 0.7; }
+    .cbtn.active { opacity: 1; }
+    .cbtn-green { background: rgba(0,232,122,0.07); color: #00e87a; border-color: rgba(0,232,122,0.25); }
+    .cbtn-green.active { background: rgba(0,232,122,0.16); border-color: #00e87a; box-shadow: 0 0 10px rgba(0,232,122,0.18); }
+    .cbtn-blue  { background: rgba(77,159,255,0.07); color: #4d9fff; border-color: rgba(77,159,255,0.25); }
+    .cbtn-blue.active  { background: rgba(77,159,255,0.16); border-color: #4d9fff; box-shadow: 0 0 10px rgba(77,159,255,0.18); }
+
+    .nav-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 6px; }
+    .nstat { display: flex; justify-content: space-between; font-size: 10px; }
+    .nk { color: var(--muted); }
+    .nv { color: var(--text); font-weight: 600; }
+    .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+    .chip { padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; border: 1px solid; }
+
+    /* ── MANUAL CARD ────────────────────────────────────────────────── */
+    .wasd-hint { font-size: 10px; color: var(--muted); margin-bottom: 5px; }
+    .wasd-grid { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+    .wasd-row  { display: flex; gap: 3px; }
+    .key-box {
+      width: 28px; height: 28px; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 5px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; color: var(--muted);
+      transition: all 0.1s; user-select: none;
     }
     .key-box.active {
-      background: rgba(0,212,255,0.15); border-color: var(--cyan);
-      color: var(--cyan); box-shadow: 0 0 8px rgba(0,212,255,0.3);
+      background: rgba(0,212,255,0.1); border-color: var(--cyan);
+      color: var(--cyan); box-shadow: 0 0 6px rgba(0,212,255,0.22);
     }
-    .manual-inactive { color: var(--muted); font-size: 11px; text-align: center; }
+    .manual-inactive { color: var(--dim); font-size: 10px; text-align: center; margin-top: 4px; }
 
-    /* D-pad (shown when mode == MANUAL) */
     #dpad-container { display: none; }
-    .dpad-label { font-size: 11px; color: var(--green); font-weight: 600; margin-bottom: 10px; text-align: center; }
-    .dpad {
-      display: flex; flex-direction: column; align-items: center; gap: 4px;
-      margin-bottom: 8px;
-    }
-    .dpad-row { display: flex; gap: 4px; align-items: center; }
+    .dpad-label { font-size: 10px; color: var(--green); font-weight: 700; text-align: center; margin-bottom: 5px; letter-spacing: 1px; }
+    .dpad { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+    .dpad-row { display: flex; gap: 3px; }
     .dpad-btn {
-      width: 54px; height: 54px; border-radius: 10px;
-      border: 2px solid var(--border); background: #1e1f26;
-      color: var(--muted); font-size: 20px; font-weight: 700;
+      width: 40px; height: 40px; border-radius: 7px;
+      border: 1px solid var(--border2); background: var(--bg);
+      color: var(--muted); font-size: 17px; font-weight: 700;
       cursor: pointer; display: flex; align-items: center; justify-content: center;
-      user-select: none; transition: background 0.1s, color 0.1s, border-color 0.1s;
+      user-select: none; transition: all 0.1s;
       -webkit-tap-highlight-color: transparent;
     }
-    .dpad-btn:active,
-    .dpad-btn.pressed {
-      background: rgba(0,212,255,0.2); border-color: var(--cyan);
-      color: var(--cyan); box-shadow: 0 0 10px rgba(0,212,255,0.35);
+    .dpad-btn:active, .dpad-btn.pressed {
+      background: rgba(0,212,255,0.12); border-color: var(--cyan); color: var(--cyan);
     }
     .dpad-stop {
-      width: 44px; height: 44px; font-size: 16px;
-      background: rgba(255,59,59,0.1); border-color: var(--red); color: var(--red);
+      width: 34px; height: 34px; font-size: 13px;
+      background: rgba(255,59,85,0.07); border-color: rgba(255,59,85,0.3); color: var(--red);
     }
-    .dpad-stop:active { background: rgba(255,59,59,0.3); }
-    #dpad-status { font-size: 11px; color: var(--muted); text-align: center; margin-top: 4px; }
+    .dpad-stop:active { background: rgba(255,59,85,0.22); }
+    #dpad-status { font-size: 10px; color: var(--muted); text-align: center; margin-top: 3px; }
 
-    /* ── Log ── */
-    .log-list {
-      font-size: 11px; font-family: 'Consolas', monospace;
-      display: flex; flex-direction: column; gap: 3px;
-      max-height: 100px; overflow-y: auto;
-    }
-    .log-item { color: var(--muted); }
+    /* ── LOG CARD (stretchy) ────────────────────────────────────────── */
+    .log-card { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+    .log-card .card-body { flex: 1; min-height: 0; overflow-y: auto; padding: 5px 8px; }
+    .log-list { display: flex; flex-direction: column; gap: 2px; }
+    .log-item { font-size: 10px; font-family: 'Consolas', monospace; color: var(--muted); }
     .log-item.new { color: var(--text); }
-    .log-item .ts { color: var(--border); margin-right: 6px; }
+    .log-item .ts { color: var(--dim); margin-right: 5px; }
 
-    /* ── Controls bar ── */
+    /* ── CONTROLS BAR ───────────────────────────────────────────────── */
     .controls {
-      display: flex; gap: 8px; padding: 10px 12px;
-      background: var(--surface); border-top: 1px solid var(--border); flex-wrap: wrap;
+      height: 42px; flex-shrink: 0;
+      display: flex; align-items: center; gap: 7px; padding: 0 12px;
+      background: var(--surface); border-top: 1px solid var(--border);
     }
     .btn {
-      padding: 8px 18px; border: none; border-radius: 7px;
-      font-size: 13px; font-weight: 600; cursor: pointer; letter-spacing: 0.5px;
-      transition: opacity 0.15s, transform 0.1s;
+      padding: 5px 13px; border: none; border-radius: 6px;
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      transition: all 0.15s; letter-spacing: 0.3px; white-space: nowrap;
     }
-    .btn:active  { transform: scale(0.97); }
-    .btn-danger  { background: var(--red);    color: #fff; }
-    .btn-neutral { background: var(--border); color: var(--text); }
+    .btn:active { transform: scale(0.97); }
+    .btn-danger  { background: var(--red); color: #fff; }
+    .btn-danger:hover { background: #ff1133; }
+    .btn-neutral { background: var(--border2); color: var(--text); }
+    .btn-neutral:hover { background: #323860; }
     .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-set {
+      background: rgba(0,212,255,0.1); color: var(--cyan);
+      border: 1px solid rgba(0,212,255,0.3); padding: 5px 10px;
+    }
+    .btn-set:hover { background: rgba(0,212,255,0.18); }
 
-    .speed-control {
-      display: flex; align-items: center; gap: 8px; margin-left: auto;
-    }
-    .speed-control label { font-size: 12px; color: var(--muted); white-space: nowrap; }
-    .speed-control input[type=range] { width: 100px; accent-color: var(--cyan); }
-    #speed-val { font-size: 12px; font-weight: 700; color: var(--cyan); min-width: 32px; }
+    .speed-ctl { display: flex; align-items: center; gap: 7px; margin-left: auto; }
+    .speed-ctl label { font-size: 11px; color: var(--muted); white-space: nowrap; }
+    .speed-ctl input[type=range] { width: 88px; accent-color: var(--cyan); cursor: pointer; }
+    #speed-val { font-size: 12px; font-weight: 700; color: var(--cyan); min-width: 30px; font-variant-numeric: tabular-nums; }
 
-    /* ── Banners ── */
-    #obstacle-banner {
-      display: none; padding: 6px 12px; background: var(--red);
-      color: #fff; font-size: 12px; font-weight: 700;
-      text-align: center; letter-spacing: 1px;
-    }
-    #obstacle-banner.warn { background: var(--orange); }
-    #stop-sign-banner {
-      display: none; padding: 6px 12px;
-      background: linear-gradient(90deg, #7c0000, #ff3b3b, #7c0000);
-      color: #fff; font-size: 12px; font-weight: 700;
-      text-align: center; letter-spacing: 1.5px;
-      animation: pulse-red 0.8s ease-in-out infinite;
-    }
-    @keyframes pulse-red {
-      0%, 100% { opacity: 1; }
-      50%       { opacity: 0.75; }
-    }
-    #fork-banner {
-      display: none; padding: 10px 20px; background: #00529e;
-      color: #fff; font-size: 14px; font-weight: 700;
-      text-align: center; letter-spacing: 1px;
-      animation: pulse-border 1s infinite;
-    }
-    @keyframes pulse-border {
-      0%, 100% { background: #00529e; }
-      50%       { background: #0078d4; }
-    }
-
-    @media (max-width: 800px) {
-      .main { grid-template-columns: 1fr; }
-      .mode-tabs { flex-wrap: wrap; }
-    }
+    /* ── SCROLLBAR ──────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 3px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
   </style>
 </head>
 <body>
 
-<!-- ── Connection splash ── -->
+<!-- ── SPLASH ── -->
 <div id="conn-splash">
   <div class="splash-logo">VectorVance</div>
-  <div class="splash-sub">Autonomous Vehicle Dashboard</div>
+  <div class="splash-sub">Autonomous Vehicle System</div>
   <div class="splash-spinner"></div>
   <div id="splash-msg">Connecting to Pi&hellip;</div>
-  <div class="splash-dot-row">
-    <div class="splash-dot"></div>
-    <div class="splash-dot"></div>
-    <div class="splash-dot"></div>
+  <div class="splash-dots">
+    <div class="splash-dot"></div><div class="splash-dot"></div><div class="splash-dot"></div>
   </div>
 </div>
 
+<!-- ── HEADER ── -->
 <header>
-  <div class="header-brand">
-    <h1>VectorVance</h1>
-    <div class="subtitle">Autonomous Vehicle Dashboard</div>
+  <div class="brand">
+    <span class="brand-name">VectorVance</span>
+    <span class="brand-sub">AV Dashboard</span>
   </div>
 
-  <!-- 3-mode toggle — disabled until Pi connects -->
   <div class="mode-tabs" id="mode-tabs">
     <button class="mode-tab" data-mode="FSD"    onclick="setMode('FSD')"    disabled>FSD</button>
-    <button class="mode-tab" data-mode="LANE"   onclick="setMode('LANE')"   disabled>LaneCheck</button>
+    <button class="mode-tab" data-mode="LANE"   onclick="setMode('LANE')"   disabled>Lane</button>
     <button class="mode-tab" data-mode="MANUAL" onclick="setMode('MANUAL')" disabled>Manual</button>
   </div>
 
@@ -432,121 +383,120 @@
   </div>
 </header>
 
-<div id="obstacle-banner">OBSTACLE DETECTED</div>
-<div id="stop-sign-banner">STOP SIGN DETECTED</div>
-<div id="fork-banner">CAR IS AT FORK — SELECT PATH BELOW</div>
-
+<!-- ── MAIN ── -->
 <div class="main">
 
-  <!-- ── Video feed ── -->
-  <div class="video-panel">
-    <div class="panel-title">Camera Feed — Innomaker 130° (Front-Mounted)</div>
-    <img src="/video_feed" alt="Camera feed" id="video-feed"
-         onerror="this.src='/video_feed'" />
+  <!-- VIDEO -->
+  <div class="video-panel" id="video-panel">
+    <div class="video-title">
+      <div class="rec-dot" id="rec-dot"></div>
+      <span>Innomaker 130° &mdash; Front Camera</span>
+    </div>
+    <div class="vid-banners">
+      <div class="vid-banner" id="obstacle-banner">Obstacle Detected</div>
+      <div class="vid-banner" id="stop-sign-banner">&#9101; Stop Sign Detected</div>
+      <div class="vid-banner" id="fork-banner">Fork — Select Path in Sidebar</div>
+    </div>
+    <div class="video-wrapper">
+      <img src="/video_feed" alt="Camera feed" id="video-feed"
+           onerror="this.src='/video_feed'" />
+    </div>
   </div>
 
-  <!-- ── Sidebar ── -->
+  <!-- SIDEBAR -->
   <div class="sidebar">
 
-    <!-- Status -->
+    <!-- STATUS -->
     <div class="card">
-      <div class="card-title">Status</div>
+      <div class="card-head"><span>Status</span></div>
       <div class="card-body">
-        <div style="margin-bottom:10px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
-          <span id="mode-badge" class="mode-badge">—</span>
-          <span id="state-badge" class="state-badge">—</span>
-          <span id="danger-badge" class="danger-badge danger-CLEAR" style="display:none">CLEAR</span>
+        <div class="badge-row">
+          <span id="mode-badge" class="badge b-lane">LANE</span>
+          <span id="state-badge" class="badge b-state">—</span>
+          <span id="danger-badge" class="badge b-stop" style="display:none">STOP SIGN</span>
         </div>
-        <div style="margin-bottom:8px;">
-          <span id="status-text" style="font-size:13px;font-weight:600;color:var(--text)">—</span>
-        </div>
-        <div class="stat-grid">
-          <div class="stat-item">
-            <span class="stat-label">Front Dist</span>
-            <span class="stat-value" id="val-dist">—</span>
+        <div id="status-text">—</div>
+      </div>
+    </div>
+
+    <!-- TELEMETRY -->
+    <div class="card">
+      <div class="card-head"><span>Telemetry</span></div>
+      <div class="card-body">
+        <div class="metrics">
+          <div class="metric">
+            <span class="mlabel">Front Dist</span>
+            <span class="mvalue" id="val-dist">— cm</span>
           </div>
-          <div class="stat-item">
-            <span class="stat-label">FPS</span>
-            <span class="stat-value" id="val-fps">—</span>
+          <div class="metric">
+            <span class="mlabel">FPS</span>
+            <span class="mvalue" id="val-fps">—</span>
           </div>
-          <div class="stat-item">
-            <span class="stat-label">Steer Error</span>
-            <span class="stat-value" id="val-err">—</span>
+          <div class="metric">
+            <span class="mlabel">Steer Error</span>
+            <span class="mvalue" id="val-err">— px</span>
           </div>
-          <div class="stat-item">
-            <span class="stat-label">Speed Limit</span>
-            <span class="stat-value" id="val-speed-limit">—</span>
-          </div>
-        </div>
-        <div style="margin-top:12px;">
-          <div class="stat-label" style="margin-bottom:6px;">Motor Speed</div>
-          <div class="speed-bars">
-            <div class="speed-bar-wrap">
-              <div class="speed-bar-bg">
-                <div class="speed-bar-fill" id="bar-left" style="height:0%"></div>
-              </div>
-              <div class="speed-bar-label">L</div>
-              <div class="speed-bar-val" id="bar-left-val">0.00</div>
-            </div>
-            <div class="speed-bar-wrap">
-              <div class="speed-bar-bg">
-                <div class="speed-bar-fill" id="bar-right" style="height:0%"></div>
-              </div>
-              <div class="speed-bar-label">R</div>
-              <div class="speed-bar-val" id="bar-right-val">0.00</div>
-            </div>
+          <div class="metric">
+            <span class="mlabel">Speed Limit</span>
+            <span class="mvalue" id="val-speed-limit">—</span>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Sign Detections -->
+    <!-- MOTORS -->
     <div class="card">
-      <div class="card-title">Sign Detections</div>
+      <div class="card-head"><span>Motors</span></div>
       <div class="card-body">
-        <div class="detection-list" id="detection-list">
-          <div class="no-detections">No detections</div>
+        <div class="mrow">
+          <span class="mltr">L</span>
+          <div class="mbar-bg"><div class="mbar-fill" id="bar-left"></div></div>
+          <span class="mval" id="bar-left-val">0.00</span>
+        </div>
+        <div class="mrow">
+          <span class="mltr">R</span>
+          <div class="mbar-bg"><div class="mbar-fill" id="bar-right"></div></div>
+          <span class="mval" id="bar-right-val">0.00</span>
         </div>
       </div>
     </div>
 
-    <!-- Color Tape Navigation -->
+    <!-- SIGN DETECTION -->
+    <div class="card">
+      <div class="card-head"><span>Sign Detection</span></div>
+      <div class="card-body">
+        <div class="det-list" id="detection-list">
+          <div class="no-det">No detections</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- NAVIGATION -->
     <div class="card" id="color-nav-card">
-      <div class="card-title">Color Tape Navigation</div>
+      <div class="card-head"><span>Navigation</span></div>
       <div class="card-body">
-        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">
-          Select the path when car stops at fork:
+        <div class="cbtn-row">
+          <button id="btn-GREEN" class="cbtn cbtn-green" onclick="setColor('GREEN')">Green</button>
+          <button id="btn-BLUE"  class="cbtn cbtn-blue"  onclick="setColor('BLUE')">Blue</button>
         </div>
-        <div class="color-btn-row">
-          <button id="btn-GREEN" class="color-btn btn-green"
-                  onclick="setColor('GREEN')">GREEN PATH</button>
-          <button id="btn-BLUE"  class="color-btn btn-blue"
-                  onclick="setColor('BLUE')">BLUE PATH</button>
+        <div class="nav-stats">
+          <div class="nstat"><span class="nk">Target</span><span class="nv" id="val-color-target">—</span></div>
+          <div class="nstat"><span class="nk">Visible</span><span class="nv" id="val-color-visible">—</span></div>
+          <div class="nstat"><span class="nk">State</span><span class="nv" id="val-color-follow">—</span></div>
+          <div class="nstat"><span class="nk">Fork %</span><span class="nv" id="val-fork">—</span></div>
         </div>
-        <div style="font-size:10px;color:var(--muted);margin-top:4px;">
-          RED tape = destination (auto-stop)
-        </div>
-        <div class="nav-row"><span>Following</span><span id="val-color-target">—</span></div>
-        <div class="nav-row"><span>Target visible</span><span id="val-color-visible">—</span></div>
-        <div class="nav-row"><span>Fork active</span><span id="val-color-follow">—</span></div>
-        <div class="nav-row"><span>Fork confidence</span><span id="val-fork">—</span></div>
-        <div style="margin-top:8px;">
-          <div class="stat-label" style="margin-bottom:4px;">Detected tapes</div>
-          <div class="color-det-row" id="color-det-row">
-            <span style="color:var(--muted);font-size:11px;">none</span>
-          </div>
+        <div class="chips" id="color-det-row">
+          <span style="color:var(--dim);font-size:10px;">no tape detected</span>
         </div>
       </div>
     </div>
 
-    <!-- Manual Control -->
+    <!-- MANUAL CONTROL -->
     <div class="card">
-      <div class="card-title">Manual Control</div>
-      <div class="manual-card-body">
-
-        <!-- WASD key indicators (shown in FSD / LaneCheck modes) -->
+      <div class="card-head"><span>Manual Control</span></div>
+      <div class="card-body">
         <div id="wasd-section">
-          <div class="wasd-hint">In Manual mode, use keyboard or buttons below:</div>
+          <div class="wasd-hint">Switch to Manual mode to drive:</div>
           <div class="wasd-grid">
             <div class="wasd-row"><div class="key-box" id="key-w">W</div></div>
             <div class="wasd-row">
@@ -555,68 +505,58 @@
               <div class="key-box" id="key-d">D</div>
             </div>
           </div>
-          <div id="manual-status" class="manual-inactive">Select Manual mode to drive</div>
+          <div id="manual-status" class="manual-inactive">Manual mode not active</div>
         </div>
-
-        <!-- D-pad (shown only in Manual mode) -->
         <div id="dpad-container">
-          <div class="dpad-label">MANUAL DRIVE ACTIVE</div>
+          <div class="dpad-label">Manual Drive Active</div>
           <div class="dpad">
-            <div class="dpad-row">
-              <button class="dpad-btn" id="dpad-w">&#8679;</button>
-            </div>
+            <div class="dpad-row"><button class="dpad-btn" id="dpad-w">&#8679;</button></div>
             <div class="dpad-row">
               <button class="dpad-btn" id="dpad-a">&#8678;</button>
-              <button class="dpad-btn dpad-stop" id="dpad-stop" title="Stop">&#9632;</button>
+              <button class="dpad-btn dpad-stop" id="dpad-stop">&#9632;</button>
               <button class="dpad-btn" id="dpad-d">&#8680;</button>
             </div>
-            <div class="dpad-row">
-              <button class="dpad-btn" id="dpad-s">&#8681;</button>
-            </div>
+            <div class="dpad-row"><button class="dpad-btn" id="dpad-s">&#8681;</button></div>
           </div>
-          <div id="dpad-status">Press or hold a button to drive</div>
+          <div id="dpad-status">Hold to drive</div>
         </div>
-
       </div>
     </div>
 
-    <!-- Log -->
-    <div class="card">
-      <div class="card-title">Log</div>
+    <!-- LOG (fills remaining space) -->
+    <div class="card log-card">
+      <div class="card-head"><span>Event Log</span></div>
       <div class="card-body">
         <div class="log-list" id="log-list"></div>
       </div>
     </div>
 
-  </div>
-</div>
+  </div><!-- /sidebar -->
+</div><!-- /main -->
 
-<!-- ── Controls bar ── -->
+<!-- ── CONTROLS BAR ── -->
 <div class="controls">
   <button class="btn btn-danger"  onclick="sendCmd('emergency_stop')">Emergency Stop</button>
   <button class="btn btn-neutral" onclick="sendCmd('reset')">Reset</button>
-  <div class="speed-control">
+  <div class="speed-ctl">
     <label for="speed-slider">Max Speed</label>
     <input type="range" id="speed-slider" min="10" max="100" value="80"
            oninput="onSpeedChange(this.value)" />
     <span id="speed-val">0.80</span>
-    <button class="btn btn-neutral" style="padding:8px 12px;"
-            onclick="sendCmd('set_speed')">Set</button>
+    <button class="btn btn-set" onclick="sendCmd('set_speed')">Set</button>
   </div>
 </div>
 
 <script>
-  // ── App state ──────────────────────────────────────────────────────────────
   let lastStatus  = '';
   let logEntries  = [];
   let connected   = false;
   let speedValue  = 0.80;
-  let currentMode = 'LANE';  // synced from server telemetry
+  let currentMode = 'LANE';
 
-  // WASD key state (shared by keyboard and d-pad)
   const manualKeys = { w: false, a: false, s: false, d: false };
 
-  // ── Connection handshake ───────────────────────────────────────────────────
+  // ── Connection handshake ───────────────────────────────────────────
   async function tryConnect() {
     try {
       const res = await fetch('/api/ping', { signal: AbortSignal.timeout(2000) });
@@ -639,9 +579,7 @@
   }
 
   function enableModeTabs() {
-    document.querySelectorAll('.mode-tab').forEach(btn => {
-      btn.disabled = false;
-    });
+    document.querySelectorAll('.mode-tab').forEach(btn => { btn.disabled = false; });
   }
 
   function startPolling() {
@@ -649,7 +587,7 @@
     fetchTelemetry();
   }
 
-  // ── Telemetry polling ──────────────────────────────────────────────────────
+  // ── Telemetry polling ──────────────────────────────────────────────
   async function fetchTelemetry() {
     try {
       const res = await fetch('/api/status', { signal: AbortSignal.timeout(1500) });
@@ -666,11 +604,15 @@
     connected = ok;
     const dot   = document.getElementById('conn-dot');
     const label = document.getElementById('conn-label');
+    const panel = document.getElementById('video-panel');
+    const rec   = document.getElementById('rec-dot');
     dot.className     = 'dot ' + (ok ? 'live' : 'dead');
     label.textContent = ok ? 'Connected' : 'Offline';
+    panel.classList.toggle('live', ok);
+    rec.classList.toggle('live', ok);
   }
 
-  // ── Mode management ────────────────────────────────────────────────────────
+  // ── Mode management ────────────────────────────────────────────────
   async function setMode(mode) {
     if (!connected) return;
     await sendCmd('set_mode', mode);
@@ -681,19 +623,16 @@
   function applyModeUI(mode) {
     currentMode = mode;
 
-    // Update tab highlights
     document.querySelectorAll('.mode-tab').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.mode === mode);
     });
 
-    // Mode badge
     const badge = document.getElementById('mode-badge');
     badge.textContent = mode;
-    badge.className   = 'mode-badge' +
-      (mode === 'LANE'   ? ' lane'   : '') +
-      (mode === 'MANUAL' ? ' manual' : '');
+    badge.className = 'badge ' +
+      (mode === 'FSD'    ? 'b-fsd'    :
+       mode === 'MANUAL' ? 'b-manual' : 'b-lane');
 
-    // Show/hide d-pad vs wasd section
     const wasd = document.getElementById('wasd-section');
     const dpad = document.getElementById('dpad-container');
     if (mode === 'MANUAL') {
@@ -705,157 +644,152 @@
       stopManualDrive();
     }
 
-    // Color nav card — dim in FSD/Manual (lane features not active)
     document.getElementById('color-nav-card').style.opacity =
       mode === 'LANE' ? '1' : '0.45';
   }
 
-  // ── UI update from telemetry ───────────────────────────────────────────────
+  // ── UI update ──────────────────────────────────────────────────────
   function updateUI(d) {
-    // Sync mode from server (handles page reload / reconnect)
     const serverMode = d.drive_mode || 'LANE';
-    if (serverMode !== currentMode) {
-      applyModeUI(serverMode);
-    }
+    if (serverMode !== currentMode) applyModeUI(serverMode);
 
-    // Status text
+    // Status text + color
     const statusEl = document.getElementById('status-text');
     const carState  = d.car_state || '';
     if (carState === 'ARRIVED') {
-      statusEl.textContent = 'ARRIVED AT DESTINATION';
+      statusEl.textContent = 'Arrived at destination';
       statusEl.style.color = 'var(--green)';
     } else {
       statusEl.textContent = d.status || '—';
       statusEl.style.color = '';
     }
 
-    // Car state badge
-    const stateBadge = document.getElementById('state-badge');
+    // State badge
     const stateLabels = {
-      LANE_FOLLOW: 'LANE FOLLOW', FORK_WAITING: 'FORK WAITING',
-      COLOR_FOLLOWING: 'FOLLOWING', ARRIVED: 'ARRIVED', FREE_ROAM: 'FREE ROAM'
+      LANE_FOLLOW: 'Lane Follow', FORK_WAITING: 'Fork Waiting',
+      COLOR_FOLLOWING: 'Following', ARRIVED: 'Arrived', FREE_ROAM: 'Free Roam'
     };
-    stateBadge.textContent = stateLabels[carState] || carState || '—';
-    stateBadge.className = 'state-badge state-' + (carState || '');
+    const sb = document.getElementById('state-badge');
+    sb.textContent = stateLabels[carState] || carState || '—';
+    sb.className = 'badge b-state';
 
     // Stop sign / danger badge
-    const dangerBadge = document.getElementById('danger-badge');
+    const db = document.getElementById('danger-badge');
     if (d.stop_sign_active) {
-      dangerBadge.style.display = 'inline-block';
-      dangerBadge.textContent   = 'STOP SIGN';
-      dangerBadge.className     = 'danger-badge danger-STOP';
+      db.style.display = 'inline-block';
+      db.textContent   = 'Stop Sign';
     } else {
-      dangerBadge.style.display = 'none';
+      db.style.display = 'none';
     }
 
     // Front distance
     const dist   = d.front_distance_cm;
     const distEl = document.getElementById('val-dist');
     distEl.textContent = (dist == null || dist >= 299) ? '—' : dist + ' cm';
-    distEl.className   = 'stat-value' +
+    distEl.className   = 'mvalue' +
       (dist < 20 ? ' danger' : dist < 50 ? ' warn' : ' good');
 
     // Speed limit
-    const limit    = d.speed_limit_kmh;
-    const limitEl  = document.getElementById('val-speed-limit');
-    const modeMap  = {10: 'SLOW', 20: 'AVG', 30: 'NORMAL', 50: 'MAX'};
+    const limit   = d.speed_limit_kmh;
+    const limitEl = document.getElementById('val-speed-limit');
+    const modeMap = {10: 'SLOW', 20: 'AVG', 30: 'NORM', 50: 'MAX'};
     if (limit != null) {
-      limitEl.textContent = `${limit} km/h (${modeMap[limit] || ''})`;
-      limitEl.className   = 'stat-value warn';
+      limitEl.textContent = `${limit} (${modeMap[limit] || ''})`;
+      limitEl.className   = 'mvalue warn';
     } else {
       limitEl.textContent = '—';
-      limitEl.className   = 'stat-value';
+      limitEl.className   = 'mvalue';
     }
 
-    // Stop sign banner — show while stop sign is active
-    const ssb = document.getElementById('stop-sign-banner');
-    ssb.style.display = d.stop_sign_active ? 'block' : 'none';
-
-    document.getElementById('val-fps').textContent   = d.fps ?? '—';
-    document.getElementById('val-err').textContent   = d.steering_error != null ? d.steering_error + 'px' : '—';
+    document.getElementById('val-fps').textContent = d.fps ?? '—';
+    document.getElementById('val-err').textContent =
+      d.steering_error != null ? d.steering_error + ' px' : '—';
 
     // Motor bars
     const l = d.speed_left  ?? 0;
     const r = d.speed_right ?? 0;
-    document.getElementById('bar-left').style.height     = (l * 100) + '%';
-    document.getElementById('bar-right').style.height    = (r * 100) + '%';
+    document.getElementById('bar-left').style.width      = (l * 100) + '%';
+    document.getElementById('bar-right').style.width     = (r * 100) + '%';
     document.getElementById('bar-left-val').textContent  = l.toFixed(2);
     document.getElementById('bar-right-val').textContent = r.toFixed(2);
 
-    // Obstacle banner (from front ultrasonic)
+    // Obstacle banner (overlaid on video)
     const modifier = d.obstacle_modifier ?? 1;
-    const banner   = document.getElementById('obstacle-banner');
+    const ob = document.getElementById('obstacle-banner');
     if (modifier < 1.0) {
-      banner.style.display = 'block';
-      banner.className     = modifier === 0 ? '' : 'warn';
-      banner.textContent   = modifier === 0
-        ? 'OBSTACLE IN FRONT — STOPPING'
-        : `OBSTACLE IN FRONT — speed ×${modifier.toFixed(1)}`;
+      ob.style.display = 'block';
+      ob.className     = 'vid-banner' + (modifier === 0 ? '' : ' warn');
+      ob.textContent   = modifier === 0
+        ? 'Obstacle — Stopping'
+        : `Obstacle — Speed ×${modifier.toFixed(1)}`;
     } else {
-      banner.style.display = 'none';
+      ob.style.display = 'none';
     }
+
+    // Stop sign banner
+    const ssb = document.getElementById('stop-sign-banner');
+    ssb.style.display = d.stop_sign_active ? 'block' : 'none';
+
+    // Fork banner
+    const forkBanner = document.getElementById('fork-banner');
+    forkBanner.style.display = (d.fork_waiting && serverMode === 'LANE') ? 'block' : 'none';
 
     // Sign detections list
     const dl   = document.getElementById('detection-list');
     const dets = d.dnn_detections || [];
     if (!d.dnn_enabled || dets.length === 0) {
-      dl.innerHTML = `<div class="no-detections">${d.dnn_enabled ? 'No signs detected' : 'Sign detector disabled'}</div>`;
+      dl.innerHTML = `<div class="no-det">${d.dnn_enabled ? 'No detections' : 'Detector disabled'}</div>`;
     } else {
       dl.innerHTML = dets.map(det => {
-        const cls = det.label === 'stop sign' ? 'stop-sign' : '';
-        return `<div class="detection-item ${cls}">
-          <span class="detection-name">${det.label}</span>
-          <span class="detection-conf">${Math.round(det.conf * 100)}%</span>
+        const lc  = det.label.toLowerCase();
+        const cls = lc.includes('stop') ? 'stop' :
+                    lc.includes('person') ? 'person' :
+                    (lc.includes('car') || lc.includes('truck') || lc.includes('bus')) ? 'vehicle' : '';
+        return `<div class="det-item ${cls}">
+          <span class="det-name">${det.label}</span>
+          <span class="det-conf">${Math.round(det.conf * 100)}%</span>
         </div>`;
       }).join('');
     }
 
-    // Fork banner
-    const forkBanner = document.getElementById('fork-banner');
-    const forkWait   = d.fork_waiting || false;
-    forkBanner.style.display = (forkWait && serverMode === 'LANE') ? 'block' : 'none';
-
-    // Color tape section
+    // Color navigation
     const target  = d.color_target || '—';
     const visible = d.color_target_visible;
     const options = d.fork_options || [];
 
     document.getElementById('val-color-target').textContent  =
-      target !== '—' ? target : (forkWait ? 'WAITING…' : '—');
+      target !== '—' ? target : (d.fork_waiting ? 'Waiting…' : '—');
     document.getElementById('val-color-visible').textContent =
-      visible == null ? '—' : (visible ? 'YES' : 'no');
+      visible == null ? '—' : (visible ? 'Yes' : 'No');
     document.getElementById('val-color-follow').textContent  =
-      carState === 'COLOR_FOLLOWING' ? 'ACTIVE' :
-      carState === 'FORK_WAITING'    ? 'WAITING' :
-      carState === 'ARRIVED'         ? 'DONE' : 'off';
+      carState === 'COLOR_FOLLOWING' ? 'Active' :
+      carState === 'FORK_WAITING'    ? 'Waiting' :
+      carState === 'ARRIVED'         ? 'Done'   : 'Off';
     document.getElementById('val-fork').textContent =
       d.fork_confidence != null ? Math.round(d.fork_confidence * 100) + '%' : '—';
 
     ['GREEN', 'BLUE'].forEach(c => {
       const btn = document.getElementById('btn-' + c);
       if (!btn) return;
-      btn.classList.toggle('active', c === target || (forkWait && options.includes(c)));
+      btn.classList.toggle('active', c === target || (d.fork_waiting && options.includes(c)));
     });
 
-    const chipColors = { GREEN: '#00e87a', BLUE: '#4da6ff', RED: '#ff3b3b' };
+    const chipColors = { GREEN: '#00e87a', BLUE: '#4d9fff', RED: '#ff3b55' };
     const colorDets  = d.color_detections || [];
     const chipRow    = document.getElementById('color-det-row');
     if (colorDets.length === 0) {
-      chipRow.innerHTML = '<span style="color:var(--muted);font-size:11px;">none</span>';
+      chipRow.innerHTML = '<span style="color:var(--dim);font-size:10px;">no tape detected</span>';
     } else {
       chipRow.innerHTML = colorDets.map(c => {
         const col   = chipColors[c.color] || '#aaa';
-        const label = c.color === 'RED' ? 'DESTINATION' : c.color;
-        return `<span class="color-det-chip"
-          style="background:${col}22;color:${col};border:1px solid ${col}">
+        const label = c.color === 'RED' ? 'Dest' : c.color;
+        return `<span class="chip" style="background:${col}1a;color:${col};border-color:${col}55">
           ${label} · ${c.side}</span>`;
       }).join('');
     }
 
-    // WASD key visual (only meaningful in Manual mode)
     updateKeyVisual();
 
-    // Log on status change
     if (d.status && d.status !== lastStatus) {
       lastStatus = d.status;
       addLog(d.status);
@@ -865,16 +799,14 @@
   function addLog(msg) {
     const ts = new Date().toTimeString().slice(0, 8);
     logEntries.unshift({ ts, msg });
-    if (logEntries.length > 20) logEntries.pop();
+    if (logEntries.length > 30) logEntries.pop();
     const el = document.getElementById('log-list');
     el.innerHTML = logEntries.map((e, i) =>
-      `<div class="log-item ${i === 0 ? 'new' : ''}">
-         <span class="ts">${e.ts}</span>${e.msg}
-       </div>`
+      `<div class="log-item ${i === 0 ? 'new' : ''}"><span class="ts">${e.ts}</span>${e.msg}</div>`
     ).join('');
   }
 
-  // ── Commands ───────────────────────────────────────────────────────────────
+  // ── Commands ───────────────────────────────────────────────────────
   async function sendCmd(action, value) {
     const body = { action };
     if (action === 'set_speed') body.value = speedValue;
@@ -897,28 +829,28 @@
     document.getElementById('speed-val').textContent = speedValue.toFixed(2);
   }
 
-  // ── WASD / D-pad manual drive ──────────────────────────────────────────────
+  // ── WASD / D-pad ───────────────────────────────────────────────────
   function updateKeyVisual() {
     ['w','a','s','d'].forEach(k => {
       const el = document.getElementById('key-' + k);
       if (el) el.classList.toggle('active', manualKeys[k]);
     });
-    // D-pad button highlight
     const dmap = { w: 'dpad-w', a: 'dpad-a', s: 'dpad-s', d: 'dpad-d' };
     Object.entries(dmap).forEach(([k, id]) => {
       const btn = document.getElementById(id);
       if (btn) btn.classList.toggle('pressed', manualKeys[k]);
     });
-
+    const active = Object.entries(manualKeys).filter(([,v]) => v).map(([k]) => k.toUpperCase());
+    const txt    = active.length ? 'Driving: ' + active.join('+') : 'Manual mode not active';
     const statusEl = document.getElementById('manual-status');
-    const dpadSt   = document.getElementById('dpad-status');
-    const active   = Object.entries(manualKeys).filter(([,v]) => v).map(([k]) => k.toUpperCase());
-    const txt      = active.length ? 'Driving: ' + active.join('+') : 'Ready — use buttons or W/A/S/D';
     if (statusEl) {
-      statusEl.textContent = currentMode === 'MANUAL' ? txt : 'Select Manual mode to drive';
+      statusEl.textContent = currentMode === 'MANUAL'
+        ? (active.length ? 'Driving: ' + active.join('+') : 'Ready — use keys or buttons')
+        : 'Manual mode not active';
       statusEl.style.color = active.length ? 'var(--cyan)' : '';
     }
-    if (dpadSt) dpadSt.textContent = active.length ? 'Driving: ' + active.join('+') : 'Press or hold a button to drive';
+    const dpadSt = document.getElementById('dpad-status');
+    if (dpadSt) dpadSt.textContent = active.length ? 'Driving: ' + active.join('+') : 'Hold to drive';
   }
 
   async function sendManualDrive() {
@@ -940,12 +872,11 @@
       await fetch('/api/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'manual_drive', keys: { w:false, a:false, s:false, d:false } })
+        body: JSON.stringify({ action: 'manual_drive', keys: { w:false,a:false,s:false,d:false } })
       });
     } catch {}
   }
 
-  // Keyboard
   document.addEventListener('keydown', e => {
     const k = e.key.toLowerCase();
     if (!(k in manualKeys)) return;
@@ -960,33 +891,24 @@
   });
   window.addEventListener('blur', stopManualDrive);
 
-  // D-pad buttons
   function setupDpad() {
     const map = { 'dpad-w': 'w', 'dpad-a': 'a', 'dpad-s': 's', 'dpad-d': 'd' };
     Object.entries(map).forEach(([btnId, key]) => {
       const btn = document.getElementById(btnId);
       if (!btn) return;
-      const press = () => {
-        if (currentMode !== 'MANUAL') return;
-        manualKeys[key] = true;
-        sendManualDrive();
-      };
-      const release = () => {
-        manualKeys[key] = false;
-        sendManualDrive();
-      };
+      const press   = () => { if (currentMode !== 'MANUAL') return; manualKeys[key] = true;  sendManualDrive(); };
+      const release = () => { manualKeys[key] = false; sendManualDrive(); };
       btn.addEventListener('mousedown',  press);
       btn.addEventListener('mouseup',    release);
       btn.addEventListener('mouseleave', release);
       btn.addEventListener('touchstart', e => { e.preventDefault(); press(); },   { passive: false });
       btn.addEventListener('touchend',   e => { e.preventDefault(); release(); }, { passive: false });
     });
-
-    document.getElementById('dpad-stop').addEventListener('mousedown',  stopManualDrive);
-    document.getElementById('dpad-stop').addEventListener('touchstart', e => { e.preventDefault(); stopManualDrive(); }, { passive: false });
+    const stopBtn = document.getElementById('dpad-stop');
+    stopBtn.addEventListener('mousedown',  stopManualDrive);
+    stopBtn.addEventListener('touchstart', e => { e.preventDefault(); stopManualDrive(); }, { passive: false });
   }
 
-  // ── Boot ───────────────────────────────────────────────────────────────────
   setupDpad();
   addLog('Dashboard loaded — connecting…');
   tryConnect();

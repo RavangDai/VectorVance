@@ -148,10 +148,10 @@ class FreeRoamController:
     No lane detection — drives forward and steers away from obstacles.
     Uses DNN zone threats + ultrasonic for decisions.
     """
-    BASE_SPEED    = 0.45
-    TURN_SPEED    = 0.52
-    COMMIT_FRAMES = 28   # hold a turn decision for ~1 s at 28 fps
-    BACKUP_FRAMES = 15   # frames to reverse when ultrasonic triggers
+    BASE_SPEED    = 0.55
+    TURN_SPEED    = 0.65
+    COMMIT_FRAMES = 22   # hold a turn decision for ~0.8 s at 28 fps
+    BACKUP_FRAMES = 12   # frames to reverse when ultrasonic triggers
 
     def __init__(self):
         self.turn_direction   = 0    # -1=left, 0=straight, +1=right
@@ -230,8 +230,8 @@ class AutonomousVehicle:
 
         # ── Perception & control ──────────────────────────────────────
         self.perception    = LaneDetector(width=640, height=480)
-        self.steering      = PIDController(Kp=0.003, Ki=0.0001, Kd=0.001)
-        self.speed_control = AdaptiveSpeedController(min_speed=0.2, max_speed=max_speed)
+        self.steering      = PIDController(Kp=0.004, Ki=0.00008, Kd=0.002)
+        self.speed_control = AdaptiveSpeedController(min_speed=0.25, max_speed=max_speed)
         self.safety        = ObstacleDetector(
             emergency_distance=STOP_DISTANCE, warning_distance=SLOW_DISTANCE
         )
@@ -269,10 +269,10 @@ class AutonomousVehicle:
         self.show_display = show_display
 
         # ── Smooth display values ─────────────────────────────────────
-        self.smooth_left       = SmoothValue(0.0, alpha=0.18)
-        self.smooth_right      = SmoothValue(0.0, alpha=0.18)
-        self.smooth_base_speed = SmoothValue(0.0, alpha=0.15)
-        self.smooth_pid        = SmoothValue(0.0, alpha=0.12)
+        self.smooth_left       = SmoothValue(0.0, alpha=0.28)
+        self.smooth_right      = SmoothValue(0.0, alpha=0.28)
+        self.smooth_base_speed = SmoothValue(0.0, alpha=0.22)
+        self.smooth_pid        = SmoothValue(0.0, alpha=0.20)
 
         # ── Status hold ──────────────────────────────────────────────
         self.cam_index           = cam_index

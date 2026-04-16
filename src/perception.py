@@ -26,12 +26,12 @@ class SmoothValue:
 
 
 class LaneDetector:
-    def __init__(self, width=640, height=480, smoothing_window=7):
+    def __init__(self, width=640, height=480, smoothing_window=5):
         self.width = width
         self.height = height
 
         # ── TESLA-STYLE SMOOTHING (EMA) ──────────────────────────────
-        self.ema_alpha = 0.10
+        self.ema_alpha = 0.15
         self.ema_left_fit = None
         self.ema_right_fit = None
 
@@ -75,7 +75,7 @@ class LaneDetector:
         # ── LANE FIT VALIDATION ──────────────────────────────────────
         self._prev_left_slope = None
         self._prev_right_slope = None
-        self._max_slope_change = 0.30   # allow reasonable inter-frame slope variation
+        self._max_slope_change = 0.40   # allow faster inter-frame slope transitions
 
         # ── CACHED DRAW POINTS ───────────────────────────────────────
         self._prev_left_pts = None
@@ -233,11 +233,11 @@ class LaneDetector:
 
     def _update_confidence(self, left_fit, right_fit):
         if left_fit is not None:
-            self.left_confidence = min(1.0, self.left_confidence + 0.15)
+            self.left_confidence = min(1.0, self.left_confidence + 0.20)
         else:
             self.left_confidence = max(0.0, self.left_confidence - 0.05)
         if right_fit is not None:
-            self.right_confidence = min(1.0, self.right_confidence + 0.15)
+            self.right_confidence = min(1.0, self.right_confidence + 0.20)
         else:
             self.right_confidence = max(0.0, self.right_confidence - 0.05)
 
