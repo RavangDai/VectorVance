@@ -247,15 +247,110 @@ def _resolve_via_gemini(text: str) -> str | None:
 def _resolve_via_keywords(text: str) -> str | None:
     """Keyword + synonym matching fallback — works fully offline."""
     lower = text.lower()
-    # Check synonyms first (more specific)
     for syn, cls in _SYNONYMS.items():
         if syn in lower:
             return cls
-    # Then check direct class names
     for cls in _TRACK_CLASSES:
         if cls in lower:
             return cls
     return None
+
+
+# ── AI drive command resolver ─────────────────────────────────────────────────
+
+def _resolve_drive_command(text: str) -> dict:
+    """
+    Map a natural-language drive command to keys + duration.
+    Returns {"w","a","s","d": bool, "duration": float, "action": str}.
+    Tries Gemini first, falls back to keyword matching.
+    """
+    result = _resolve_drive_via_gemini(text)
+    if result:
+        return result
+    return _resolve_drive_via_keywords(text)
+
+
+def _resolve_drive_via_gemini(text: str) -> dict | None:
+    api_key = os.environ.get("GEMINI_API_KEY", "")
+    if not api_key:
+        return None
+    try:
+        import google.generativeai as genai
+        import json as _json
+        genai.configure(api_key=api_key)
+        prompt = (
+            "You control a 4-wheel RC car. Parse the driving command into WASD keys and duration.\n"
+            "Keys: w=forward, s=backward, a=turn-left, d=turn-right. Combinations allowed (e.g. w+a).\n"
+            "Duration in seconds (0.3–5.0). Use 0.0 for stop.\n"
+            "Reply with ONLY valid JSON, no markdown, no explanation.\n"
+            "Schema: {\"w\":bool,\"a\":bool,\"s\":bool,\"d\":bool,\"duration\":float,\"action\":string}\n"
+            "Examples:\n"
+            "  'move forward'      → {\"w\":true,\"a\":false,\"s\":false,\"d\":false,\"duration\":1.5,\"action\":\"moving forward\"}\n"
+            "  'turn left'         → {\"w\":false,\"a\":true,\"s\":false,\"d\":false,\"duration\":1.0,\"action\":\"turning left\"}\n"
+            "  'go right a bit'    → {\"w\":false,\"a\":false,\"s\":false,\"d\":true,\"duration\":0.4,\"action\":\"slight right\"}\n"
+            "  'reverse slowly'    → {\"w\":false,\"a\":false,\"s\":true,\"d\":false,\"duration\":1.5,\"action\":\"reversing\"}\n"
+            "  'forward left'      → {\"w\":true,\"a\":true,\"s\":false,\"d\":false,\"duration\":1.0,\"action\":\"forward-left\"}\n"
+            "  'stop'              → {\"w\":false,\"a\":false,\"s\":false,\"d\":false,\"duration\":0.0,\"action\":\"stopping\"}\n"
+            "  'go forward 3 sec'  → {\"w\":true,\"a\":false,\"s\":false,\"d\":false,\"duration\":3.0,\"action\":\"moving forward 3s\"}\n\n"
+            f"Command: {text}"
+        )
+        model   = genai.GenerativeModel("gemini-2.5-flash")
+        raw     = model.generate_content(prompt).text.strip()
+        # Strip markdown fences if Gemini wraps the JSON
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        data = _json.loads(raw.strip())
+        return {
+            "w":        bool(data.get("w",  False)),
+            "a":        bool(data.get("a",  False)),
+            "s":        bool(data.get("s",  False)),
+            "d":        bool(data.get("d",  False)),
+            "duration": max(0.0, min(5.0, float(data.get("duration", 1.5)))),
+            "action":   str(data.get("action", "executing command")),
+        }
+    except Exception as e:
+        print(f"[AI Drive] Gemini error: {e}")
+        return None
+
+
+def _resolve_drive_via_keywords(text: str) -> dict:
+    """Offline keyword fallback for drive commands."""
+    lower = text.lower()
+    w = a = s = d = False
+
+    if any(k in lower for k in ("forward", "ahead", "straight", "advance")):
+        w = True
+    if any(k in lower for k in ("backward", "reverse", "back", "retreat")):
+        s = True
+    if "left"  in lower: a = True
+    if "right" in lower: d = True
+    if any(k in lower for k in ("stop", "halt", "freeze", "brake")):
+        w = a = s = d = False
+
+    # Duration from qualifiers
+    if any(k in lower for k in ("bit", "little", "slightly", "quick", "brief")):
+        duration = 0.5
+    elif any(k in lower for k in ("long", "far", "lot", "keep", "continue")):
+        duration = 3.0
+    else:
+        duration = 1.5
+
+    # Parse explicit seconds: "3 seconds", "2s", "for 4 sec"
+    import re
+    m = re.search(r'(\d+(?:\.\d+)?)\s*(?:sec|s\b)', lower)
+    if m:
+        duration = max(0.3, min(5.0, float(m.group(1))))
+
+    directions = []
+    if w: directions.append("forward")
+    if s: directions.append("backward")
+    if a: directions.append("left")
+    if d: directions.append("right")
+    action = " + ".join(directions) if directions else "stopping"
+
+    return {"w": w, "a": a, "s": s, "d": d, "duration": duration, "action": action}
 
 
 # ── Flask server ──────────────────────────────────────────────────────────────
@@ -337,6 +432,16 @@ def start_server(port: int = 5000) -> bool:
 
         print(f"[WebServer] Command received: {body}")
         return jsonify({"status": "ok", "action": action})
+
+    @app.route('/api/ai_drive', methods=['POST'])
+    def api_ai_drive():
+        body = request.get_json(silent=True) or {}
+        text = str(body.get('text', '')).strip()
+        if not text:
+            return jsonify({"error": "No text provided"}), 400
+        result = _resolve_drive_command(text)
+        print(f"[AI Drive] '{text}' → {result}")
+        return jsonify(result)
 
     @app.route('/api/ai_track', methods=['POST'])
     def api_ai_track():

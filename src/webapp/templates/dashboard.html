@@ -402,6 +402,63 @@
     .speed-ctl input[type=range] { width: 88px; accent-color: var(--cyan); cursor: pointer; }
     #speed-val { font-size: 12px; font-weight: 700; color: var(--cyan); min-width: 30px; font-variant-numeric: tabular-nums; }
 
+    /* ── AI DRIVE ───────────────────────────────────────────────────── */
+    .ai-drive-divider {
+      border: none; border-top: 1px solid var(--border);
+      margin: 8px 0 7px;
+    }
+    .ai-drive-label {
+      font-size: 9px; font-weight: 700; letter-spacing: 1.5px;
+      color: var(--muted); text-transform: uppercase; margin-bottom: 5px;
+    }
+    .ai-drive-row { display: flex; gap: 5px; }
+    .ai-drive-input {
+      flex: 1; padding: 5px 8px; border-radius: 6px;
+      background: var(--bg); color: var(--text);
+      border: 1px solid rgba(0,212,255,0.2);
+      font-size: 11px;
+    }
+    .ai-drive-input::placeholder { color: var(--dim); }
+    .ai-drive-input:focus { outline: none; border-color: rgba(0,212,255,0.55); }
+    .ai-drive-send {
+      padding: 5px 10px; border-radius: 6px;
+      background: rgba(0,212,255,0.1); color: var(--cyan);
+      border: 1px solid rgba(0,212,255,0.3);
+      font-size: 11px; font-weight: 800; cursor: pointer; letter-spacing: 1px;
+      transition: all 0.15s;
+    }
+    .ai-drive-send:hover { background: rgba(0,212,255,0.22); }
+    .ai-drive-send.loading { background: var(--cyan); color: #000; animation: blink 0.6s infinite; }
+    .mic-btn {
+      padding: 5px 9px; border-radius: 6px;
+      background: rgba(255,59,85,0.08); color: var(--muted);
+      border: 1px solid var(--border); font-size: 14px;
+      cursor: pointer; transition: all 0.15s; line-height: 1;
+    }
+    .mic-btn:not(:disabled):hover { color: var(--red); border-color: rgba(255,59,85,0.4); }
+    .mic-btn:disabled { opacity: 0.25; cursor: not-allowed; }
+    .mic-btn.recording {
+      background: rgba(255,59,85,0.18); color: var(--red);
+      border-color: var(--red); animation: blink 0.8s infinite;
+    }
+    .ai-drive-status {
+      font-size: 10px; margin-top: 4px; min-height: 13px;
+      display: flex; align-items: center; gap: 5px;
+    }
+    .ai-drive-status .ds-dot {
+      width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+      background: var(--dim);
+    }
+    .ai-drive-status.running .ds-dot {
+      background: var(--cyan); animation: blink 0.5s infinite;
+    }
+    .ai-drive-status.ok    .ds-dot { background: var(--green); animation: none; }
+    .ai-drive-status.fail  .ds-dot { background: var(--red);   animation: none; }
+    .ai-drive-status .ds-text { color: var(--muted); }
+    .ai-drive-status.running .ds-text { color: var(--cyan); }
+    .ai-drive-status.ok     .ds-text  { color: var(--green); }
+    .ai-drive-status.fail   .ds-text  { color: var(--red); }
+
     /* ── SENTRY CARD ────────────────────────────────────────────────── */
     #sentry-card { display: none; }
     .sentry-arm-btn {
@@ -646,6 +703,21 @@
             <div class="dpad-row"><button class="dpad-btn" id="dpad-s">&#8681;</button></div>
           </div>
           <div id="dpad-status">Hold to drive</div>
+        </div>
+
+        <!-- AI DRIVE -->
+        <hr class="ai-drive-divider" />
+        <div class="ai-drive-label">AI Voice / Text Drive</div>
+        <div class="ai-drive-row">
+          <input type="text" id="ai-drive-input" class="ai-drive-input"
+                 placeholder="e.g. move forward, turn left…"
+                 onkeydown="if(event.key==='Enter') aiDrive()" />
+          <button id="mic-btn" class="mic-btn" onclick="toggleMic()" disabled title="Hold to speak">&#127908;</button>
+          <button id="ai-drive-send" class="ai-drive-send" onclick="aiDrive()">GO</button>
+        </div>
+        <div id="ai-drive-status" class="ai-drive-status">
+          <div class="ds-dot"></div>
+          <span class="ds-text">Ready</span>
         </div>
       </div>
     </div>
@@ -1163,6 +1235,126 @@
 
   setupDpad();
 
+  // ── AI drive command ─────────────────────────────────────────────
+  let aiDriveAbort = null;
+
+  function setAiDriveStatus(state, text) {
+    const el = document.getElementById('ai-drive-status');
+    el.className = 'ai-drive-status ' + state;
+    el.querySelector('.ds-text').textContent = text;
+  }
+
+  async function aiDrive() {
+    if (!connected) return;
+    const input = document.getElementById('ai-drive-input');
+    const btn   = document.getElementById('ai-drive-send');
+    const text  = input.value.trim();
+    if (!text) return;
+
+    // Cancel any running drive
+    if (aiDriveAbort) { aiDriveAbort(); aiDriveAbort = null; }
+
+    // Switch to MANUAL automatically
+    if (currentMode !== 'MANUAL') await setMode('MANUAL');
+
+    btn.classList.add('loading');
+    btn.textContent = '…';
+    setAiDriveStatus('', 'Asking AI…');
+
+    try {
+      const res = await fetch('/api/ai_drive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+        signal: AbortSignal.timeout(8000),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      input.value = '';
+      const dur   = data.duration ?? 1.5;
+      const label = data.action   || 'executing';
+
+      if (dur === 0) {
+        await stopManualDrive();
+        setAiDriveStatus('ok', 'Stopped');
+        addLog('AI drive: stopped');
+        return;
+      }
+
+      setAiDriveStatus('running', `${label} (${dur}s)`);
+      addLog(`AI drive: ${label} for ${dur}s`);
+
+      const keys = { w: data.w, a: data.a, s: data.s, d: data.d };
+
+      // Send drive command
+      await fetch('/api/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'manual_drive', keys }),
+      });
+
+      // Wait for duration, with cancellation support
+      await new Promise((resolve, reject) => {
+        const t = setTimeout(resolve, dur * 1000);
+        aiDriveAbort = () => { clearTimeout(t); reject(new Error('cancelled')); };
+      });
+
+      await stopManualDrive();
+      setAiDriveStatus('ok', `Done: ${label}`);
+
+    } catch (e) {
+      await stopManualDrive();
+      if (e.message === 'cancelled') {
+        setAiDriveStatus('', 'Cancelled');
+      } else {
+        setAiDriveStatus('fail', e.message || 'Failed');
+      }
+    } finally {
+      aiDriveAbort = null;
+      btn.classList.remove('loading');
+      btn.textContent = 'GO';
+    }
+  }
+
+  // ── Speech recognition ────────────────────────────────────────────
+  let speechRecog = null;
+
+  function initSpeech() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    speechRecog = new SR();
+    speechRecog.lang            = 'en-US';
+    speechRecog.interimResults  = false;
+    speechRecog.maxAlternatives = 1;
+    speechRecog.onresult = e => {
+      const text = e.results[0][0].transcript;
+      document.getElementById('ai-drive-input').value = text;
+      setAiDriveStatus('', `Heard: "${text}"`);
+      aiDrive();
+    };
+    speechRecog.onerror = e => {
+      setAiDriveStatus('fail', 'Mic error: ' + e.error);
+      document.getElementById('mic-btn').classList.remove('recording');
+    };
+    speechRecog.onend = () => {
+      document.getElementById('mic-btn').classList.remove('recording');
+    };
+    document.getElementById('mic-btn').disabled = false;
+  }
+
+  function toggleMic() {
+    if (!speechRecog) return;
+    const btn = document.getElementById('mic-btn');
+    if (btn.classList.contains('recording')) {
+      speechRecog.stop();
+    } else {
+      btn.classList.add('recording');
+      setAiDriveStatus('', 'Listening…');
+      speechRecog.start();
+    }
+  }
+
   // ── AI track command ─────────────────────────────────────────────
   async function aiTrack() {
     if (!connected) return;
@@ -1258,6 +1450,7 @@
     }).join('');
   }
 
+  initSpeech();
   addLog('Dashboard loaded — connecting…');
   tryConnect();
 </script>
