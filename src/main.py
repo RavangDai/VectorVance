@@ -27,6 +27,25 @@ import time
 import argparse
 import threading
 import lgpio
+import os
+
+# Load .env from the project root (one level above src/)
+def _load_dotenv():
+    env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+    env_path = os.path.normpath(env_path)
+    if not os.path.isfile(env_path):
+        return
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            key, _, val = line.partition('=')
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            os.environ.setdefault(key, val)
+
+_load_dotenv()
 
 from gpiozero import Motor
 
@@ -40,6 +59,7 @@ from sign_detector import TrafficSignDetector, ArucoSpeedDetector, ARUCO_SPEED_M
 from intersection_detector import IntersectionDetector
 from color_sign_detector import ColorSignDetector
 from item_tracker import ItemTracker, TRACK_TARGETS
+from sentry import SentryMonitor
 import pi_server
 
 # Speed limit → motor fraction (mirrors ArucoSpeedDetector.SPEED_FRACTIONS)
@@ -62,6 +82,7 @@ class State:
     ARRIVED         = "ARRIVED"          # RED tape seen, stopped at destination
     FREE_ROAM       = "FREE_ROAM"        # FSD: obstacle-avoiding free roam, no lane
     TRACKING        = "TRACKING"         # TRACK: chase the locked COCO target
+    SENTRY          = "SENTRY"           # SENTRY: stationary surveillance, motors off
 
 
 # ── Front HC-SR04 ultrasonic sensor (background thread) ──────────────────────
@@ -296,6 +317,9 @@ class AutonomousVehicle:
         # ── Colour tape detector ──────────────────────────────────────
         self.color_detector = ColorSignDetector(frame_width=640, frame_height=480)
 
+        # ── Sentry (SENTRY mode) ─────────────────────────────────────
+        self.sentry = SentryMonitor(net=shared_net)
+
         # ── Item tracker (TRACK mode) ─────────────────────────────────
         self.track_detector = ItemTracker(
             model_name=dnn_model, frame_width=640, frame_height=480,
@@ -362,11 +386,16 @@ class AutonomousVehicle:
     # ── Drive-mode switcher ───────────────────────────────────────────────────
 
     def _set_drive_mode(self, mode: str):
-        """Switch between FSD / LANE / MANUAL / TRACK modes safely."""
-        if mode not in ("FSD", "LANE", "MANUAL", "TRACK"):
+        """Switch between FSD / LANE / MANUAL / TRACK / SENTRY modes safely."""
+        if mode not in ("FSD", "LANE", "MANUAL", "TRACK", "SENTRY"):
             print(f"[Mode] Unknown mode '{mode}' — ignored")
             return
         prev = self.drive_mode
+
+        # Disarm sentry when leaving SENTRY
+        if prev == "SENTRY" and mode != "SENTRY":
+            self.sentry.disarm()
+
         self.drive_mode = mode
 
         if mode == "MANUAL":
@@ -374,7 +403,7 @@ class AutonomousVehicle:
             self._stop_motors()
         elif mode == "LANE":
             self.autonomous_enabled = True
-            if self.car_state in (State.FREE_ROAM, State.TRACKING):
+            if self.car_state in (State.FREE_ROAM, State.TRACKING, State.SENTRY):
                 self.car_state = State.LANE_FOLLOW
         elif mode == "FSD":
             self.autonomous_enabled = True
@@ -383,12 +412,16 @@ class AutonomousVehicle:
         elif mode == "TRACK":
             self.autonomous_enabled = True
             self.car_state = State.TRACKING
-            # Clear any stale lock from a previous TRACK session
             self.track_detector.last_bbox   = None
             self.track_detector.last_conf   = 0.0
             self.track_detector.lost_frames = 999
             if not self.track_detector.available:
                 print("[Mode] TRACK unavailable — SSD weights missing")
+        elif mode == "SENTRY":
+            self.autonomous_enabled = False
+            self.car_state = State.SENTRY
+            self._stop_motors()
+            self.sentry.arm()
 
         print(f"[Mode] {prev} → {mode}")
 
@@ -571,6 +604,24 @@ class AutonomousVehicle:
 
         return debug, (left, right, status)
 
+    # ── SENTRY mode frame processing ─────────────────────────────────────────
+
+    def process_frame_sentry(self, frame):
+        """Stationary surveillance — motors off, camera watches for motion/people."""
+        self.frame_count += 1
+        debug  = self.sentry.process(frame)
+        status = (
+            "SENTRY: person detected" if self.sentry.person_active else
+            "SENTRY: motion detected" if self.sentry.motion_active else
+            "SENTRY: watching"
+        )
+        self.smooth_left.update(0.0)
+        self.smooth_right.update(0.0)
+        self.smooth_base_speed.update(0.0)
+        self.smooth_pid.update(0.0)
+        self._last_steering_error = 0.0
+        return debug, (0.0, 0.0, status)
+
     # ── Web command handler ───────────────────────────────────────────────────
 
     def _handle_web_commands(self):
@@ -627,6 +678,17 @@ class AutonomousVehicle:
             else:
                 print(f"[Web] Invalid track_click coords ({x}, {y})")
 
+        elif action == "arm_sentry":
+            self._set_drive_mode("SENTRY")
+
+        elif action == "disarm_sentry":
+            if self.drive_mode == "SENTRY":
+                self._set_drive_mode("LANE")
+
+        elif action == "clear_sentry_events":
+            self.sentry.clear_events()
+            pi_server.clear_sentry_events()
+
         pi_server.clear_command()
 
     # ── Telemetry ─────────────────────────────────────────────────────────────
@@ -680,6 +742,9 @@ class AutonomousVehicle:
             "track_conf":            round(self.track_detector.last_conf, 2),
             "track_lost_frames":     self.track_detector.lost_frames,
             "track_classes":         list(TRACK_TARGETS.keys()),
+            "sentry_armed":          self.sentry.armed,
+            "sentry_motion":         self.sentry.motion_active,
+            "sentry_person":         self.sentry.person_active,
         }
 
     # ── Main perception + decision loop ──────────────────────────────────────
@@ -1020,6 +1085,7 @@ class AutonomousVehicle:
         self.intersection_detector.reset()
         self.free_roam.reset()
         self.track_detector.reset()
+        self.sentry.disarm()
         self.car_state           = State.LANE_FOLLOW
         self.drive_mode          = "LANE"
         self.autonomous_enabled  = True
@@ -1091,6 +1157,8 @@ class AutonomousVehicle:
                 debug_frame, (left, right, status) = self.process_frame_fsd(frame)
             elif self.drive_mode == "TRACK":
                 debug_frame, (left, right, status) = self.process_frame_track(frame)
+            elif self.drive_mode == "SENTRY":
+                debug_frame, (left, right, status) = self.process_frame_sentry(frame)
             else:
                 debug_frame, (left, right, status) = self.process_frame(frame)
 
@@ -1099,10 +1167,11 @@ class AutonomousVehicle:
 
             # ── Motor control (mode-dependent) ───────────────────────────
             if self.drive_mode == "FSD":
-                # _drive_manual handles negative values for backup maneuver
                 self._drive_manual(left, right)
             elif self.drive_mode == "TRACK":
                 self._drive(left, right)
+            elif self.drive_mode == "SENTRY":
+                self._stop_motors()
             elif self.drive_mode == "LANE":
                 if self.car_state not in (State.FORK_WAITING, State.ARRIVED):
                     self._drive(left, right)
@@ -1117,6 +1186,8 @@ class AutonomousVehicle:
             if self.web_enabled:
                 pi_server.push_frame(debug_frame)
                 pi_server.push_telemetry(self._build_telemetry(left, right, status))
+                if self.drive_mode == "SENTRY":
+                    pi_server.push_sentry_events(self.sentry.events)
 
             if self.show_display:
                 state_info = f"  [{self.car_state}]" if self.drive_mode == "LANE" else ""
@@ -1146,6 +1217,11 @@ class AutonomousVehicle:
                         self._set_drive_mode("MANUAL")
                 elif key == ord('f'):
                     self._set_drive_mode("FSD")
+                elif key == ord('n'):
+                    if self.drive_mode == "SENTRY":
+                        self._set_drive_mode("LANE")
+                    else:
+                        self._set_drive_mode("SENTRY")
                 elif key == ord('r'):
                     self._reset_all()
                 elif key == ord('s'):

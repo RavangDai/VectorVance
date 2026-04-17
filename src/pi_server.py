@@ -45,6 +45,9 @@ _pending_cmd   = None          # command dict waiting to be executed
 _manual_keys_lock = threading.Lock()
 _manual_keys      = {"w": False, "a": False, "s": False, "d": False}
 
+_sentry_events_lock = threading.Lock()
+_sentry_events      = []       # list of event dicts from SentryMonitor
+
 
 # ── Public API (called from main.py) ─────────────────────────────────────────
 
@@ -86,6 +89,20 @@ def get_manual_keys() -> dict:
     """Return current WASD key state for manual drive. Called every loop iteration."""
     with _manual_keys_lock:
         return dict(_manual_keys)
+
+
+def push_sentry_events(events: list):
+    """Push latest sentry event list. Called from main loop when in SENTRY mode."""
+    global _sentry_events
+    with _sentry_events_lock:
+        _sentry_events = list(events)
+
+
+def clear_sentry_events():
+    """Clear the sentry event log. Called when user requests clear."""
+    global _sentry_events
+    with _sentry_events_lock:
+        _sentry_events = []
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -150,6 +167,97 @@ def _rear_mjpeg_generator():
             time.sleep(0.05)
 
 
+# ── AI track target resolver ─────────────────────────────────────────────────
+
+# All classes the tracker supports (mirrors TRACK_TARGETS keys in item_tracker.py)
+_TRACK_CLASSES = [
+    "person", "bicycle", "car", "motorcycle", "bus", "truck",
+    "bird", "cat", "dog", "horse", "sheep", "cow",
+    "backpack", "umbrella", "sports ball", "bottle", "cup",
+    "chair", "laptop", "mouse", "remote", "keyboard", "cell phone",
+    "book", "teddy bear",
+]
+
+# Common synonyms → canonical COCO class name
+_SYNONYMS: dict[str, str] = {
+    "ball": "sports ball", "soccer ball": "sports ball",
+    "football": "sports ball", "basketball": "sports ball",
+    "tennis ball": "sports ball", "volleyball": "sports ball",
+    "phone": "cell phone", "mobile": "cell phone",
+    "smartphone": "cell phone", "iphone": "cell phone",
+    "computer": "laptop", "laptop computer": "laptop", "notebook": "laptop",
+    "mug": "cup", "glass": "cup", "coffee": "cup",
+    "stuffed animal": "teddy bear", "stuffed toy": "teddy bear",
+    "toy bear": "teddy bear", "plush": "teddy bear",
+    "bag": "backpack", "backpack": "backpack",
+    "kitten": "cat", "kitty": "cat",
+    "puppy": "dog", "pup": "dog",
+    "bike": "bicycle", "motorbike": "motorcycle", "scooter": "motorcycle",
+    "tv remote": "remote", "controller": "remote",
+    "man": "person", "woman": "person", "child": "person",
+    "kid": "person", "human": "person", "people": "person", "guy": "person",
+    "keys": "keyboard", "keyboard": "keyboard",
+}
+
+
+def _resolve_track_target(text: str) -> str | None:
+    """
+    Map a free-text command to a COCO class name.
+    Tries Claude API first (if anthropic + ANTHROPIC_API_KEY available),
+    then falls back to keyword/synonym matching.
+    Returns None if nothing matches.
+    """
+    matched = _resolve_via_gemini(text)
+    if matched:
+        return matched
+    return _resolve_via_keywords(text)
+
+
+def _resolve_via_gemini(text: str) -> str | None:
+    """Call Gemini Flash to extract the target object. Returns None on any failure."""
+    api_key = os.environ.get("GEMINI_API_KEY", "")
+    if not api_key:
+        return None
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        classes_str = ", ".join(_TRACK_CLASSES)
+        prompt = (
+            f"Map this command to a COCO object class name for an autonomous car tracker.\n"
+            f"Valid classes: {classes_str}\n"
+            f"Reply with ONLY the exact class name from the list, or 'none' if nothing matches.\n"
+            f"Examples:\n"
+            f"  'go get that ball' → sports ball\n"
+            f"  'follow the dog' → dog\n"
+            f"  'chase the flying bird' → bird\n"
+            f"  'track the red car' → car\n"
+            f"  'go to the fridge' → none\n\n"
+            f"Command: {text}"
+        )
+        model  = genai.GenerativeModel("gemini-2.5-flash")
+        result = model.generate_content(prompt).text.strip().lower()
+        if result in _TRACK_CLASSES:
+            return result
+        return None
+    except Exception as e:
+        print(f"[AI Track] Gemini API error: {e}")
+        return None
+
+
+def _resolve_via_keywords(text: str) -> str | None:
+    """Keyword + synonym matching fallback — works fully offline."""
+    lower = text.lower()
+    # Check synonyms first (more specific)
+    for syn, cls in _SYNONYMS.items():
+        if syn in lower:
+            return cls
+    # Then check direct class names
+    for cls in _TRACK_CLASSES:
+        if cls in lower:
+            return cls
+    return None
+
+
 # ── Flask server ──────────────────────────────────────────────────────────────
 
 def start_server(port: int = 5000) -> bool:
@@ -211,7 +319,8 @@ def start_server(port: int = 5000) -> bool:
         action = body.get("action")
         valid = {"toggle_auto", "emergency_stop", "reset", "set_speed",
                  "set_target_color", "manual_drive", "set_mode",
-                 "set_track_target", "track_click"}
+                 "set_track_target", "track_click",
+                 "arm_sentry", "disarm_sentry", "clear_sentry_events"}
         if action not in valid:
             return jsonify({"error": f"Unknown action '{action}'"}), 400
 
@@ -228,6 +337,30 @@ def start_server(port: int = 5000) -> bool:
 
         print(f"[WebServer] Command received: {body}")
         return jsonify({"status": "ok", "action": action})
+
+    @app.route('/api/ai_track', methods=['POST'])
+    def api_ai_track():
+        global _pending_cmd
+        body = request.get_json(silent=True) or {}
+        text = str(body.get('text', '')).strip()
+        if not text:
+            return jsonify({"error": "No text provided"}), 400
+
+        matched = _resolve_track_target(text)
+        if matched:
+            with _cmd_lock:
+                _pending_cmd = {"action": "set_track_target", "value": matched}
+            print(f"[AI Track] '{text}' → '{matched}'")
+            return jsonify({"matched": matched, "status": "ok"})
+        else:
+            return jsonify({"matched": None, "status": "no_match",
+                            "message": f"No trackable object found in: '{text}'"}), 200
+
+    @app.route('/api/sentry_events')
+    def api_sentry_events():
+        with _sentry_events_lock:
+            events = list(_sentry_events)
+        return jsonify(events)
 
     @app.route('/api/ping')
     def api_ping():

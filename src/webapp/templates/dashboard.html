@@ -70,6 +70,7 @@
     .mode-tab.active[data-mode="LANE"]   { background: rgba(0,232,122,0.1);  color: var(--green);  border-color: rgba(0,232,122,0.35); }
     .mode-tab.active[data-mode="MANUAL"] { background: rgba(255,144,64,0.1); color: var(--orange); border-color: rgba(255,144,64,0.35); }
     .mode-tab.active[data-mode="TRACK"]  { background: rgba(255,209,102,0.1);color: var(--yellow); border-color: rgba(255,209,102,0.4);  }
+    .mode-tab.active[data-mode="SENTRY"] { background: rgba(255,59,85,0.1);  color: var(--red);    border-color: rgba(255,59,85,0.4);    }
 
     .conn-row { display: flex; align-items: center; gap: 7px; }
     .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); transition: all 0.3s; }
@@ -298,6 +299,33 @@
       font-size: 10px; color: var(--muted); margin-top: 4px;
       line-height: 1.35;
     }
+    .ai-track-row { display: flex; gap: 5px; margin-top: 6px; }
+    .ai-track-input {
+      flex: 1; padding: 5px 8px; border-radius: 6px;
+      background: var(--bg); color: var(--text);
+      border: 1px solid rgba(255,209,102,0.25);
+      font-size: 11px; font-weight: 500;
+    }
+    .ai-track-input::placeholder { color: var(--dim); }
+    .ai-track-input:focus { outline: none; border-color: rgba(255,209,102,0.6); }
+    .ai-track-btn {
+      padding: 5px 10px; border-radius: 6px; border: none; cursor: pointer;
+      background: rgba(255,209,102,0.15); color: var(--yellow);
+      border: 1px solid rgba(255,209,102,0.35);
+      font-size: 11px; font-weight: 800; letter-spacing: 1px;
+      transition: all 0.15s; white-space: nowrap;
+    }
+    .ai-track-btn:hover { background: rgba(255,209,102,0.28); }
+    .ai-track-btn.loading {
+      background: var(--yellow); color: #000;
+      animation: blink 0.7s infinite;
+    }
+    .ai-track-result {
+      font-size: 10px; margin-top: 4px; min-height: 14px;
+      padding: 0 2px; transition: all 0.2s;
+    }
+    .ai-track-result.ok   { color: var(--green); }
+    .ai-track-result.fail { color: var(--red); }
 
     /* ── MANUAL CARD ────────────────────────────────────────────────── */
     .wasd-hint { font-size: 10px; color: var(--muted); margin-bottom: 5px; }
@@ -374,6 +402,51 @@
     .speed-ctl input[type=range] { width: 88px; accent-color: var(--cyan); cursor: pointer; }
     #speed-val { font-size: 12px; font-weight: 700; color: var(--cyan); min-width: 30px; font-variant-numeric: tabular-nums; }
 
+    /* ── SENTRY CARD ────────────────────────────────────────────────── */
+    #sentry-card { display: none; }
+    .sentry-arm-btn {
+      width: 100%; padding: 7px 0; border-radius: 6px; border: none;
+      font-size: 12px; font-weight: 700; cursor: pointer; letter-spacing: 1px;
+      transition: all 0.15s; text-transform: uppercase;
+      background: rgba(255,59,85,0.1); color: var(--red);
+      border: 1px solid rgba(255,59,85,0.3); margin-bottom: 7px;
+    }
+    .sentry-arm-btn:hover { background: rgba(255,59,85,0.2); }
+    .sentry-arm-btn.armed {
+      background: rgba(255,59,85,0.18); color: #fff;
+      border-color: var(--red); box-shadow: 0 0 10px rgba(255,59,85,0.25);
+      animation: blink 1.6s infinite;
+    }
+    .sentry-indicators { display: flex; gap: 6px; margin-bottom: 7px; }
+    .sentry-ind {
+      flex: 1; padding: 4px 6px; border-radius: 5px; text-align: center;
+      font-size: 10px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase;
+      background: var(--bg); border: 1px solid var(--border); color: var(--dim);
+      transition: all 0.2s;
+    }
+    .sentry-ind.active-motion { background: rgba(0,100,200,0.18); color: #4d9fff; border-color: rgba(77,159,255,0.4); }
+    .sentry-ind.active-person { background: rgba(255,59,85,0.18); color: var(--red);  border-color: rgba(255,59,85,0.4); }
+    .sentry-event-log { max-height: 110px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+    .sentry-evt {
+      display: flex; align-items: center; gap: 6px;
+      padding: 3px 6px; border-radius: 4px;
+      background: var(--bg); border-left: 2px solid var(--border2);
+      font-size: 10px;
+    }
+    .sentry-evt.evt-person { border-left-color: var(--red); }
+    .sentry-evt.evt-motion { border-left-color: #4d9fff; }
+    .sentry-evt-time { color: var(--dim); min-width: 46px; font-family: monospace; }
+    .sentry-evt-type { font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+    .sentry-evt-count { margin-left: auto; color: var(--dim); font-size: 9px; }
+    .sentry-clear {
+      width: 100%; margin-top: 5px; padding: 3px 0;
+      border: 1px solid var(--border); border-radius: 5px;
+      background: transparent; color: var(--muted);
+      font-size: 10px; cursor: pointer;
+    }
+    .sentry-clear:hover { color: var(--red); border-color: rgba(255,59,85,0.3); }
+    .b-sentry { background: rgba(255,59,85,0.1); color: var(--red); border-color: rgba(255,59,85,0.3); }
+
     /* ── SCROLLBAR ──────────────────────────────────────────────────── */
     ::-webkit-scrollbar { width: 3px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -394,6 +467,7 @@
     <button class="mode-tab" data-mode="LANE"   onclick="setMode('LANE')"   disabled>Lane</button>
     <button class="mode-tab" data-mode="TRACK"  onclick="setMode('TRACK')"  disabled>Track</button>
     <button class="mode-tab" data-mode="MANUAL" onclick="setMode('MANUAL')" disabled>Manual</button>
+    <button class="mode-tab" data-mode="SENTRY" onclick="setMode('SENTRY')" disabled>Sentry</button>
   </div>
 
   <div class="conn-row">
@@ -534,6 +608,13 @@
         <div class="track-hint" id="track-hint">
           Pick an item, then place it in front of the camera. The car will lock on and chase.
         </div>
+        <div class="ai-track-row">
+          <input type="text" id="ai-track-input" class="ai-track-input"
+                 placeholder="e.g. go get that ball"
+                 onkeydown="if(event.key==='Enter') aiTrack()" />
+          <button id="ai-track-btn" class="ai-track-btn" onclick="aiTrack()">AI</button>
+        </div>
+        <div id="ai-track-result" class="ai-track-result"></div>
       </div>
     </div>
 
@@ -566,6 +647,22 @@
           </div>
           <div id="dpad-status">Hold to drive</div>
         </div>
+      </div>
+    </div>
+
+    <!-- SENTRY -->
+    <div class="card" id="sentry-card">
+      <div class="card-head"><span>Sentry Monitor</span><span id="sentry-event-count" style="color:var(--red);font-size:9px;font-weight:700;"></span></div>
+      <div class="card-body">
+        <button class="sentry-arm-btn" id="sentry-arm-btn" onclick="toggleSentry()">ARM SENTRY</button>
+        <div class="sentry-indicators">
+          <div class="sentry-ind" id="sentry-ind-motion">Motion</div>
+          <div class="sentry-ind" id="sentry-ind-person">Person</div>
+        </div>
+        <div class="sentry-event-log" id="sentry-event-log">
+          <div style="color:var(--dim);font-size:10px;text-align:center;padding:4px 0;">No events yet</div>
+        </div>
+        <button class="sentry-clear" onclick="sendCmd('clear_sentry_events')">Clear events</button>
       </div>
     </div>
 
@@ -662,7 +759,8 @@
     badge.className = 'badge ' +
       (mode === 'FSD'    ? 'b-fsd'    :
        mode === 'MANUAL' ? 'b-manual' :
-       mode === 'TRACK'  ? 'b-track'  : 'b-lane');
+       mode === 'TRACK'  ? 'b-track'  :
+       mode === 'SENTRY' ? 'b-sentry' : 'b-lane');
 
     const wasd = document.getElementById('wasd-section');
     const dpad = document.getElementById('dpad-container');
@@ -680,6 +778,9 @@
 
     document.getElementById('track-card').style.display =
       mode === 'TRACK' ? 'block' : 'none';
+
+    document.getElementById('sentry-card').style.display =
+      mode === 'SENTRY' ? 'block' : 'none';
 
     if (mode !== 'TRACK' && clickAimOn) toggleClickAim();
   }
@@ -704,7 +805,7 @@
     const stateLabels = {
       LANE_FOLLOW: 'Lane Follow', FORK_WAITING: 'Fork Waiting',
       COLOR_FOLLOWING: 'Following', ARRIVED: 'Arrived', FREE_ROAM: 'Free Roam',
-      TRACKING: 'Tracking'
+      TRACKING: 'Tracking', SENTRY: 'Sentry'
     };
     const sb = document.getElementById('state-badge');
     sb.textContent = stateLabels[carState] || carState || '—';
@@ -827,6 +928,7 @@
 
     updateKeyVisual();
     updateTrackUI(d);
+    updateSentryUI(d);
 
     if (d.status && d.status !== lastStatus) {
       lastStatus = d.status;
@@ -1060,6 +1162,102 @@
   }
 
   setupDpad();
+
+  // ── AI track command ─────────────────────────────────────────────
+  async function aiTrack() {
+    if (!connected) return;
+    const input  = document.getElementById('ai-track-input');
+    const btn    = document.getElementById('ai-track-btn');
+    const result = document.getElementById('ai-track-result');
+    const text   = input.value.trim();
+    if (!text) return;
+
+    btn.classList.add('loading');
+    btn.textContent = '...';
+    result.textContent = '';
+    result.className   = 'ai-track-result';
+
+    try {
+      const res = await fetch('/api/ai_track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+        signal: AbortSignal.timeout(8000),
+      });
+      const data = await res.json();
+      if (data.matched) {
+        result.textContent = '✓ Targeting: ' + data.matched;
+        result.className   = 'ai-track-result ok';
+        input.value = '';
+        addLog('AI → tracking ' + data.matched);
+        // Reflect the new target in the dropdown if visible
+        const sel = document.getElementById('track-select');
+        if (sel) sel.value = data.matched;
+      } else {
+        result.textContent = data.message || 'No match found';
+        result.className   = 'ai-track-result fail';
+      }
+    } catch (e) {
+      result.textContent = 'Request failed — is the Pi online?';
+      result.className   = 'ai-track-result fail';
+    } finally {
+      btn.classList.remove('loading');
+      btn.textContent = 'AI';
+    }
+  }
+
+  // ── SENTRY mode UI ────────────────────────────────────────────────
+  let sentryEventsCache = [];
+
+  function updateSentryUI(d) {
+    if (currentMode !== 'SENTRY') return;
+
+    const btn    = document.getElementById('sentry-arm-btn');
+    const armed  = d.sentry_armed;
+    btn.textContent = armed ? 'DISARM SENTRY' : 'ARM SENTRY';
+    btn.classList.toggle('armed', armed);
+
+    const indMotion = document.getElementById('sentry-ind-motion');
+    const indPerson = document.getElementById('sentry-ind-person');
+    indMotion.className = 'sentry-ind' + (d.sentry_motion ? ' active-motion' : '');
+    indPerson.className = 'sentry-ind' + (d.sentry_person ? ' active-person' : '');
+  }
+
+  async function toggleSentry() {
+    if (!connected) return;
+    const btn = document.getElementById('sentry-arm-btn');
+    const currentlyArmed = btn.classList.contains('armed');
+    await sendCmd(currentlyArmed ? 'disarm_sentry' : 'arm_sentry');
+  }
+
+  // Poll sentry events separately (only when in SENTRY mode)
+  setInterval(async () => {
+    if (currentMode !== 'SENTRY') return;
+    try {
+      const res = await fetch('/api/sentry_events', { signal: AbortSignal.timeout(1500) });
+      if (!res.ok) return;
+      const events = await res.json();
+      renderSentryEvents(events);
+    } catch {}
+  }, 1000);
+
+  function renderSentryEvents(events) {
+    const log   = document.getElementById('sentry-event-log');
+    const count = document.getElementById('sentry-event-count');
+    count.textContent = events.length ? events.length + ' events' : '';
+    if (!events.length) {
+      log.innerHTML = '<div style="color:var(--dim);font-size:10px;text-align:center;padding:4px 0;">No events yet</div>';
+      return;
+    }
+    log.innerHTML = events.map(ev => {
+      const cls = ev.type === 'person' ? 'evt-person' : 'evt-motion';
+      return `<div class="sentry-evt ${cls}">
+        <span class="sentry-evt-time">${ev.time}</span>
+        <span class="sentry-evt-type">${ev.type}</span>
+      </div>`;
+    }).join('');
+  }
+
   addLog('Dashboard loaded — connecting…');
   tryConnect();
 </script>
