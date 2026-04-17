@@ -4,8 +4,6 @@ main.py - VectorVance Autonomous Car (PRODUCTION)
 Hardware : Innomaker 1080P USB2.0 UVC 130° wide-angle camera (front-mounted, upside-down) + dual L298N motors + HC-SR04 ultrasonic (front-facing)
 Detection: MobileNet SSD v2 (always active)
 Control  : PID lane-follow + adaptive speed + obstacle avoidance
-Fork nav : Stops at fork, waits for user to pick colour on dashboard,
-           then follows that tape and stops on RED destination tape.
 Dashboard: Live web UI at http://<pi-ip>:5000/
 
 USAGE:
@@ -19,7 +17,6 @@ KEYBOARD (when display is on):
   R        Reset all systems
   S        Save snapshot
   D        Print detector debug info
-  G / B    Set path colour Green / Blue  (same as dashboard buttons)
 """
 
 import cv2
@@ -56,8 +53,6 @@ from speed_controller import AdaptiveSpeedController, draw_speed_indicator
 from safety import ObstacleDetector
 from dnn_detector import StopSignConfirmer, load_ssd_net
 from sign_detector import TrafficSignDetector, ArucoSpeedDetector, ARUCO_SPEED_MAP
-from intersection_detector import IntersectionDetector
-from color_sign_detector import ColorSignDetector
 from item_tracker import ItemTracker, TRACK_TARGETS
 from sentry import SentryMonitor
 import pi_server
@@ -76,13 +71,10 @@ SLOW_DISTANCE = 50
 
 # ── Car state machine ─────────────────────────────────────────────────────────
 class State:
-    LANE_FOLLOW     = "LANE_FOLLOW"      # normal driving
-    FORK_WAITING    = "FORK_WAITING"     # stopped at fork, waiting for user input
-    COLOR_FOLLOWING = "COLOR_FOLLOWING"  # steering toward chosen tape
-    ARRIVED         = "ARRIVED"          # RED tape seen, stopped at destination
-    FREE_ROAM       = "FREE_ROAM"        # FSD: obstacle-avoiding free roam, no lane
-    TRACKING        = "TRACKING"         # TRACK: chase the locked COCO target
-    SENTRY          = "SENTRY"           # SENTRY: stationary surveillance, motors off
+    LANE_FOLLOW = "LANE_FOLLOW"   # normal driving
+    FREE_ROAM   = "FREE_ROAM"     # FSD: obstacle-avoiding free roam, no lane
+    TRACKING    = "TRACKING"      # TRACK: chase the locked COCO target
+    SENTRY      = "SENTRY"        # SENTRY: stationary surveillance, motors off
 
 
 # ── Front HC-SR04 ultrasonic sensor (background thread) ──────────────────────
@@ -300,8 +292,6 @@ class AutonomousVehicle:
         self.safety        = ObstacleDetector(
             emergency_distance=STOP_DISTANCE, warning_distance=SLOW_DISTANCE
         )
-        self.intersection_detector = IntersectionDetector()
-
         # ── Two-stage sign detection ──────────────────────────────────
         # Stage 1 — fast CV (every frame, <1 ms)
         self.sign_cv  = TrafficSignDetector()
@@ -313,9 +303,6 @@ class AutonomousVehicle:
         shared_net     = load_ssd_net(dnn_model)
         self.detector  = StopSignConfirmer(
             model_name=dnn_model, skip_frames=dnn_skip, net=shared_net)
-
-        # ── Colour tape detector ──────────────────────────────────────
-        self.color_detector = ColorSignDetector(frame_width=640, frame_height=480)
 
         # ── Sentry (SENTRY mode) ─────────────────────────────────────
         self.sentry = SentryMonitor(net=shared_net)
@@ -647,17 +634,6 @@ class AutonomousVehicle:
             self.current_speed_limit = max(0.1, min(1.0, val))
             print(f"[Web] Speed limit → {self.current_speed_limit:.2f}")
 
-        elif action == "set_target_color":
-            color = str(cmd.get("value", "")).upper()
-            if color in ("GREEN", "BLUE"):
-                self.color_detector.set_target(color)
-                # Only start moving if we are currently waiting at a fork
-                if self.car_state == State.FORK_WAITING:
-                    self.car_state = State.COLOR_FOLLOWING
-                    print(f"[Fork] User selected {color} — resuming toward tape")
-            else:
-                print(f"[Web] Invalid colour '{color}'")
-
         elif action == "set_mode":
             mode = str(cmd.get("value", "LANE")).upper()
             self._set_drive_mode(mode)
@@ -703,19 +679,11 @@ class AutonomousVehicle:
                for d in self.detector.all_detections]
         )
 
-        color_dets = [
-            {"color": c, "side": det["side"]}
-            for c, det in self.color_detector.detections.items()
-        ]
-        fork_options = self.color_detector.get_fork_options()
-
         return {
             "mode":                  "AUTONOMOUS" if self.autonomous_enabled else "MANUAL",
             "drive_mode":            self.drive_mode,
             "status":                status,
             "car_state":             self.car_state,
-            "fork_waiting":          self.car_state == State.FORK_WAITING,
-            "fork_options":          fork_options,
             "speed_left":            round(left, 3),
             "speed_right":           round(right, 3),
             "base_speed":            round(self.smooth_base_speed.value, 3),
@@ -730,10 +698,6 @@ class AutonomousVehicle:
             "dnn_detections":        sign_dets,
             "speed_limit_kmh":       self.aruco.get_speed_limit(),
             "obstacle_modifier":     round(self.safety.get_speed_modifier(), 2),
-            "fork_confidence":       round(self.intersection_detector.fork_confidence, 2),
-            "color_target":          self.color_detector.target_color,
-            "color_detections":      color_dets,
-            "color_target_visible":  self.color_detector.target_visible(),
             "track_available":       self.track_detector.available,
             "track_click_available": self.track_detector.click_available,
             "track_mode":            self.track_detector.mode,
@@ -807,49 +771,11 @@ class AutonomousVehicle:
         else:
             effective_max = self.current_speed_limit
 
-        # ── Colour tape detection (every frame, cheap) ─────────────────
-        self.color_detector.detect(frame)
-
-        # ── State machine transitions ──────────────────────────────────
-
-        if self.car_state == State.LANE_FOLLOW:
-            # Check for fork
-            num_raw_lines, lane_width = self._measure_lines(frame)
-            fork_detected = self.intersection_detector.update(
-                num_lines        = num_raw_lines,
-                left_confidence  = self.perception.left_confidence,
-                right_confidence = self.perception.right_confidence,
-                lane_width       = lane_width,
-                left_fit         = self.perception.ema_left_fit,
-                right_fit        = self.perception.ema_right_fit,
-            )
-            if fork_detected:
-                options = self.color_detector.get_fork_options()
-                print(f"[Fork] Detected — options visible: {options or 'NONE'}")
-                print("[Fork] Car STOPPED — waiting for dashboard colour selection")
-                self.car_state = State.FORK_WAITING
-
-        elif self.car_state == State.COLOR_FOLLOWING:
-            # Check if destination reached (RED tape)
-            if self.color_detector.destination_reached():
-                self.car_state = State.ARRIVED
-                print("[ARRIVED] RED tape confirmed — destination reached!")
-
         # ── Speed decision ────────────────────────────────────────────
         if self.stop_sign_timer > 0:
             base_speed = 0.0
             self.stop_sign_timer -= 1
             status = f"STOPPED: sign ({self.stop_sign_timer})"
-
-        elif self.car_state == State.FORK_WAITING:
-            base_speed = 0.0
-            options    = self.color_detector.get_fork_options()
-            status     = f"FORK: pick {' or '.join(options) if options else 'colour'}"
-
-        elif self.car_state == State.ARRIVED:
-            base_speed = 0.0
-            status     = "ARRIVED AT DESTINATION"
-
         else:
             base_speed = self.speed_control.calculate_speed(steering_error, obstacle_modifier)
             base_speed = min(base_speed, effective_max)
@@ -859,28 +785,9 @@ class AutonomousVehicle:
 
         # ── Steering ─────────────────────────────────────────────────
         if self.autonomous_enabled and base_speed > 0:
-
-            if self.car_state == State.COLOR_FOLLOWING:
-                offset = self.color_detector.get_steering_offset()
-                if offset is not None:
-                    steer      = offset * 0.40
-                    left_speed  = max(0.0, min(1.0, base_speed + steer))
-                    right_speed = max(0.0, min(1.0, base_speed - steer))
-                    pid_output  = steer
-                    target      = self.color_detector.target_color
-                    side        = self.color_detector.target_det['side']
-                    status      = f"FOLLOWING {target} → {side}"
-                else:
-                    # Tape not visible — slow down and scan with PID
-                    pid_output  = self.steering.compute(steering_error)
-                    left_speed  = max(0.0, min(1.0, base_speed * 0.5 + pid_output))
-                    right_speed = max(0.0, min(1.0, base_speed * 0.5 - pid_output))
-                    status      = f"SEEKING {self.color_detector.target_color}..."
-            else:
-                # Normal PID lane following
-                pid_output  = self.steering.compute(steering_error)
-                left_speed  = max(0.0, min(1.0, base_speed + pid_output))
-                right_speed = max(0.0, min(1.0, base_speed - pid_output))
+            pid_output  = self.steering.compute(steering_error)
+            left_speed  = max(0.0, min(1.0, base_speed + pid_output))
+            right_speed = max(0.0, min(1.0, base_speed - pid_output))
         else:
             pid_output  = 0.0
             left_speed  = 0.0
@@ -899,24 +806,6 @@ class AutonomousVehicle:
             (left_speed, right_speed, status),
         )
 
-    # ── Line measurement helper ───────────────────────────────────────────────
-
-    def _measure_lines(self, frame):
-        gray  = cv2.cvtColor(cv2.resize(frame, (640, 480)), cv2.COLOR_BGR2GRAY)
-        edges = cv2.Canny(cv2.GaussianBlur(gray, (5, 5), 0), 50, 150)
-        lines = cv2.HoughLinesP(edges, 2, 3.14159 / 180, 30,
-                                minLineLength=40, maxLineGap=150)
-        num   = len(lines) if lines is not None else 0
-        lane_width = None
-        if (self.perception.ema_left_fit is not None and
-                self.perception.ema_right_fit is not None):
-            y    = int(480 * 0.75)
-            lx   = self.perception._eval_fit(self.perception.ema_left_fit,  y)
-            rx   = self.perception._eval_fit(self.perception.ema_right_fit, y)
-            if lx is not None and rx is not None:
-                lane_width = rx - lx
-        return num, lane_width
-
     # ── HUD ───────────────────────────────────────────────────────────────────
 
     def _create_debug_frame(self, vision_frame, error, pid_output,
@@ -928,7 +817,6 @@ class AutonomousVehicle:
         frame = self.sign_cv.draw_overlay(frame)
         frame = self.detector.draw_overlay(frame)
         frame = self.aruco.draw_overlay(frame)
-        frame = self.color_detector.draw_overlay(frame)
 
         # ── SPEED BADGE (top-right) ──────────────────────────────────
         speed_pct = int(self.smooth_base_speed.value * 100)
@@ -954,11 +842,7 @@ class AutonomousVehicle:
 
         # ── STATUS (left side with background) ───────────────────────
         display_status = self._update_display_status(status)
-        if self.car_state == State.FORK_WAITING:
-            status_color, status_bg = (0, 230, 255), (0, 80, 100)
-        elif self.car_state == State.ARRIVED:
-            status_color, status_bg = (0, 255, 100), (0, 60, 0)
-        elif "STOP" in display_status:
+        if "STOP" in display_status:
             status_color, status_bg = (0, 0, 255), (0, 0, 100)
         elif "SLOW" in display_status:
             status_color, status_bg = (0, 180, 255), (0, 60, 100)
@@ -972,20 +856,6 @@ class AutonomousVehicle:
         cv2.putText(frame, status_text,
                     (12, 135), cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_color, 2)
 
-        # Big overlay banners for important states
-        if self.car_state == State.FORK_WAITING:
-            options = self.color_detector.get_fork_options()
-            opt_str = " or ".join(options) if options else "colour"
-            cv2.rectangle(frame, (0, h//2 - 30), (w, h//2 + 30), (0, 120, 200), -1)
-            cv2.putText(frame, f"FORK -- SELECT: {opt_str}",
-                        (w//2 - 180, h//2 + 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
-        elif self.car_state == State.ARRIVED:
-            cv2.rectangle(frame, (0, h//2 - 30), (w, h//2 + 30), (0, 160, 0), -1)
-            cv2.putText(frame, "ARRIVED AT DESTINATION",
-                        (w//2 - 210, h//2 + 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
-
         # Sign detector status
         if self.detector.stop_sign_detected():
             cv2.putText(frame, "STOP SIGN", (12, 162),
@@ -995,13 +865,6 @@ class AutonomousVehicle:
             tag = mode_map.get(self.active_speed_limit, "")
             cv2.putText(frame, f"LIMIT {self.active_speed_limit}km/h {tag}",
                         (12, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 200, 255), 1)
-
-        # Fork confidence
-        conf = self.intersection_detector.fork_confidence
-        if conf > 0.2:
-            fork_color = (0, 255, 255) if conf > 0.45 else (100, 200, 200)
-            cv2.putText(frame, f"Fork: {conf:.0%}",
-                        (12, 182), cv2.FONT_HERSHEY_SIMPLEX, 0.4, fork_color, 1)
 
         # ── BOTTOM BAR — front distance obstacle warning ─────────────
         front_dist = self.front_sensor.distance_cm
@@ -1081,8 +944,6 @@ class AutonomousVehicle:
         self.sign_cv.reset()
         self.aruco.reset()
         self.detector.reset()
-        self.color_detector.reset()
-        self.intersection_detector.reset()
         self.free_roam.reset()
         self.track_detector.reset()
         self.sentry.disarm()
@@ -1133,8 +994,7 @@ class AutonomousVehicle:
         time.sleep(1)
         print("[Camera] 640×480 ready (front-mounted, 180° rotation applied)")
         if self.show_display:
-            print("Keys: [Q] Quit  [SPACE] Auto/Manual  [F] FSD  [R] Reset  "
-                  "[S] Snap  [D] Debug  [G] Green path  [B] Blue path")
+            print("Keys: [Q] Quit  [SPACE] Auto/Manual  [F] FSD  [R] Reset  [S] Snap  [D] Debug")
 
         # Drain the camera in a background thread so perception never blocks
         # on USB I/O.  Big win on Pi 3.
@@ -1173,10 +1033,7 @@ class AutonomousVehicle:
             elif self.drive_mode == "SENTRY":
                 self._stop_motors()
             elif self.drive_mode == "LANE":
-                if self.car_state not in (State.FORK_WAITING, State.ARRIVED):
-                    self._drive(left, right)
-                else:
-                    self._stop_motors()
+                self._drive(left, right)
             else:  # MANUAL
                 if self.web_enabled:
                     self._apply_manual_drive(pi_server.get_manual_keys())
@@ -1230,19 +1087,10 @@ class AutonomousVehicle:
                     print(f"Snapshot: {fname}")
                 elif key == ord('d'):
                     print(f"State: {self.car_state}")
-                    print(f"Tape detections: {self.color_detector.detections}")
                     print(f"CV stop: {bool(self.sign_cv.confirmed_signs)} | "
                           f"DNN stop: {self.detector.stop_sign_detected()} | "
                           f"ArUco limit: {self.aruco.get_speed_limit()} km/h | "
                           f"front: {self.front_sensor.distance_cm:.0f}cm")
-                elif key == ord('g'):
-                    self.color_detector.set_target("GREEN")
-                    if self.car_state == State.FORK_WAITING:
-                        self.car_state = State.COLOR_FOLLOWING
-                elif key == ord('b'):
-                    self.color_detector.set_target("BLUE")
-                    if self.car_state == State.FORK_WAITING:
-                        self.car_state = State.COLOR_FOLLOWING
 
         if hasattr(self, "_grabber"):
             self._grabber.stop()

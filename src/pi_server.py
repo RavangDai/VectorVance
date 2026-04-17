@@ -413,7 +413,7 @@ def start_server(port: int = 5000) -> bool:
 
         action = body.get("action")
         valid = {"toggle_auto", "emergency_stop", "reset", "set_speed",
-                 "set_target_color", "manual_drive", "set_mode",
+                 "manual_drive", "set_mode",
                  "set_track_target", "track_click",
                  "arm_sentry", "disarm_sentry", "clear_sentry_events"}
         if action not in valid:

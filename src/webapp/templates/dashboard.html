@@ -130,8 +130,6 @@
     #obstacle-banner.warn    { background: rgba(255,144,64,0.82); }
     #stop-sign-banner        { background: rgba(110,0,20,0.88); color: #ff9090; animation: pred 0.85s ease-in-out infinite; }
     @keyframes pred           { 50% { opacity: 0.65; } }
-    #fork-banner             { background: rgba(0,55,120,0.88); color: #80caff; animation: pblue 1s infinite; }
-    @keyframes pblue          { 50% { background: rgba(0,75,160,0.88); } }
 
     /* ── SIDEBAR ────────────────────────────────────────────────────── */
     .sidebar {
@@ -222,27 +220,6 @@
     .det-name { font-size: 11px; font-weight: 600; }
     .det-conf { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
     .no-det { font-size: 10px; color: var(--dim); text-align: center; padding: 3px 0; }
-
-    /* ── NAVIGATION CARD ────────────────────────────────────────────── */
-    .cbtn-row { display: flex; gap: 5px; margin-bottom: 6px; }
-    .cbtn {
-      flex: 1; padding: 5px 0; border: 1px solid transparent; border-radius: 6px;
-      font-size: 11px; font-weight: 700; cursor: pointer; letter-spacing: 0.5px;
-      opacity: 0.38; transition: all 0.15s; text-transform: uppercase;
-    }
-    .cbtn:hover  { opacity: 0.7; }
-    .cbtn.active { opacity: 1; }
-    .cbtn-green { background: rgba(0,232,122,0.07); color: #00e87a; border-color: rgba(0,232,122,0.25); }
-    .cbtn-green.active { background: rgba(0,232,122,0.16); border-color: #00e87a; box-shadow: 0 0 10px rgba(0,232,122,0.18); }
-    .cbtn-blue  { background: rgba(77,159,255,0.07); color: #4d9fff; border-color: rgba(77,159,255,0.25); }
-    .cbtn-blue.active  { background: rgba(77,159,255,0.16); border-color: #4d9fff; box-shadow: 0 0 10px rgba(77,159,255,0.18); }
-
-    .nav-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 6px; }
-    .nstat { display: flex; justify-content: space-between; font-size: 10px; }
-    .nk { color: var(--muted); }
-    .nv { color: var(--text); font-weight: 600; }
-    .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
-    .chip { padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; border: 1px solid; }
 
     /* ── TRACK ITEM CARD ────────────────────────────────────────────── */
     #track-card { display: none; }
@@ -876,7 +853,6 @@
     <div class="vid-banners">
       <div class="vid-banner" id="obstacle-banner">Obstacle Detected</div>
       <div class="vid-banner" id="stop-sign-banner">&#9101; Stop Sign Detected</div>
-      <div class="vid-banner" id="fork-banner">Fork — Select Path in Sidebar</div>
     </div>
     <div class="video-wrapper" id="video-wrapper">
       <img src="/video_feed" alt="Camera feed" id="video-feed"
@@ -949,26 +925,6 @@
       <div class="card-body">
         <div class="det-list" id="detection-list">
           <div class="no-det">No detections</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- NAVIGATION -->
-    <div class="card" id="color-nav-card">
-      <div class="card-head"><span>Navigation</span></div>
-      <div class="card-body">
-        <div class="cbtn-row">
-          <button id="btn-GREEN" class="cbtn cbtn-green" onclick="setColor('GREEN')">Green</button>
-          <button id="btn-BLUE"  class="cbtn cbtn-blue"  onclick="setColor('BLUE')">Blue</button>
-        </div>
-        <div class="nav-stats">
-          <div class="nstat"><span class="nk">Target</span><span class="nv" id="val-color-target">—</span></div>
-          <div class="nstat"><span class="nk">Visible</span><span class="nv" id="val-color-visible">—</span></div>
-          <div class="nstat"><span class="nk">State</span><span class="nv" id="val-color-follow">—</span></div>
-          <div class="nstat"><span class="nk">Fork %</span><span class="nv" id="val-fork">—</span></div>
-        </div>
-        <div class="chips" id="color-det-row">
-          <span style="color:var(--dim);font-size:10px;">no tape detected</span>
         </div>
       </div>
     </div>
@@ -1256,9 +1212,6 @@
       stopManualDrive();
     }
 
-    document.getElementById('color-nav-card').style.opacity =
-      mode === 'LANE' ? '1' : '0.45';
-
     document.getElementById('track-card').style.display =
       mode === 'TRACK' ? 'block' : 'none';
 
@@ -1273,21 +1226,15 @@
     const serverMode = d.drive_mode || 'LANE';
     if (serverMode !== currentMode) applyModeUI(serverMode);
 
-    // Status text + color
+    // Status text
     const statusEl = document.getElementById('status-text');
     const carState  = d.car_state || '';
-    if (carState === 'ARRIVED') {
-      statusEl.textContent = 'Arrived at destination';
-      statusEl.style.color = 'var(--green)';
-    } else {
-      statusEl.textContent = d.status || '—';
-      statusEl.style.color = '';
-    }
+    statusEl.textContent = d.status || '—';
+    statusEl.style.color = '';
 
     // State badge
     const stateLabels = {
-      LANE_FOLLOW: 'Lane Follow', FORK_WAITING: 'Fork Waiting',
-      COLOR_FOLLOWING: 'Following', ARRIVED: 'Arrived', FREE_ROAM: 'Free Roam',
+      LANE_FOLLOW: 'Lane Follow', FREE_ROAM: 'Free Roam',
       TRACKING: 'Tracking', SENTRY: 'Sentry'
     };
     const sb = document.getElementById('state-badge');
@@ -1351,10 +1298,6 @@
     const ssb = document.getElementById('stop-sign-banner');
     ssb.style.display = d.stop_sign_active ? 'block' : 'none';
 
-    // Fork banner
-    const forkBanner = document.getElementById('fork-banner');
-    forkBanner.style.display = (d.fork_waiting && serverMode === 'LANE') ? 'block' : 'none';
-
     // Sign detections list
     const dl   = document.getElementById('detection-list');
     const dets = d.dnn_detections || [];
@@ -1370,42 +1313,6 @@
           <span class="det-name">${det.label}</span>
           <span class="det-conf">${Math.round(det.conf * 100)}%</span>
         </div>`;
-      }).join('');
-    }
-
-    // Color navigation
-    const target  = d.color_target || '—';
-    const visible = d.color_target_visible;
-    const options = d.fork_options || [];
-
-    document.getElementById('val-color-target').textContent  =
-      target !== '—' ? target : (d.fork_waiting ? 'Waiting…' : '—');
-    document.getElementById('val-color-visible').textContent =
-      visible == null ? '—' : (visible ? 'Yes' : 'No');
-    document.getElementById('val-color-follow').textContent  =
-      carState === 'COLOR_FOLLOWING' ? 'Active' :
-      carState === 'FORK_WAITING'    ? 'Waiting' :
-      carState === 'ARRIVED'         ? 'Done'   : 'Off';
-    document.getElementById('val-fork').textContent =
-      d.fork_confidence != null ? Math.round(d.fork_confidence * 100) + '%' : '—';
-
-    ['GREEN', 'BLUE'].forEach(c => {
-      const btn = document.getElementById('btn-' + c);
-      if (!btn) return;
-      btn.classList.toggle('active', c === target || (d.fork_waiting && options.includes(c)));
-    });
-
-    const chipColors = { GREEN: '#00e87a', BLUE: '#4d9fff', RED: '#ff3b55' };
-    const colorDets  = d.color_detections || [];
-    const chipRow    = document.getElementById('color-det-row');
-    if (colorDets.length === 0) {
-      chipRow.innerHTML = '<span style="color:var(--dim);font-size:10px;">no tape detected</span>';
-    } else {
-      chipRow.innerHTML = colorDets.map(c => {
-        const col   = chipColors[c.color] || '#aaa';
-        const label = c.color === 'RED' ? 'Dest' : c.color;
-        return `<span class="chip" style="background:${col}1a;color:${col};border-color:${col}55">
-          ${label} · ${c.side}</span>`;
       }).join('');
     }
 
@@ -1558,7 +1465,6 @@
     }
   }
 
-  function setColor(color) { sendCmd('set_target_color', color); }
   function onSpeedChange(val) {
     speedValue = val / 100;
     document.getElementById('speed-val').textContent = speedValue.toFixed(2);
