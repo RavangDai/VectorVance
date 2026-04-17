@@ -467,6 +467,33 @@ def start_server(port: int = 5000) -> bool:
             events = list(_sentry_events)
         return jsonify(events)
 
+    @app.route('/api/speech', methods=['POST'])
+    def api_speech():
+        audio_data = request.data
+        if not audio_data:
+            return jsonify({"error": "No audio data"}), 400
+        mime = request.content_type or 'audio/webm'
+        # Strip charset or boundary params — Gemini needs clean MIME
+        mime = mime.split(';')[0].strip()
+        api_key = os.environ.get("GEMINI_API_KEY", "")
+        if not api_key:
+            return jsonify({"error": "GEMINI_API_KEY not set"}), 503
+        try:
+            import google.generativeai as genai
+            import base64
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel("gemini-2.5-flash")
+            audio_b64 = base64.b64encode(audio_data).decode()
+            response = model.generate_content([
+                "Transcribe this voice command. Reply with ONLY the spoken words, all lowercase.",
+                {"inline_data": {"mime_type": mime, "data": audio_b64}},
+            ])
+            text = response.text.strip().lower()
+            return jsonify({"text": text})
+        except Exception as e:
+            print(f"[Speech] Gemini transcription error: {e}")
+            return jsonify({"error": str(e)}), 500
+
     @app.route('/api/ping')
     def api_ping():
         return jsonify({"status": "alive", "time": time.time()})

@@ -459,6 +459,94 @@
     .ai-drive-status.ok     .ds-text  { color: var(--green); }
     .ai-drive-status.fail   .ds-text  { color: var(--red); }
 
+    /* ── AI BUTTON GLOW ROTATION (AI button only) ──────────────────── */
+
+    /*
+      Wrapper clips the spinning square — 2px padding becomes the visible ring.
+      Key fix: pseudo-element MUST be a fixed-size SQUARE centered via margin,
+      not inset:% (which creates a rectangle and warps the conic gradient).
+    */
+    .ai-glow-wrap {
+      display: inline-flex;
+      border-radius: 9px;
+      padding: 2px;
+      position: relative;
+      overflow: hidden;
+      flex-shrink: 0;
+      transition: box-shadow 0.3s;
+    }
+
+    /* Primary spinning arc */
+    .ai-glow-wrap::before {
+      content: '';
+      position: absolute;
+      width: 280px; height: 280px;   /* fixed square — must be larger than button */
+      left: 50%; top: 50%;
+      margin-left: -140px; margin-top: -140px;   /* centers it without transform */
+      background: conic-gradient(
+        from 0deg,
+        transparent   80deg,
+        #ffd166      150deg,
+        #ffaa00      190deg,
+        #ff9040      220deg,
+        transparent  290deg
+      );
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+
+    /* Secondary arc (offset 180°) — layered aurora look */
+    .ai-glow-wrap::after {
+      content: '';
+      position: absolute;
+      width: 280px; height: 280px;
+      left: 50%; top: 50%;
+      margin-left: -140px; margin-top: -140px;
+      background: conic-gradient(
+        from 180deg,
+        transparent              80deg,
+        rgba(255,209,102, 0.5)  150deg,
+        rgba(255,144, 64, 0.35) 210deg,
+        transparent              280deg
+      );
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+
+    /* Hover — spin both arcs */
+    .ai-glow-wrap:hover::before,
+    .ai-glow-wrap:hover::after  { opacity: 1; animation: aiRingSpin 1.6s linear infinite; }
+
+    /* Active — spin fast + bright burst */
+    .ai-glow-wrap:active::before,
+    .ai-glow-wrap:active::after { opacity: 1; animation: aiRingSpin 0.4s  linear infinite; }
+
+    /* Centering is done with margin so the keyframe only needs rotate */
+    @keyframes aiRingSpin { to { transform: rotate(360deg); } }
+
+    /* Outer halo glow */
+    .ai-glow-wrap:hover  { box-shadow: 0 0 18px rgba(255,209,102,0.65), 0 0 40px rgba(255,144,64,0.22); }
+    .ai-glow-wrap:active { box-shadow: 0 0 30px rgba(255,209,102,0.95), 0 0 60px rgba(255,144,64,0.4); }
+
+    /* Inner button — fills wrapper (1px less radius), presses on click */
+    .ai-glow-wrap > button {
+      flex: 1; border-radius: 7px;
+      position: relative; z-index: 1;
+      transition: transform 0.09s;
+    }
+    .ai-glow-wrap:active > button { transform: scale(0.91); }
+
+    /* JS-spawned ripple */
+    .ai-ripple {
+      position: absolute; border-radius: 50%;
+      pointer-events: none; z-index: 2;
+      transform: scale(0);
+      animation: aiRippleFade 0.6s ease-out forwards;
+    }
+    @keyframes aiRippleFade { to { transform: scale(5); opacity: 0; } }
+
     /* ── SENTRY CARD ────────────────────────────────────────────────── */
     #sentry-card { display: none; }
     .sentry-arm-btn {
@@ -508,9 +596,252 @@
     ::-webkit-scrollbar { width: 3px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    /* ═══════════════════════════════════════════════════════════════
+       SPLASH SCREEN
+    ═══════════════════════════════════════════════════════════════ */
+    #splash {
+      position: fixed; inset: 0; z-index: 9999;
+      background: #020408;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      overflow: hidden;
+      cursor: pointer;
+    }
+    #splash.exit {
+      animation: splashExit 0.7s cubic-bezier(0.4,0,0.2,1) forwards;
+    }
+    @keyframes splashExit {
+      0%   { opacity: 1; transform: scale(1); }
+      30%  { opacity: 1; transform: scale(1.03); filter: brightness(1.8) saturate(2); }
+      100% { opacity: 0; transform: scale(0.92); pointer-events: none; }
+    }
+
+    /* ── Background grid ── */
+    .sp-grid {
+      position: absolute; inset: 0; pointer-events: none;
+      background-image:
+        linear-gradient(rgba(0,212,255,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,212,255,0.04) 1px, transparent 1px);
+      background-size: 48px 48px;
+      animation: gridPulse 4s ease-in-out infinite;
+    }
+    @keyframes gridPulse {
+      0%,100% { opacity: 0.6; } 50% { opacity: 1; }
+    }
+
+    /* ── Scanline ── */
+    .sp-scan {
+      position: absolute; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--cyan), rgba(0,212,255,0.4), transparent);
+      box-shadow: 0 0 18px 4px rgba(0,212,255,0.35);
+      animation: scanDown 3s cubic-bezier(0.4,0,0.6,1) infinite;
+      pointer-events: none;
+    }
+    @keyframes scanDown {
+      0%   { top: -4px; opacity: 0; }
+      5%   { opacity: 1; }
+      95%  { opacity: 0.7; }
+      100% { top: 100%; opacity: 0; }
+    }
+
+    /* ── Corner brackets ── */
+    .sp-corner {
+      position: absolute; width: 36px; height: 36px;
+      border-color: var(--cyan); border-style: solid; opacity: 0;
+      animation: cornerIn 0.4s ease forwards;
+    }
+    .sp-corner.tl { top: 22px; left: 22px; border-width: 2px 0 0 2px; animation-delay: 0.2s; }
+    .sp-corner.tr { top: 22px; right: 22px; border-width: 2px 2px 0 0; animation-delay: 0.3s; }
+    .sp-corner.bl { bottom: 22px; left: 22px; border-width: 0 0 2px 2px; animation-delay: 0.4s; }
+    .sp-corner.br { bottom: 22px; right: 22px; border-width: 0 2px 2px 0; animation-delay: 0.5s; }
+    @keyframes cornerIn {
+      from { opacity: 0; transform: scale(0.5); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+
+    /* ── Side accent lines ── */
+    .sp-line {
+      position: absolute; background: linear-gradient(var(--cyan), transparent);
+      width: 1px; opacity: 0; animation: lineIn 0.6s ease forwards;
+    }
+    .sp-line.left  { left: 22px;  top: 60px; bottom: 60px; animation-delay: 0.5s; }
+    .sp-line.right { right: 22px; top: 60px; bottom: 60px; animation-delay: 0.6s; }
+    @keyframes lineIn { from { opacity: 0; } to { opacity: 0.35; } }
+
+    /* ── Center content ── */
+    .sp-center {
+      position: relative; z-index: 2;
+      display: flex; flex-direction: column; align-items: center;
+      gap: 0; text-align: center; padding: 0 40px;
+    }
+
+    /* ── Emblem ── */
+    .sp-emblem {
+      position: relative; width: 100px; height: 100px;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 28px; opacity: 0;
+      animation: emblemIn 0.6s cubic-bezier(0.175,0.885,0.32,1.275) 0.7s forwards;
+    }
+    @keyframes emblemIn {
+      from { opacity: 0; transform: scale(0.4) rotate(-20deg); }
+      to   { opacity: 1; transform: scale(1)   rotate(0deg); }
+    }
+    .sp-emblem-v {
+      font-size: 58px; font-weight: 900; color: var(--cyan);
+      letter-spacing: -2px;
+      text-shadow: 0 0 20px var(--cyan), 0 0 50px rgba(0,212,255,0.5), 0 0 90px rgba(0,212,255,0.2);
+      position: relative; z-index: 2; font-family: 'Segoe UI', sans-serif;
+    }
+    .sp-ring {
+      position: absolute; inset: 0; border-radius: 50%;
+      border: 1px solid rgba(0,212,255,0.35);
+      animation: ringRotate 6s linear infinite;
+    }
+    .sp-ring::before {
+      content: ''; position: absolute;
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--cyan);
+      box-shadow: 0 0 8px var(--cyan);
+      top: -4px; left: calc(50% - 4px);
+    }
+    .sp-ring2 {
+      position: absolute; inset: 10px; border-radius: 50%;
+      border: 1px solid rgba(0,212,255,0.15);
+      animation: ringRotate 4s linear infinite reverse;
+    }
+    @keyframes ringRotate { to { transform: rotate(360deg); } }
+
+    /* ── Title ── */
+    .sp-title {
+      font-size: clamp(28px, 5vw, 46px);
+      font-weight: 900; letter-spacing: 10px;
+      color: #fff; text-transform: uppercase;
+      text-shadow: 0 0 30px rgba(0,212,255,0.4);
+      min-height: 1.2em; margin-bottom: 10px;
+      animation: titleGlitch 5s 2s infinite;
+    }
+    @keyframes titleGlitch {
+      0%,92%,100% { transform: none; text-shadow: 0 0 30px rgba(0,212,255,0.4); }
+      93%  { transform: skewX(-3deg) translateX(-4px); color: #00d4ff;
+             text-shadow: 4px 0 #ff3b55, -4px 0 #00e87a; }
+      94%  { transform: skewX(3deg)  translateX(4px);  color: #fff;
+             text-shadow: -4px 0 #ff3b55, 4px 0 #00e87a; }
+      95%  { transform: skewX(-1deg) translateX(-2px); color: #00d4ff; }
+      96%  { transform: none; text-shadow: 0 0 30px rgba(0,212,255,0.4); }
+    }
+
+    .sp-sub {
+      font-size: 11px; letter-spacing: 5px; color: var(--muted);
+      text-transform: uppercase; margin-bottom: 32px;
+      opacity: 0; animation: fadeUp 0.5s ease 1.9s forwards;
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: none; }
+    }
+
+    /* ── Boot log ── */
+    .sp-boot {
+      width: min(400px, 90vw); margin-bottom: 20px;
+      display: flex; flex-direction: column; gap: 5px;
+      font-family: 'Consolas', monospace; font-size: 11px;
+      min-height: 84px;
+    }
+    .sp-boot-line {
+      display: flex; justify-content: space-between; align-items: center;
+      opacity: 0; transform: translateX(-12px);
+      animation: bootLine 0.3s ease forwards;
+      color: #3a4060;
+      padding: 2px 0;
+    }
+    .sp-boot-line.active { color: var(--muted); }
+    .sp-boot-text { display: flex; align-items: center; gap: 8px; }
+    .sp-boot-dot  { width: 5px; height: 5px; border-radius: 50%; background: var(--dim); flex-shrink: 0; }
+    .sp-boot-line.active .sp-boot-dot { background: var(--cyan); box-shadow: 0 0 5px var(--cyan); }
+    .sp-boot-tag {
+      padding: 1px 6px; border-radius: 3px; font-size: 9px;
+      font-weight: 700; letter-spacing: 1px;
+    }
+    .tag-ok   { background: rgba(0,232,122,0.12); color: var(--green); border: 1px solid rgba(0,232,122,0.3); }
+    .tag-wait { background: rgba(0,212,255,0.08); color: var(--cyan);  border: 1px solid rgba(0,212,255,0.25);
+                animation: blink 0.9s infinite; }
+    .tag-err  { background: rgba(255,59,85,0.12); color: var(--red);   border: 1px solid rgba(255,59,85,0.3); }
+    @keyframes bootLine {
+      to { opacity: 1; transform: none; }
+    }
+
+    /* ── Progress bar ── */
+    .sp-bar-wrap {
+      width: min(400px, 90vw); height: 3px;
+      background: var(--border); border-radius: 2px; overflow: hidden;
+      margin-bottom: 22px; opacity: 0;
+      animation: fadeUp 0.3s ease 2.2s forwards;
+    }
+    .sp-bar-fill {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, rgba(0,212,255,0.6), var(--cyan));
+      border-radius: 2px;
+      box-shadow: 0 0 8px var(--cyan);
+      transition: width 0.25s ease;
+    }
+
+    /* ── Skip hint ── */
+    .sp-skip {
+      font-size: 10px; letter-spacing: 3px; color: var(--dim);
+      text-transform: uppercase;
+      opacity: 0; animation: fadeUp 0.4s ease 2.6s forwards;
+    }
+    .sp-skip span {
+      display: inline-block; padding: 2px 8px;
+      border: 1px solid var(--border); border-radius: 4px;
+      animation: blink 2s infinite;
+    }
+
+    /* Horizontal data lines across screen */
+    .sp-hline {
+      position: absolute; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(0,212,255,0.06), transparent);
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SPLASH SCREEN
+══════════════════════════════════════════════════════════════ -->
+<div id="splash" onclick="skipSplash()">
+  <div class="sp-grid"></div>
+  <div class="sp-scan"></div>
+  <div class="sp-line left"></div>
+  <div class="sp-line right"></div>
+  <div class="sp-hline" style="top:25%"></div>
+  <div class="sp-hline" style="top:75%"></div>
+  <div class="sp-corner tl"></div>
+  <div class="sp-corner tr"></div>
+  <div class="sp-corner bl"></div>
+  <div class="sp-corner br"></div>
+
+  <div class="sp-center">
+    <div class="sp-emblem">
+      <div class="sp-ring"></div>
+      <div class="sp-ring2"></div>
+      <span class="sp-emblem-v">V</span>
+    </div>
+
+    <div class="sp-title" id="sp-title"></div>
+    <div class="sp-sub">Autonomous Vehicle System &nbsp;·&nbsp; v2.0</div>
+
+    <div class="sp-boot" id="sp-boot"></div>
+
+    <div class="sp-bar-wrap">
+      <div class="sp-bar-fill" id="sp-bar"></div>
+    </div>
+
+    <div class="sp-skip"><span>Click anywhere or press any key to skip</span></div>
+  </div>
+</div>
 
 <!-- ── HEADER ── -->
 <header>
@@ -669,7 +1000,7 @@
           <input type="text" id="ai-track-input" class="ai-track-input"
                  placeholder="e.g. go get that ball"
                  onkeydown="if(event.key==='Enter') aiTrack()" />
-          <button id="ai-track-btn" class="ai-track-btn" onclick="aiTrack()">AI</button>
+          <span class="ai-glow-wrap ai-glow-yellow"><button id="ai-track-btn" class="ai-track-btn" onclick="aiTrack()">AI</button></span>
         </div>
         <div id="ai-track-result" class="ai-track-result"></div>
       </div>
@@ -712,7 +1043,7 @@
           <input type="text" id="ai-drive-input" class="ai-drive-input"
                  placeholder="e.g. move forward, turn left…"
                  onkeydown="if(event.key==='Enter') aiDrive()" />
-          <button id="mic-btn" class="mic-btn" onclick="toggleMic()" disabled title="Hold to speak">&#127908;</button>
+          <button id="mic-btn" class="mic-btn" onclick="toggleMic()" title="Click to record voice command">&#127908;</button>
           <button id="ai-drive-send" class="ai-drive-send" onclick="aiDrive()">GO</button>
         </div>
         <div id="ai-drive-status" class="ai-drive-status">
@@ -763,6 +1094,86 @@
 </div>
 
 <script>
+  /* ════════════════════════════════════════════════════════════════
+     SPLASH SCREEN
+  ════════════════════════════════════════════════════════════════ */
+  (function () {
+    const BOOT_LINES = [
+      { text: 'Initializing hardware drivers',  tag: 'OK',   delay: 2100 },
+      { text: 'Loading SSD MobileNet v2',        tag: 'OK',   delay: 2500 },
+      { text: 'Calibrating wide-angle lens',     tag: 'OK',   delay: 2900 },
+      { text: 'Starting perception pipeline',    tag: 'OK',   delay: 3200 },
+      { text: 'Establishing web interface',      tag: 'WAIT', delay: 3500 },
+    ];
+
+    const TITLE_STR = 'VECTORVANCE';
+    let splashDone  = false;
+
+    function dismissSplash() {
+      if (splashDone) return;
+      splashDone = true;
+      const el = document.getElementById('splash');
+      if (!el) return;
+      el.classList.add('exit');
+      setTimeout(() => { el.style.display = 'none'; }, 700);
+    }
+
+    window.skipSplash = dismissSplash;
+    document.addEventListener('keydown', dismissSplash);
+
+    // Type out the title letter by letter
+    const titleEl = document.getElementById('sp-title');
+    let charIdx = 0;
+    const typeInterval = setInterval(() => {
+      if (charIdx < TITLE_STR.length) {
+        titleEl.textContent += TITLE_STR[charIdx++];
+      } else {
+        clearInterval(typeInterval);
+      }
+    }, 80);
+    // First char appears after emblem animation
+    setTimeout(() => { charIdx = 0; titleEl.textContent = ''; }, 1000);
+    setTimeout(() => {
+      const t = setInterval(() => {
+        if (charIdx < TITLE_STR.length) {
+          titleEl.textContent += TITLE_STR[charIdx++];
+        } else {
+          clearInterval(t);
+        }
+      }, 75);
+    }, 1300);
+
+    // Boot lines
+    const bootEl = document.getElementById('sp-boot');
+    BOOT_LINES.forEach(({ text, tag, delay }) => {
+      setTimeout(() => {
+        const line = document.createElement('div');
+        line.className = 'sp-boot-line active';
+        const tagClass = tag === 'OK' ? 'tag-ok' : tag === 'WAIT' ? 'tag-wait' : 'tag-err';
+        line.innerHTML = `
+          <div class="sp-boot-text">
+            <div class="sp-boot-dot"></div>
+            <span>${text}</span>
+          </div>
+          <span class="sp-boot-tag ${tagClass}">${tag}</span>`;
+        bootEl.appendChild(line);
+      }, delay);
+    });
+
+    // Progress bar
+    const bar = document.getElementById('sp-bar');
+    const steps = [
+      [2200,  15], [2600,  35], [3000,  55],
+      [3300,  72], [3600,  88], [3900, 100],
+    ];
+    steps.forEach(([t, pct]) => {
+      setTimeout(() => { bar.style.width = pct + '%'; }, t);
+    });
+
+    // Auto-dismiss after boot finishes
+    setTimeout(dismissSplash, 4400);
+  })();
+
   let lastStatus  = '';
   let logEntries  = [];
   let connected   = false;
@@ -1317,41 +1728,78 @@
     }
   }
 
-  // ── Speech recognition ────────────────────────────────────────────
-  let speechRecog = null;
+  // ── Speech recognition (MediaRecorder → /api/speech) ─────────────
+  let _mediaRecorder = null;
+  let _audioChunks   = [];
+  let _micRecording  = false;
 
   function initSpeech() {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return;
-    speechRecog = new SR();
-    speechRecog.lang            = 'en-US';
-    speechRecog.interimResults  = false;
-    speechRecog.maxAlternatives = 1;
-    speechRecog.onresult = e => {
-      const text = e.results[0][0].transcript;
-      document.getElementById('ai-drive-input').value = text;
-      setAiDriveStatus('', `Heard: "${text}"`);
-      aiDrive();
-    };
-    speechRecog.onerror = e => {
-      setAiDriveStatus('fail', 'Mic error: ' + e.error);
-      document.getElementById('mic-btn').classList.remove('recording');
-    };
-    speechRecog.onend = () => {
-      document.getElementById('mic-btn').classList.remove('recording');
-    };
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
     document.getElementById('mic-btn').disabled = false;
   }
 
   function toggleMic() {
-    if (!speechRecog) return;
-    const btn = document.getElementById('mic-btn');
-    if (btn.classList.contains('recording')) {
-      speechRecog.stop();
+    if (_micRecording) {
+      _stopMic();
     } else {
+      _startMic();
+    }
+  }
+
+  async function _startMic() {
+    const btn = document.getElementById('mic-btn');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      _audioChunks   = [];
+      _micRecording  = true;
       btn.classList.add('recording');
       setAiDriveStatus('', 'Listening…');
-      speechRecog.start();
+
+      // Pick a MIME type the browser and Gemini both support
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
+          ? 'audio/ogg;codecs=opus'
+          : 'audio/webm';
+
+      _mediaRecorder = new MediaRecorder(stream, { mimeType });
+      _mediaRecorder.ondataavailable = e => { if (e.data.size > 0) _audioChunks.push(e.data); };
+      _mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob     = new Blob(_audioChunks, { type: mimeType });
+        _micRecording  = false;
+        btn.classList.remove('recording');
+        setAiDriveStatus('', 'Transcribing…');
+        try {
+          const res  = await fetch('/api/speech', {
+            method: 'POST',
+            headers: { 'Content-Type': mimeType },
+            body: blob,
+            signal: AbortSignal.timeout(12000),
+          });
+          const data = await res.json();
+          if (data.text) {
+            document.getElementById('ai-drive-input').value = data.text;
+            setAiDriveStatus('', `Heard: "${data.text}"`);
+            aiDrive();
+          } else {
+            setAiDriveStatus('fail', data.error || 'Could not transcribe');
+          }
+        } catch (err) {
+          setAiDriveStatus('fail', 'Transcription failed: ' + err.message);
+        }
+      };
+      _mediaRecorder.start();
+    } catch (err) {
+      setAiDriveStatus('fail', 'Mic access denied: ' + err.message);
+      btn.classList.remove('recording');
+      _micRecording = false;
+    }
+  }
+
+  function _stopMic() {
+    if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
+      _mediaRecorder.stop();
     }
   }
 
@@ -1448,6 +1896,24 @@
         <span class="sentry-evt-type">${ev.type}</span>
       </div>`;
     }).join('');
+  }
+
+  // Ripple burst on the AI button
+  const aiWrap = document.querySelector('.ai-glow-wrap');
+  if (aiWrap) {
+    aiWrap.addEventListener('mousedown', e => {
+      const rect = aiWrap.getBoundingClientRect();
+      const size = Math.max(rect.width, rect.height) * 3.5;
+      const r    = document.createElement('span');
+      r.className = 'ai-ripple';
+      r.style.cssText =
+        `width:${size}px;height:${size}px;` +
+        `left:${e.clientX - rect.left - size / 2}px;` +
+        `top:${e.clientY - rect.top  - size / 2}px;` +
+        `background:rgba(255,209,102,0.3);`;
+      aiWrap.appendChild(r);
+      setTimeout(() => r.remove(), 650);
+    });
   }
 
   initSpeech();
