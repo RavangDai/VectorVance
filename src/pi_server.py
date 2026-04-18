@@ -484,12 +484,17 @@ def start_server(port: int = 5000) -> bool:
             genai.configure(api_key=api_key)
             model = genai.GenerativeModel("gemini-2.5-flash")
             audio_b64 = base64.b64encode(audio_data).decode()
+            # Correct inline-data format for google-generativeai SDK
             response = model.generate_content([
                 "Transcribe this voice command. Reply with ONLY the spoken words, all lowercase.",
-                {"inline_data": {"mime_type": mime, "data": audio_b64}},
+                {"mime_type": mime, "data": audio_b64},
             ])
             text = response.text.strip().lower()
+            print(f"[Speech] Transcribed: '{text}'")
             return jsonify({"text": text})
+        except ImportError:
+            print("[Speech] google-generativeai not installed — run: pip install google-generativeai")
+            return jsonify({"error": "google-generativeai package not installed"}), 503
         except Exception as e:
             print(f"[Speech] Gemini transcription error: {e}")
             return jsonify({"error": str(e)}), 500
