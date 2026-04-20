@@ -1,1150 +1,1167 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>VectorVance — Dashboard</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VectorVance — DASH</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:      #07090d;
-      --surface: #0d0f16;
-      --card:    #10131c;
-      --border:  #1a1e2e;
-      --border2: #252a3d;
-      --text:    #d8ddf0;
-      --muted:   #52587a;
-      --dim:     #30364f;
-      --cyan:    #00d4ff;
-      --green:   #00e87a;
-      --orange:  #ff9040;
-      --red:     #ff3b55;
-      --yellow:  #ffd166;
-      --blue:    #4d9fff;
-      --r:       8px;
+      --bg:       #060810;
+      --surface:  #0a0d18;
+      --card:     #0d1120;
+      --card2:    #101528;
+      --border:   #1a2340;
+      --border2:  #243060;
+      --text:     #c8d4f0;
+      --muted:    #4a5578;
+      --dim:      #2a3050;
+      --gold:     #C8861A;
+      --gold2:    #e8a030;
+      --gold-dim: rgba(200,134,26,0.25);
+      --blue:     #2B5F8E;
+      --blue2:    #3a7ab8;
+      --cyan:     #00d4ff;
+      --cyan-dim: rgba(0,212,255,0.18);
+      --green:    #00e87a;
+      --orange:   #ff9040;
+      --red:      #ff3344;
+      --yellow:   #ffd166;
+      --header-h: 48px;
+      --side-w:   270px;
+      --r:        6px;
     }
 
     html, body { height: 100%; overflow: hidden; }
-
     body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-      font-size: 13px;
-      display: flex;
-      flex-direction: column;
+      background: var(--bg); color: var(--text);
+      font-family: 'Rajdhani', 'Segoe UI', sans-serif; font-size: 14px;
+      display: flex; flex-direction: column;
+    }
+    body::before {
+      content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background-image:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(43,95,142,0.1) 0%, transparent 60%),
+        linear-gradient(rgba(0,212,255,0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,212,255,0.018) 1px, transparent 1px);
+      background-size: 100% 100%, 44px 44px, 44px 44px;
     }
 
+    /* ══════════════════════════════════════════════════════════
+       SPLASH SCREEN
+    ══════════════════════════════════════════════════════════ */
+    #splash {
+      position: fixed; inset: 0; z-index: 1000;
+      background: #000;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden; cursor: pointer;
+    }
+    #splash.exit { animation: splashExit 0.9s cubic-bezier(0.4,0,0.2,1) forwards; }
+    @keyframes splashExit {
+      0%   { transform: translateY(0); opacity: 1; }
+      100% { transform: translateY(-100%); opacity: 0; }
+    }
 
-    /* ── HEADER ─────────────────────────────────────────────────────── */
+    .sp-hlines {
+      position: absolute; inset: 0; pointer-events: none;
+      background: repeating-linear-gradient(
+        0deg, transparent, transparent 3px,
+        rgba(0,212,255,0.012) 3px, rgba(0,212,255,0.012) 4px
+      );
+    }
+
+    /* Expanding sonar rings */
+    .sp-rings { position: absolute; left: 50%; top: 50%; pointer-events: none; }
+    .sp-ring {
+      position: absolute; border-radius: 50%; border: 1px solid;
+      transform: translate(-50%,-50%) scale(0); opacity: 0;
+    }
+    .sp-ring:nth-child(1) { width: 140px; height: 140px; border-color: rgba(200,134,26,0.7);
+      animation: ringOut 3.2s cubic-bezier(0,0.5,0.5,1) 0.8s infinite; }
+    .sp-ring:nth-child(2) { width: 260px; height: 260px; border-color: rgba(43,95,142,0.55);
+      animation: ringOut 3.2s cubic-bezier(0,0.5,0.5,1) 1.3s infinite; }
+    .sp-ring:nth-child(3) { width: 400px; height: 400px; border-color: rgba(0,212,255,0.35);
+      animation: ringOut 3.2s cubic-bezier(0,0.5,0.5,1) 1.8s infinite; }
+    .sp-ring:nth-child(4) { width: 560px; height: 560px; border-color: rgba(43,95,142,0.2);
+      animation: ringOut 3.2s cubic-bezier(0,0.5,0.5,1) 2.2s infinite; }
+    @keyframes ringOut {
+      0%   { transform: translate(-50%,-50%) scale(0.1); opacity: 0.9; }
+      100% { transform: translate(-50%,-50%) scale(1.2); opacity: 0; }
+    }
+
+    /* HUD corner brackets */
+    .sp-corner { position: absolute; width: 44px; height: 44px; border-color: var(--gold);
+      border-style: solid; opacity: 0; animation: cornerIn 0.4s ease forwards; }
+    .sp-corner.tl { top: 28px; left: 28px; border-width: 2px 0 0 2px; animation-delay: 0.3s; }
+    .sp-corner.tr { top: 28px; right: 28px; border-width: 2px 2px 0 0; animation-delay: 0.4s; }
+    .sp-corner.bl { bottom: 28px; left: 28px; border-width: 0 0 2px 2px; animation-delay: 0.5s; }
+    .sp-corner.br { bottom: 28px; right: 28px; border-width: 0 2px 2px 0; animation-delay: 0.6s; }
+    @keyframes cornerIn {
+      from { opacity: 0; transform: scale(0.4); }
+      to   { opacity: 0.65; transform: scale(1); }
+    }
+
+    .sp-content {
+      position: relative; z-index: 10;
+      display: flex; flex-direction: column; align-items: center;
+      gap: 0; text-align: center;
+    }
+    .sp-logo {
+      opacity: 0; margin-bottom: 28px;
+      filter: drop-shadow(0 0 18px rgba(200,134,26,0.55)) drop-shadow(0 0 35px rgba(43,95,142,0.4));
+      animation: logoIn 0.9s cubic-bezier(0.175,0.885,0.32,1.275) 0.4s forwards;
+    }
+    @keyframes logoIn {
+      from { opacity: 0; transform: scale(0.25) rotate(-18deg); }
+      to   { opacity: 1; transform: scale(1) rotate(0deg); }
+    }
+
+    .sp-title {
+      font-family: 'Orbitron', monospace; font-size: clamp(22px, 4vw, 40px);
+      font-weight: 900; letter-spacing: 12px; color: #fff; text-transform: uppercase;
+      text-shadow: 0 0 30px rgba(200,134,26,0.5), 0 0 60px rgba(43,95,142,0.3);
+      min-height: 1.3em; margin-bottom: 8px;
+    }
+    .sp-subtitle {
+      font-family: 'Rajdhani', sans-serif; font-size: 12px; letter-spacing: 4px;
+      color: rgba(200,134,26,0.8); text-transform: uppercase; margin-bottom: 26px;
+      opacity: 0; animation: fadeUp 0.5s ease 1.8s forwards;
+    }
+    .sp-boot { width: min(400px,88vw); margin-bottom: 18px; font-family: 'Rajdhani', monospace; font-size: 12px; }
+    .sp-boot-line {
+      display: flex; align-items: center; justify-content: space-between; padding: 2.5px 0;
+      opacity: 0; animation: lineIn 0.35s ease forwards;
+    }
+    @keyframes lineIn {
+      from { opacity: 0; transform: translateX(-12px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+    .sp-boot-text { display: flex; align-items: center; gap: 8px; color: rgba(200,212,240,0.7); }
+    .sp-boot-dot  { width: 4px; height: 4px; border-radius: 50%; background: var(--gold); flex-shrink: 0; }
+    .sp-boot-tag  { font-size: 9px; font-weight: 700; letter-spacing: 2px; padding: 1px 6px; border-radius: 3px; }
+    .tag-ok   { background: rgba(0,232,122,0.12); color: var(--green);  border: 1px solid rgba(0,232,122,0.3); }
+    .tag-wait { background: rgba(255,144,64,0.12); color: var(--orange); border: 1px solid rgba(255,144,64,0.3); }
+    .tag-err  { background: rgba(255,51,68,0.12);  color: var(--red);    border: 1px solid rgba(255,51,68,0.3); }
+
+    .sp-bar-wrap {
+      width: min(400px,88vw); height: 2px; background: rgba(255,255,255,0.07);
+      border-radius: 2px; overflow: hidden; margin-bottom: 18px;
+      opacity: 0; animation: fadeUp 0.3s ease 2.2s forwards;
+    }
+    .sp-bar-fill {
+      height: 100%; width: 0%; border-radius: 2px;
+      background: linear-gradient(90deg, var(--gold), var(--cyan));
+      box-shadow: 0 0 8px var(--gold); transition: width 0.28s ease;
+    }
+    .sp-skip {
+      font-family: 'Orbitron', monospace; font-size: 9px; letter-spacing: 3px;
+      color: rgba(255,255,255,0.18); text-transform: uppercase;
+      opacity: 0; animation: fadeUp 0.4s ease 2.6s forwards;
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ══════════════════════════════════════════════════════════
+       APP SHELL
+    ══════════════════════════════════════════════════════════ */
+    #app { position: relative; z-index: 1; flex: 1; display: flex; flex-direction: column; min-height: 0; }
+
+    /* ══════════════════════════════════════════════════════════
+       HEADER
+    ══════════════════════════════════════════════════════════ */
     header {
-      height: 42px; flex-shrink: 0;
+      height: var(--header-h); flex-shrink: 0;
       display: flex; align-items: center; justify-content: space-between;
-      padding: 0 14px; gap: 12px;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
+      padding: 0 14px; gap: 10px;
+      background: var(--surface); position: relative;
     }
-    .brand { display: flex; align-items: baseline; gap: 9px; }
-    .brand-name {
-      font-size: 15px; font-weight: 800; letter-spacing: 3px;
-      color: var(--cyan); text-transform: uppercase;
-      text-shadow: 0 0 20px rgba(0,212,255,0.3);
+    header::after {
+      content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--gold), transparent);
+      opacity: 0.35;
     }
-    .brand-sub { font-size: 10px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+    .hdr-left  { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+    .hdr-mid   { display: flex; align-items: center; gap: 6px; flex: 1; justify-content: center; }
+    .hdr-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 
-    .mode-tabs {
-      display: flex; gap: 3px;
-      background: var(--bg); padding: 3px; border-radius: 9px;
-      border: 1px solid var(--border);
-    }
+    /* Mode tabs */
+    .mode-tabs { display: flex; gap: 2px; background: var(--bg); padding: 3px; border-radius: 8px; border: 1px solid var(--border); }
     .mode-tab {
-      padding: 4px 13px; border: 1px solid transparent; border-radius: 6px;
-      font-size: 11px; font-weight: 700; letter-spacing: 1px;
+      padding: 4px 11px; border: 1px solid transparent; border-radius: 5px;
+      font-family: 'Orbitron', monospace; font-size: 9px; font-weight: 700; letter-spacing: 1.5px;
       cursor: pointer; background: transparent; color: var(--muted);
       transition: all 0.15s; text-transform: uppercase;
     }
     .mode-tab:disabled { cursor: not-allowed; opacity: 0.28; }
     .mode-tab:not(:disabled):hover { color: var(--text); background: var(--border); }
-    .mode-tab.active[data-mode="FSD"]    { background: rgba(0,212,255,0.1);  color: var(--cyan);   border-color: rgba(0,212,255,0.35); }
-    .mode-tab.active[data-mode="LANE"]   { background: rgba(0,232,122,0.1);  color: var(--green);  border-color: rgba(0,232,122,0.35); }
-    .mode-tab.active[data-mode="MANUAL"] { background: rgba(255,144,64,0.1); color: var(--orange); border-color: rgba(255,144,64,0.35); }
-    .mode-tab.active[data-mode="TRACK"]  { background: rgba(255,209,102,0.1);color: var(--yellow); border-color: rgba(255,209,102,0.4);  }
-    .mode-tab.active[data-mode="SENTRY"] { background: rgba(255,59,85,0.1);  color: var(--red);    border-color: rgba(255,59,85,0.4);    }
+    .mode-tab.active[data-mode="FSD"]    { background: rgba(0,212,255,0.1);   color: var(--cyan);   border-color: rgba(0,212,255,0.35); }
+    .mode-tab.active[data-mode="LANE"]   { background: rgba(0,232,122,0.1);   color: var(--green);  border-color: rgba(0,232,122,0.35); }
+    .mode-tab.active[data-mode="MANUAL"] { background: rgba(255,144,64,0.12); color: var(--orange); border-color: rgba(255,144,64,0.4); }
+    .mode-tab.active[data-mode="TRACK"]  { background: rgba(200,134,26,0.12); color: var(--gold);   border-color: rgba(200,134,26,0.4); }
+    .mode-tab.active[data-mode="SENTRY"] { background: rgba(255,51,68,0.1);   color: var(--red);    border-color: rgba(255,51,68,0.4); }
 
-    .conn-row { display: flex; align-items: center; gap: 7px; }
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); transition: all 0.3s; }
-    .dot.live { background: var(--green); box-shadow: 0 0 8px var(--green); }
-    .dot.dead { background: var(--red); }
-    #conn-label { font-size: 11px; color: var(--muted); }
+    /* Speed slider */
+    .speed-wrap { display: flex; align-items: center; gap: 6px; padding: 0 6px; }
+    .speed-lbl  { font-family: 'Orbitron', monospace; font-size: 8px; color: var(--muted); letter-spacing: 1px; }
+    #speed-val  { font-family: 'Orbitron', monospace; font-size: 10px; color: var(--gold); font-weight: 700; min-width: 26px; }
+    input[type=range].speed-slider {
+      -webkit-appearance: none; width: 80px; height: 3px;
+      background: var(--border2); border-radius: 2px; cursor: pointer; outline: none;
+    }
+    input[type=range].speed-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 11px; height: 11px; border-radius: 50%;
+      background: var(--gold); box-shadow: 0 0 5px rgba(200,134,26,0.5);
+    }
 
-    /* ── MAIN GRID ──────────────────────────────────────────────────── */
-    .main {
+    /* Connection */
+    .conn-wrap { display: flex; align-items: center; gap: 5px; }
+    .conn-dot  { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); transition: all 0.3s; }
+    .conn-dot.live { background: var(--green); box-shadow: 0 0 8px var(--green); }
+    .conn-dot.dead { background: var(--red); animation: blink 1s infinite; }
+    #conn-label { font-family: 'Orbitron', monospace; font-size: 8px; color: var(--muted); letter-spacing: 1px; }
+
+    /* E-stop button */
+    .e-stop {
+      padding: 5px 12px; background: rgba(255,51,68,0.1); border: 1px solid rgba(255,51,68,0.4);
+      border-radius: 5px; color: var(--red); cursor: pointer; transition: all 0.15s;
+      font-family: 'Orbitron', monospace; font-size: 8px; font-weight: 700; letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    .e-stop:hover { background: rgba(255,51,68,0.25); box-shadow: 0 0 12px rgba(255,51,68,0.3); }
+    .e-stop:active { transform: scale(0.95); }
+
+    @keyframes blink { 50% { opacity: 0.4; } }
+
+    /* ══════════════════════════════════════════════════════════
+       COCKPIT GRID
+    ══════════════════════════════════════════════════════════ */
+    .cockpit {
       flex: 1; min-height: 0;
       display: grid;
-      grid-template-columns: 1fr 262px;
-      gap: 8px; padding: 8px;
-      overflow: hidden;
+      grid-template-columns: var(--side-w) 1fr var(--side-w);
+      gap: 6px; padding: 6px; overflow: hidden;
     }
 
-    /* ── VIDEO PANEL ────────────────────────────────────────────────── */
-    .video-panel {
-      display: flex; flex-direction: column;
-      background: #000; border-radius: var(--r);
-      border: 1px solid var(--border);
-      overflow: hidden; position: relative; min-height: 0;
-      transition: border-color 0.4s;
+    /* ══════════════════════════════════════════════════════════
+       SIDE PANELS
+    ══════════════════════════════════════════════════════════ */
+    .panel {
+      display: flex; flex-direction: column; gap: 5px;
+      min-height: 0; overflow-y: auto; overflow-x: hidden;
     }
-    .video-panel.live { border-color: rgba(0,212,255,0.22); box-shadow: 0 0 24px rgba(0,212,255,0.05); }
+    .panel::-webkit-scrollbar { width: 3px; }
+    .panel::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    /* Card */
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--r); flex-shrink: 0; overflow: hidden; }
+    .card-head {
+      height: 24px; padding: 0 10px;
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(200,134,26,0.04); border-bottom: 1px solid var(--border);
+      font-family: 'Orbitron', monospace; font-size: 8px; font-weight: 700;
+      letter-spacing: 2px; text-transform: uppercase; color: var(--gold);
+    }
+    .card-head-muted { color: var(--muted); }
+    .card-body { padding: 8px 10px; }
+
+    /* Badges */
+    .badge {
+      padding: 2px 7px; border-radius: 3px;
+      font-family: 'Orbitron', monospace; font-size: 8px; font-weight: 700;
+      letter-spacing: 1px; text-transform: uppercase; border: 1px solid transparent;
+    }
+    .b-fsd    { background: rgba(0,212,255,0.1);   color: var(--cyan);   border-color: rgba(0,212,255,0.3); }
+    .b-lane   { background: rgba(0,232,122,0.1);   color: var(--green);  border-color: rgba(0,232,122,0.3); }
+    .b-manual { background: rgba(255,144,64,0.1);  color: var(--orange); border-color: rgba(255,144,64,0.3); }
+    .b-track  { background: rgba(200,134,26,0.12); color: var(--gold);   border-color: rgba(200,134,26,0.4); }
+    .b-sentry { background: rgba(255,51,68,0.1);   color: var(--red);    border-color: rgba(255,51,68,0.35); }
+    .b-state  { background: rgba(255,255,255,0.04); color: var(--muted); border-color: var(--border); }
+    .b-danger { background: rgba(255,51,68,0.15);  color: var(--red);    border-color: rgba(255,51,68,0.4); animation: blink 0.8s infinite; }
+
+    /* ══════════════════════════════════════════════════════════
+       STEERING WHEEL
+    ══════════════════════════════════════════════════════════ */
+    .steering-card-body {
+      display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 10px 8px;
+    }
+    .steering-container {
+      width: 96px; height: 96px;
+      filter: drop-shadow(0 0 8px rgba(200,134,26,0.3));
+    }
+    #steering-svg { transition: transform 0.12s ease-out; }
+    .steering-data {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; width: 100%;
+    }
+    .sd-item { display: flex; flex-direction: column; gap: 1px; }
+    .sd-lbl { font-family: 'Orbitron', monospace; font-size: 7px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+    .sd-val { font-family: 'Rajdhani', sans-serif; font-size: 17px; font-weight: 700; color: var(--cyan); line-height: 1.1; }
+    .sd-val.good   { color: var(--green); }
+    .sd-val.warn   { color: var(--orange); }
+    .sd-val.danger { color: var(--red); text-shadow: 0 0 8px rgba(255,51,68,0.4); }
+
+    /* ══════════════════════════════════════════════════════════
+       ARC GAUGE (motor speed)  — 4 motors in 2×2 grid
+       r=24, C≈150.8, 270°≈113.1, gap≈37.7
+    ══════════════════════════════════════════════════════════ */
+    .gauges-wrap {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 6px 2px; padding: 8px 8px 6px;
+    }
+    .gauge-item  { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    .gauge-lbl   { font-family: 'Orbitron', monospace; font-size: 7px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+    /* Arc math: r=24, C=150.8, 270°=113.1, remaining=37.7 */
+    .g-arc-bg   { fill: none; stroke: var(--border2); stroke-width: 4.5; stroke-linecap: round; }
+    .g-arc-fill {
+      fill: none; stroke: var(--cyan); stroke-width: 4.5; stroke-linecap: round;
+      stroke-dasharray: 113.1 37.7;
+      stroke-dashoffset: 113.1;
+      transition: stroke-dashoffset 0.25s ease, stroke 0.25s ease;
+    }
+    .g-val  { font-family: 'Orbitron', monospace; font-size: 9px; font-weight: 700; fill: var(--text); text-anchor: middle; dominant-baseline: middle; }
+    .g-unit { font-family: 'Rajdhani', sans-serif; font-size: 6px; fill: var(--muted); text-anchor: middle; }
+
+    /* ══════════════════════════════════════════════════════════
+       TELEMETRY ROWS
+    ══════════════════════════════════════════════════════════ */
+    .tele-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 3.5px 0; border-bottom: 1px solid rgba(255,255,255,0.03);
+    }
+    .tele-row:last-child { border-bottom: none; }
+    .tele-lbl { font-family: 'Orbitron', monospace; font-size: 7px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+    .tele-val { font-family: 'Rajdhani', sans-serif; font-size: 14px; font-weight: 600; color: var(--cyan); }
+    .tele-val.good   { color: var(--green); }
+    .tele-val.warn   { color: var(--orange); }
+    .tele-val.danger { color: var(--red); text-shadow: 0 0 8px rgba(255,51,68,0.35); }
+
+    /* ══════════════════════════════════════════════════════════
+       MANUAL CONTROL
+    ══════════════════════════════════════════════════════════ */
+    .wasd-hint { font-size: 11px; color: var(--muted); margin-bottom: 5px; text-align: center; }
+    .wasd-grid { display: flex; flex-direction: column; align-items: center; gap: 3px; margin-bottom: 4px; }
+    .wasd-row  { display: flex; gap: 3px; }
+    .key-box {
+      width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+      background: var(--card2); border: 1px solid var(--border2); border-radius: 5px;
+      font-family: 'Orbitron', monospace; font-size: 10px; font-weight: 700; color: var(--muted);
+      transition: all 0.1s; user-select: none;
+    }
+    .key-box.active { background: rgba(0,212,255,0.15); border-color: var(--cyan); color: var(--cyan); box-shadow: 0 0 8px rgba(0,212,255,0.28); }
+    .manual-inactive { font-size: 10px; color: var(--muted); text-align: center; margin-top: 2px; }
+
+    #dpad-container { display: none; }
+    .dpad-label { font-family: 'Orbitron', monospace; font-size: 8px; color: var(--green); letter-spacing: 2px; text-align: center; margin-bottom: 5px; }
+    .dpad { display: flex; flex-direction: column; align-items: center; gap: 3px; margin-bottom: 4px; }
+    .dpad-row { display: flex; gap: 3px; }
+    .dpad-btn {
+      width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+      background: var(--card2); border: 1px solid var(--border2); border-radius: 5px;
+      font-size: 15px; color: var(--muted); cursor: pointer; transition: all 0.1s; user-select: none;
+    }
+    .dpad-btn:active, .dpad-btn.pressed { background: rgba(0,212,255,0.15); border-color: var(--cyan); color: var(--cyan); }
+    .dpad-stop { background: rgba(255,51,68,0.08); border-color: rgba(255,51,68,0.3); color: var(--red); }
+    #dpad-status { font-size: 10px; color: var(--muted); text-align: center; }
+
+    .ai-drive-divider { border: none; border-top: 1px solid var(--border); margin: 8px 0; }
+    .ai-section-lbl {
+      font-family: 'Orbitron', monospace; font-size: 7px; color: var(--gold);
+      letter-spacing: 2px; text-transform: uppercase; margin-bottom: 5px;
+    }
+
+    /* AI Text row */
+    .ai-text-row { display: flex; gap: 4px; }
+    .ai-drive-input {
+      flex: 1; padding: 5px 7px; background: var(--bg); border: 1px solid var(--border2);
+      border-radius: 4px; color: var(--text); font-family: 'Rajdhani', sans-serif; font-size: 12px; outline: none;
+    }
+    .ai-drive-input:focus { border-color: var(--gold); }
+
+    /* AI GO button with ring glow on hover */
+    .ai-go-wrap {
+      position: relative; border-radius: 4px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .ai-go-wrap::before,
+    .ai-go-wrap::after {
+      content: ''; position: absolute; border-radius: 6px;
+      border: 1px solid var(--gold); opacity: 0; pointer-events: none;
+      transition: opacity 0.2s;
+    }
+    .ai-go-wrap::before { inset: -5px; }
+    .ai-go-wrap::after  { inset: -11px; border-radius: 8px; }
+    .ai-go-wrap:hover::before { opacity: 0.65; animation: aiRing 1.1s ease-in-out infinite; }
+    .ai-go-wrap:hover::after  { opacity: 0.28; animation: aiRing 1.1s ease-in-out 0.28s infinite; }
+    @keyframes aiRing { 0%,100% { opacity: 0.65; } 50% { opacity: 0.15; } }
+    .ai-drive-send {
+      padding: 5px 11px; background: rgba(200,134,26,0.1); border: 1px solid rgba(200,134,26,0.4);
+      border-radius: 4px; color: var(--gold); cursor: pointer; transition: background 0.15s;
+      font-family: 'Orbitron', monospace; font-size: 9px; font-weight: 700; position: relative; z-index: 1;
+    }
+    .ai-drive-send:hover { background: rgba(200,134,26,0.22); }
+
+    /* Voice button */
+    .voice-section {
+      display: flex; flex-direction: column; align-items: center; gap: 5px;
+      padding: 4px 0 2px;
+    }
+    .voice-btn-outer {
+      position: relative; width: 54px; height: 54px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .voice-btn-outer::before,
+    .voice-btn-outer::after {
+      content: ''; position: absolute; border-radius: 50%;
+      border: 1px solid var(--blue2); opacity: 0; pointer-events: none;
+      transition: opacity 0.2s;
+    }
+    .voice-btn-outer::before { inset: -8px; }
+    .voice-btn-outer::after  { inset: -18px; }
+    .voice-btn-outer:hover::before { opacity: 0.55; animation: voiceRing 1.2s ease-in-out infinite; }
+    .voice-btn-outer:hover::after  { opacity: 0.22; animation: voiceRing 1.2s ease-in-out 0.35s infinite; }
+    @keyframes voiceRing { 0%,100% { opacity: 0.55; transform: scale(1); } 50% { opacity: 0.1; transform: scale(1.06); } }
+    .voice-btn {
+      width: 54px; height: 54px; border-radius: 50%; cursor: pointer;
+      background: rgba(43,95,142,0.15); border: 2px solid rgba(43,95,142,0.5);
+      color: var(--blue2); font-size: 20px;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s; position: relative; z-index: 1;
+    }
+    .voice-btn:hover { background: rgba(43,95,142,0.28); border-color: var(--blue2); box-shadow: 0 0 16px rgba(43,95,142,0.4); }
+    .voice-btn.recording {
+      background: rgba(255,51,68,0.2); border-color: var(--red); color: var(--red);
+      box-shadow: 0 0 18px rgba(255,51,68,0.45); animation: blink 0.6s infinite;
+    }
+    .voice-hint { font-size: 9px; color: var(--muted); letter-spacing: 0.5px; }
+
+    .ai-drive-status { margin-top: 5px; display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+    .ds-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+    .ai-drive-status.running .ds-dot { background: var(--orange); animation: blink 0.5s infinite; }
+    .ai-drive-status.ok .ds-dot  { background: var(--green); }
+    .ai-drive-status.fail .ds-dot { background: var(--red); }
+    .ai-drive-status.ok .ds-text  { color: var(--green); }
+    .ai-drive-status.fail .ds-text { color: var(--red); }
+
+    /* ══════════════════════════════════════════════════════════
+       CENTER VIDEO PANEL
+    ══════════════════════════════════════════════════════════ */
+    .video-panel {
+      display: flex; flex-direction: column; background: #000;
+      border-radius: var(--r); border: 1px solid var(--border);
+      overflow: hidden; position: relative; min-height: 0; transition: border-color 0.4s;
+    }
+    .video-panel.live { border-color: rgba(0,212,255,0.22); box-shadow: 0 0 24px rgba(0,212,255,0.06); }
+
+    /* HUD corner decorations */
+    .hud-corner {
+      position: absolute; z-index: 5; pointer-events: none;
+      width: 22px; height: 22px; border-color: var(--gold); border-style: solid; opacity: 0.55;
+    }
+    .hud-corner.tl { top: 28px; left: 7px; border-width: 2px 0 0 2px; }
+    .hud-corner.tr { top: 28px; right: 7px; border-width: 2px 2px 0 0; }
+    .hud-corner.bl { bottom: 28px; left: 7px; border-width: 0 0 2px 2px; }
+    .hud-corner.br { bottom: 28px; right: 7px; border-width: 0 2px 2px 0; }
 
     .video-title {
-      height: 26px; flex-shrink: 0;
-      padding: 0 10px;
+      height: 24px; flex-shrink: 0; padding: 0 10px;
       display: flex; align-items: center; gap: 8px;
-      background: var(--surface); border-bottom: 1px solid var(--border);
-      font-size: 10px; font-weight: 600; letter-spacing: 1px;
-      text-transform: uppercase; color: var(--muted);
+      background: rgba(0,0,0,0.55); border-bottom: 1px solid var(--border);
+      font-family: 'Orbitron', monospace; font-size: 8px; font-weight: 600;
+      letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted);
     }
-    .rec-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); transition: all 0.3s; flex-shrink: 0; }
+    .rec-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); transition: all 0.3s; flex-shrink: 0; }
     .rec-dot.live { background: var(--red); box-shadow: 0 0 5px var(--red); animation: blink 1.8s infinite; }
-    @keyframes blink { 50% { opacity: 0.35; } }
 
-    .video-wrapper {
-      flex: 1; min-height: 0;
-      display: flex; align-items: center; justify-content: center;
-      overflow: hidden; background: #000;
-    }
-    .video-wrapper img { max-width: 100%; max-height: 100%; display: block; object-fit: contain; }
-
-    /* Overlay banners — sit on top of video, don't push layout */
-    .vid-banners {
-      position: absolute; top: 26px; left: 0; right: 0;
-      display: flex; flex-direction: column; pointer-events: none; z-index: 10;
-    }
+    .vid-banners { position: absolute; top: 24px; left: 0; right: 0; display: flex; flex-direction: column; pointer-events: none; z-index: 10; }
     .vid-banner {
       display: none; padding: 5px 14px;
-      font-size: 11px; font-weight: 700; letter-spacing: 1.5px;
+      font-family: 'Orbitron', monospace; font-size: 9px; font-weight: 700; letter-spacing: 2px;
       text-align: center; text-transform: uppercase; backdrop-filter: blur(4px);
     }
-    #obstacle-banner         { background: rgba(255,59,85,0.82); color: #fff; }
-    #obstacle-banner.warn    { background: rgba(255,144,64,0.82); }
-    #stop-sign-banner        { background: rgba(110,0,20,0.88); color: #ff9090; animation: pred 0.85s ease-in-out infinite; }
-    @keyframes pred           { 50% { opacity: 0.65; } }
+    #obstacle-banner      { background: rgba(255,51,68,0.88); color: #fff; }
+    #obstacle-banner.warn { background: rgba(255,144,64,0.88); }
+    #stop-sign-banner     { background: rgba(110,0,20,0.9); color: #ff9090; animation: blink 0.85s ease-in-out infinite; }
 
-    /* ── SIDEBAR ────────────────────────────────────────────────────── */
-    .sidebar {
-      display: flex; flex-direction: column;
-      gap: 6px; min-height: 0; overflow: hidden;
+    .video-wrapper {
+      flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
+      overflow: hidden; background: #000; position: relative;
     }
+    .video-wrapper img { max-width: 100%; max-height: 100%; display: block; object-fit: contain; }
+    .video-wrapper.aim { cursor: crosshair; }
+    .video-wrapper.aim img { outline: 2px solid var(--gold); }
 
-    /* ── CARD ───────────────────────────────────────────────────────── */
-    .card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: var(--r);
-      flex-shrink: 0; overflow: hidden;
-    }
-    .card-head {
-      height: 22px; padding: 0 10px;
-      display: flex; align-items: center; justify-content: space-between;
-      background: rgba(255,255,255,0.018);
-      border-bottom: 1px solid var(--border);
-      font-size: 9px; font-weight: 700; letter-spacing: 1.8px;
-      text-transform: uppercase; color: var(--muted);
-    }
-    .card-body { padding: 7px 10px; }
-
-    /* ── STATUS CARD ────────────────────────────────────────────────── */
-    .badge-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-bottom: 4px; }
-    .badge {
-      padding: 2px 7px; border-radius: 4px;
-      font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
-      border: 1px solid transparent;
-    }
-    .b-fsd    { background: rgba(0,212,255,0.1);  color: var(--cyan);   border-color: rgba(0,212,255,0.3); }
-    .b-lane   { background: rgba(0,232,122,0.1);  color: var(--green);  border-color: rgba(0,232,122,0.3); }
-    .b-manual { background: rgba(255,144,64,0.1); color: var(--orange); border-color: rgba(255,144,64,0.3); }
-    .b-track  { background: rgba(255,209,102,0.1);color: var(--yellow); border-color: rgba(255,209,102,0.35); }
-    .b-state  { background: rgba(255,255,255,0.04); color: var(--muted); border-color: var(--border); }
-    .b-stop   { background: rgba(255,59,85,0.12); color: var(--red);    border-color: rgba(255,59,85,0.35); }
-
-    #status-text {
-      font-size: 11px; font-weight: 600; color: var(--text);
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
-
-    /* ── TELEMETRY CARD ─────────────────────────────────────────────── */
-    .metrics {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 5px 10px;
-    }
-    .metric { display: flex; flex-direction: column; gap: 1px; }
-    .mlabel { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; }
-    .mvalue {
-      font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums;
-      color: var(--cyan); line-height: 1.15;
-    }
-    .mvalue.good   { color: var(--green); }
-    .mvalue.warn   { color: var(--orange); }
-    .mvalue.danger { color: var(--red); text-shadow: 0 0 8px rgba(255,59,85,0.35); }
-
-    /* ── MOTORS CARD ────────────────────────────────────────────────── */
-    .mrow {
-      display: flex; align-items: center; gap: 7px;
-    }
-    .mrow + .mrow { margin-top: 5px; }
-    .mltr { font-size: 10px; font-weight: 700; color: var(--muted); width: 11px; flex-shrink: 0; }
-    .mbar-bg {
-      flex: 1; height: 11px; background: var(--bg);
-      border-radius: 4px; overflow: hidden; border: 1px solid var(--border);
-    }
-    .mbar-fill {
-      height: 100%; width: 0%;
-      background: linear-gradient(90deg, var(--cyan), rgba(0,212,255,0.55));
-      border-radius: 3px; transition: width 0.18s ease;
-    }
-    .mval {
-      font-size: 10px; font-weight: 700; color: var(--text);
-      font-variant-numeric: tabular-nums; width: 27px; text-align: right; flex-shrink: 0;
-    }
-
-    /* ── SIGNS CARD ─────────────────────────────────────────────────── */
-    .det-list { display: flex; flex-direction: column; gap: 4px; }
-    .det-item {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 3px 7px; border-radius: 5px;
-      background: var(--bg); border-left: 2px solid var(--cyan);
-    }
-    .det-item.stop    { border-left-color: var(--red); }
-    .det-item.person  { border-left-color: var(--orange); }
-    .det-item.vehicle { border-left-color: var(--green); }
-    .det-name { font-size: 11px; font-weight: 600; }
-    .det-conf { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
-    .no-det { font-size: 10px; color: var(--dim); text-align: center; padding: 3px 0; }
-
-    /* ── TRACK ITEM CARD ────────────────────────────────────────────── */
-    #track-card { display: none; }
-    .track-row { display: flex; gap: 5px; margin-bottom: 6px; }
-    .track-select {
-      flex: 1; padding: 5px 7px; border-radius: 6px;
-      background: var(--bg); color: var(--text);
-      border: 1px solid rgba(255,209,102,0.3);
-      font-size: 11px; font-weight: 600; cursor: pointer;
-      text-transform: capitalize;
-    }
-    .track-select:focus { outline: none; border-color: var(--yellow); }
-    .track-clear {
-      padding: 5px 9px; border: 1px solid var(--border2); border-radius: 6px;
-      background: var(--bg); color: var(--muted);
-      font-size: 11px; font-weight: 600; cursor: pointer;
-    }
-    .track-clear:hover { color: var(--red); border-color: rgba(255,59,85,0.35); }
-    .track-click-btn {
-      padding: 5px 9px; border: 1px solid rgba(255,209,102,0.3); border-radius: 6px;
-      background: rgba(255,209,102,0.08); color: var(--yellow);
-      font-size: 11px; font-weight: 700; cursor: pointer;
-    }
-    .track-click-btn:hover   { background: rgba(255,209,102,0.18); }
-    .track-click-btn.armed   { background: var(--yellow); color: #000; }
-    .video-wrapper.aim       { cursor: crosshair; }
-    .video-wrapper.aim img   { cursor: crosshair; }
     #aim-banner {
-      position: absolute; left: 50%; transform: translateX(-50%);
-      top: 36px; padding: 4px 12px; border-radius: 14px;
-      background: rgba(255,209,102,0.92); color: #000;
-      font-size: 10px; font-weight: 800; letter-spacing: 1.5px;
-      text-transform: uppercase; z-index: 20; pointer-events: none;
-      display: none;
+      display: none; position: absolute; bottom: 0; left: 0; right: 0; padding: 6px;
+      text-align: center; background: rgba(200,134,26,0.9);
+      font-family: 'Orbitron', monospace; font-size: 9px; font-weight: 700; letter-spacing: 2px;
+      color: #000; text-transform: uppercase;
     }
     #aim-banner.on { display: block; }
-    .track-lock-row {
+
+    .video-state {
+      flex-shrink: 0; height: 26px; padding: 0 10px;
       display: flex; align-items: center; gap: 7px;
-      font-size: 11px; font-weight: 600;
+      background: rgba(0,0,0,0.5); border-top: 1px solid var(--border);
     }
-    .track-lock-dot {
-      width: 9px; height: 9px; border-radius: 50%; background: var(--dim);
-      transition: all 0.2s;
+    #status-text {
+      flex: 1; font-family: 'Rajdhani', sans-serif; font-size: 12px;
+      color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
-    .track-lock-dot.locked {
-      background: var(--yellow); box-shadow: 0 0 8px var(--yellow);
-      animation: blink 1s infinite;
+
+    /* ══════════════════════════════════════════════════════════
+       RADAR
+    ══════════════════════════════════════════════════════════ */
+    .radar-body { display: flex; flex-direction: column; align-items: center; padding: 8px 8px 4px; }
+    .radar-sweep { transform-origin: 60px 60px; animation: radarSpin 3s linear infinite; }
+    @keyframes radarSpin { to { transform: rotate(360deg); } }
+    .radar-dist-lbl { font-family: 'Orbitron', monospace; font-size: 9px; color: var(--cyan); text-align: center; margin-top: 3px; letter-spacing: 1px; }
+
+    /* ══════════════════════════════════════════════════════════
+       DNN DETECTIONS
+    ══════════════════════════════════════════════════════════ */
+    .det-list { display: flex; flex-direction: column; gap: 3px; }
+    .no-det   { font-size: 11px; color: var(--muted); text-align: center; padding: 4px 0; }
+    .det-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 3px 6px; border-radius: 3px;
+      background: rgba(255,255,255,0.025); border: 1px solid var(--border);
     }
-    .track-lock-dot.searching { background: var(--orange); }
-    #val-track-lock { color: var(--muted); }
-    #val-track-lock.locked    { color: var(--yellow); }
+    .det-item.stop    { background: rgba(255,51,68,0.08);   border-color: rgba(255,51,68,0.28); }
+    .det-item.person  { background: rgba(255,144,64,0.08);  border-color: rgba(255,144,64,0.28); }
+    .det-item.vehicle { background: rgba(0,212,255,0.04);   border-color: rgba(0,212,255,0.18); }
+    .det-name { font-family: 'Rajdhani', sans-serif; font-size: 12px; font-weight: 600; color: var(--text); }
+    .det-item.stop .det-name   { color: var(--red); }
+    .det-item.person .det-name { color: var(--orange); }
+    .det-conf { font-family: 'Orbitron', monospace; font-size: 9px; color: var(--muted); font-weight: 600; }
+
+
+    /* ══════════════════════════════════════════════════════════
+       TRACK CARD
+    ══════════════════════════════════════════════════════════ */
+    .track-row { display: flex; gap: 4px; margin-bottom: 5px; }
+    .track-select {
+      flex: 1; padding: 4px 6px; background: var(--bg); border: 1px solid var(--border2);
+      border-radius: 4px; color: var(--text); font-family: 'Rajdhani', sans-serif; font-size: 12px; outline: none;
+    }
+    .track-select:focus { border-color: var(--gold); }
+    .track-clear {
+      padding: 4px 7px; background: transparent; border: 1px solid var(--border2);
+      border-radius: 4px; color: var(--muted); font-family: 'Orbitron', monospace; font-size: 8px; cursor: pointer;
+    }
+    .track-clear:hover { border-color: var(--red); color: var(--red); }
+    .track-click-btn {
+      flex: 1; padding: 5px 7px; background: rgba(200,134,26,0.07); border: 1px solid rgba(200,134,26,0.28);
+      border-radius: 4px; color: var(--gold); cursor: pointer; transition: all 0.15s;
+      font-family: 'Orbitron', monospace; font-size: 8px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+    }
+    .track-click-btn.armed { background: rgba(200,134,26,0.2); animation: blink 0.7s infinite; }
+    .track-lock-row { display: flex; align-items: center; gap: 5px; padding: 2px 0; }
+    .track-lock-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+    .track-lock-dot.locked    { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .track-lock-dot.searching { background: var(--orange); animation: blink 0.6s infinite; }
+    #val-track-lock { font-size: 11px; color: var(--muted); }
+    #val-track-lock.locked    { color: var(--green); }
     #val-track-lock.searching { color: var(--orange); }
-    .track-hint {
-      font-size: 10px; color: var(--muted); margin-top: 4px;
-      line-height: 1.35;
-    }
-    .ai-track-row { display: flex; gap: 5px; margin-top: 6px; }
+    #val-track-conf { font-family: 'Orbitron', monospace; font-size: 9px; color: var(--muted); margin-left: auto; }
+    .track-hint { font-size: 10px; color: var(--dim); margin: 4px 0; line-height: 1.4; }
+    .ai-track-row { display: flex; gap: 4px; margin-top: 5px; }
     .ai-track-input {
-      flex: 1; padding: 5px 8px; border-radius: 6px;
-      background: var(--bg); color: var(--text);
-      border: 1px solid rgba(255,209,102,0.25);
-      font-size: 11px; font-weight: 500;
+      flex: 1; padding: 4px 6px; background: var(--bg); border: 1px solid var(--border2);
+      border-radius: 4px; color: var(--text); font-family: 'Rajdhani', sans-serif; font-size: 11px; outline: none;
     }
-    .ai-track-input::placeholder { color: var(--dim); }
-    .ai-track-input:focus { outline: none; border-color: rgba(255,209,102,0.6); }
+    .ai-track-input:focus { border-color: var(--gold); }
+    .ai-glow-wrap { position: relative; overflow: hidden; border-radius: 4px; }
+    .ai-glow-yellow { }
     .ai-track-btn {
-      padding: 5px 10px; border-radius: 6px; border: none; cursor: pointer;
-      background: rgba(255,209,102,0.15); color: var(--yellow);
-      border: 1px solid rgba(255,209,102,0.35);
-      font-size: 11px; font-weight: 800; letter-spacing: 1px;
-      transition: all 0.15s; white-space: nowrap;
+      padding: 4px 8px; background: rgba(200,134,26,0.1); border: 1px solid rgba(200,134,26,0.4);
+      border-radius: 4px; color: var(--gold);
+      font-family: 'Orbitron', monospace; font-size: 8px; font-weight: 700; cursor: pointer; transition: all 0.15s;
     }
-    .ai-track-btn:hover { background: rgba(255,209,102,0.28); }
-    .ai-track-btn.loading {
-      background: var(--yellow); color: #000;
-      animation: blink 0.7s infinite;
+    .ai-track-btn.loading { animation: blink 0.4s infinite; }
+    .ai-ripple {
+      position: absolute; border-radius: 50%;
+      transform: scale(0); animation: rippleOut 0.65s ease-out forwards; pointer-events: none;
     }
-    .ai-track-result {
-      font-size: 10px; margin-top: 4px; min-height: 14px;
-      padding: 0 2px; transition: all 0.2s;
-    }
+    @keyframes rippleOut { to { transform: scale(1); opacity: 0; } }
+    .ai-track-result { font-size: 11px; margin-top: 3px; }
     .ai-track-result.ok   { color: var(--green); }
     .ai-track-result.fail { color: var(--red); }
 
-    /* ── MANUAL CARD ────────────────────────────────────────────────── */
-    .wasd-hint { font-size: 10px; color: var(--muted); margin-bottom: 5px; }
-    .wasd-grid { display: flex; flex-direction: column; align-items: center; gap: 3px; }
-    .wasd-row  { display: flex; gap: 3px; }
-    .key-box {
-      width: 28px; height: 28px; background: var(--bg);
-      border: 1px solid var(--border); border-radius: 5px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 11px; font-weight: 700; color: var(--muted);
-      transition: all 0.1s; user-select: none;
-    }
-    .key-box.active {
-      background: rgba(0,212,255,0.1); border-color: var(--cyan);
-      color: var(--cyan); box-shadow: 0 0 6px rgba(0,212,255,0.22);
-    }
-    .manual-inactive { color: var(--dim); font-size: 10px; text-align: center; margin-top: 4px; }
-
-    #dpad-container { display: none; }
-    .dpad-label { font-size: 10px; color: var(--green); font-weight: 700; text-align: center; margin-bottom: 5px; letter-spacing: 1px; }
-    .dpad { display: flex; flex-direction: column; align-items: center; gap: 3px; }
-    .dpad-row { display: flex; gap: 3px; }
-    .dpad-btn {
-      width: 40px; height: 40px; border-radius: 7px;
-      border: 1px solid var(--border2); background: var(--bg);
-      color: var(--muted); font-size: 17px; font-weight: 700;
-      cursor: pointer; display: flex; align-items: center; justify-content: center;
-      user-select: none; transition: all 0.1s;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .dpad-btn:active, .dpad-btn.pressed {
-      background: rgba(0,212,255,0.12); border-color: var(--cyan); color: var(--cyan);
-    }
-    .dpad-stop {
-      width: 34px; height: 34px; font-size: 13px;
-      background: rgba(255,59,85,0.07); border-color: rgba(255,59,85,0.3); color: var(--red);
-    }
-    .dpad-stop:active { background: rgba(255,59,85,0.22); }
-    #dpad-status { font-size: 10px; color: var(--muted); text-align: center; margin-top: 3px; }
-
-    /* ── LOG CARD (stretchy) ────────────────────────────────────────── */
-    .log-card { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
-    .log-card .card-body { flex: 1; min-height: 0; overflow-y: auto; padding: 5px 8px; }
-    .log-list { display: flex; flex-direction: column; gap: 2px; }
-    .log-item { font-size: 10px; font-family: 'Consolas', monospace; color: var(--muted); }
-    .log-item.new { color: var(--text); }
-    .log-item .ts { color: var(--dim); margin-right: 5px; }
-
-    /* ── CONTROLS BAR ───────────────────────────────────────────────── */
-    .controls {
-      height: 42px; flex-shrink: 0;
-      display: flex; align-items: center; gap: 7px; padding: 0 12px;
-      background: var(--surface); border-top: 1px solid var(--border);
-    }
-    .btn {
-      padding: 5px 13px; border: none; border-radius: 6px;
-      font-size: 12px; font-weight: 600; cursor: pointer;
-      transition: all 0.15s; letter-spacing: 0.3px; white-space: nowrap;
-    }
-    .btn:active { transform: scale(0.97); }
-    .btn-danger  { background: var(--red); color: #fff; }
-    .btn-danger:hover { background: #ff1133; }
-    .btn-neutral { background: var(--border2); color: var(--text); }
-    .btn-neutral:hover { background: #323860; }
-    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .btn-set {
-      background: rgba(0,212,255,0.1); color: var(--cyan);
-      border: 1px solid rgba(0,212,255,0.3); padding: 5px 10px;
-    }
-    .btn-set:hover { background: rgba(0,212,255,0.18); }
-
-    .speed-ctl { display: flex; align-items: center; gap: 7px; margin-left: auto; }
-    .speed-ctl label { font-size: 11px; color: var(--muted); white-space: nowrap; }
-    .speed-ctl input[type=range] { width: 88px; accent-color: var(--cyan); cursor: pointer; }
-    #speed-val { font-size: 12px; font-weight: 700; color: var(--cyan); min-width: 30px; font-variant-numeric: tabular-nums; }
-
-    /* ── AI DRIVE ───────────────────────────────────────────────────── */
-    .ai-drive-divider {
-      border: none; border-top: 1px solid var(--border);
-      margin: 8px 0 7px;
-    }
-    .ai-drive-label {
-      font-size: 9px; font-weight: 700; letter-spacing: 1.5px;
-      color: var(--muted); text-transform: uppercase; margin-bottom: 5px;
-    }
-    .ai-drive-row { display: flex; gap: 5px; }
-    .ai-drive-input {
-      flex: 1; padding: 5px 8px; border-radius: 6px;
-      background: var(--bg); color: var(--text);
-      border: 1px solid rgba(0,212,255,0.2);
-      font-size: 11px;
-    }
-    .ai-drive-input::placeholder { color: var(--dim); }
-    .ai-drive-input:focus { outline: none; border-color: rgba(0,212,255,0.55); }
-    .ai-drive-send {
-      padding: 5px 10px; border-radius: 6px;
-      background: rgba(0,212,255,0.1); color: var(--cyan);
-      border: 1px solid rgba(0,212,255,0.3);
-      font-size: 11px; font-weight: 800; cursor: pointer; letter-spacing: 1px;
-      transition: all 0.15s;
-    }
-    .ai-drive-send:hover { background: rgba(0,212,255,0.22); }
-    .ai-drive-send.loading { background: var(--cyan); color: #000; animation: blink 0.6s infinite; }
-    .mic-btn {
-      padding: 5px 9px; border-radius: 6px;
-      background: rgba(255,59,85,0.08); color: var(--muted);
-      border: 1px solid var(--border); font-size: 14px;
-      cursor: pointer; transition: all 0.15s; line-height: 1;
-    }
-    .mic-btn:not(:disabled):hover { color: var(--red); border-color: rgba(255,59,85,0.4); }
-    .mic-btn:disabled { opacity: 0.25; cursor: not-allowed; }
-    .mic-btn.recording {
-      background: rgba(255,59,85,0.18); color: var(--red);
-      border-color: var(--red); animation: blink 0.8s infinite;
-    }
-    .ai-drive-status {
-      font-size: 10px; margin-top: 4px; min-height: 13px;
-      display: flex; align-items: center; gap: 5px;
-    }
-    .ai-drive-status .ds-dot {
-      width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
-      background: var(--dim);
-    }
-    .ai-drive-status.running .ds-dot {
-      background: var(--cyan); animation: blink 0.5s infinite;
-    }
-    .ai-drive-status.ok    .ds-dot { background: var(--green); animation: none; }
-    .ai-drive-status.fail  .ds-dot { background: var(--red);   animation: none; }
-    .ai-drive-status .ds-text { color: var(--muted); }
-    .ai-drive-status.running .ds-text { color: var(--cyan); }
-    .ai-drive-status.ok     .ds-text  { color: var(--green); }
-    .ai-drive-status.fail   .ds-text  { color: var(--red); }
-
-    /* ── AI BUTTON GLOW ROTATION (AI button only) ──────────────────── */
-
-    /*
-      Wrapper clips the spinning square — 2px padding becomes the visible ring.
-      Key fix: pseudo-element MUST be a fixed-size SQUARE centered via margin,
-      not inset:% (which creates a rectangle and warps the conic gradient).
-    */
-    .ai-glow-wrap {
-      display: inline-flex;
-      border-radius: 9px;
-      padding: 2px;
-      position: relative;
-      overflow: hidden;
-      flex-shrink: 0;
-      transition: box-shadow 0.3s;
-    }
-
-    /* Primary spinning arc */
-    .ai-glow-wrap::before {
-      content: '';
-      position: absolute;
-      width: 280px; height: 280px;   /* fixed square — must be larger than button */
-      left: 50%; top: 50%;
-      margin-left: -140px; margin-top: -140px;   /* centers it without transform */
-      background: conic-gradient(
-        from 0deg,
-        transparent   80deg,
-        #ffd166      150deg,
-        #ffaa00      190deg,
-        #ff9040      220deg,
-        transparent  290deg
-      );
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.3s;
-    }
-
-    /* Secondary arc (offset 180°) — layered aurora look */
-    .ai-glow-wrap::after {
-      content: '';
-      position: absolute;
-      width: 280px; height: 280px;
-      left: 50%; top: 50%;
-      margin-left: -140px; margin-top: -140px;
-      background: conic-gradient(
-        from 180deg,
-        transparent              80deg,
-        rgba(255,209,102, 0.5)  150deg,
-        rgba(255,144, 64, 0.35) 210deg,
-        transparent              280deg
-      );
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.3s;
-    }
-
-    /* Hover — spin both arcs */
-    .ai-glow-wrap:hover::before,
-    .ai-glow-wrap:hover::after  { opacity: 1; animation: aiRingSpin 1.6s linear infinite; }
-
-    /* Active — spin fast + bright burst */
-    .ai-glow-wrap:active::before,
-    .ai-glow-wrap:active::after { opacity: 1; animation: aiRingSpin 0.4s  linear infinite; }
-
-    /* Centering is done with margin so the keyframe only needs rotate */
-    @keyframes aiRingSpin { to { transform: rotate(360deg); } }
-
-    /* Outer halo glow */
-    .ai-glow-wrap:hover  { box-shadow: 0 0 18px rgba(255,209,102,0.65), 0 0 40px rgba(255,144,64,0.22); }
-    .ai-glow-wrap:active { box-shadow: 0 0 30px rgba(255,209,102,0.95), 0 0 60px rgba(255,144,64,0.4); }
-
-    /* Inner button — fills wrapper (1px less radius), presses on click */
-    .ai-glow-wrap > button {
-      flex: 1; border-radius: 7px;
-      position: relative; z-index: 1;
-      transition: transform 0.09s;
-    }
-    .ai-glow-wrap:active > button { transform: scale(0.91); }
-
-    /* JS-spawned ripple */
-    .ai-ripple {
-      position: absolute; border-radius: 50%;
-      pointer-events: none; z-index: 2;
-      transform: scale(0);
-      animation: aiRippleFade 0.6s ease-out forwards;
-    }
-    @keyframes aiRippleFade { to { transform: scale(5); opacity: 0; } }
-
-    /* ── SENTRY CARD ────────────────────────────────────────────────── */
-    #sentry-card { display: none; }
+    /* ══════════════════════════════════════════════════════════
+       SENTRY
+    ══════════════════════════════════════════════════════════ */
     .sentry-arm-btn {
-      width: 100%; padding: 7px 0; border-radius: 6px; border: none;
-      font-size: 12px; font-weight: 700; cursor: pointer; letter-spacing: 1px;
-      transition: all 0.15s; text-transform: uppercase;
-      background: rgba(255,59,85,0.1); color: var(--red);
-      border: 1px solid rgba(255,59,85,0.3); margin-bottom: 7px;
+      width: 100%; padding: 7px; background: rgba(255,51,68,0.07); border: 1px solid rgba(255,51,68,0.28);
+      border-radius: 5px; color: var(--red); cursor: pointer; transition: all 0.2s;
+      font-family: 'Orbitron', monospace; font-size: 9px; font-weight: 700; letter-spacing: 2px;
+      text-transform: uppercase; margin-bottom: 6px;
     }
-    .sentry-arm-btn:hover { background: rgba(255,59,85,0.2); }
-    .sentry-arm-btn.armed {
-      background: rgba(255,59,85,0.18); color: #fff;
-      border-color: var(--red); box-shadow: 0 0 10px rgba(255,59,85,0.25);
-      animation: blink 1.6s infinite;
-    }
-    .sentry-indicators { display: flex; gap: 6px; margin-bottom: 7px; }
+    .sentry-arm-btn.armed { background: rgba(255,51,68,0.18); animation: blink 1.5s infinite; box-shadow: 0 0 12px rgba(255,51,68,0.28); }
+    .sentry-indicators { display: flex; gap: 5px; margin-bottom: 5px; }
     .sentry-ind {
-      flex: 1; padding: 4px 6px; border-radius: 5px; text-align: center;
-      font-size: 10px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase;
-      background: var(--bg); border: 1px solid var(--border); color: var(--dim);
-      transition: all 0.2s;
+      flex: 1; padding: 3px 4px; text-align: center; border-radius: 3px;
+      font-family: 'Orbitron', monospace; font-size: 7px; letter-spacing: 1px;
+      background: var(--bg); border: 1px solid var(--border); color: var(--muted);
     }
-    .sentry-ind.active-motion { background: rgba(0,100,200,0.18); color: #4d9fff; border-color: rgba(77,159,255,0.4); }
-    .sentry-ind.active-person { background: rgba(255,59,85,0.18); color: var(--red);  border-color: rgba(255,59,85,0.4); }
-    .sentry-event-log { max-height: 110px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
-    .sentry-evt {
-      display: flex; align-items: center; gap: 6px;
-      padding: 3px 6px; border-radius: 4px;
-      background: var(--bg); border-left: 2px solid var(--border2);
-      font-size: 10px;
-    }
-    .sentry-evt.evt-person { border-left-color: var(--red); }
-    .sentry-evt.evt-motion { border-left-color: #4d9fff; }
-    .sentry-evt-time { color: var(--dim); min-width: 46px; font-family: monospace; }
-    .sentry-evt-type { font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-    .sentry-evt-count { margin-left: auto; color: var(--dim); font-size: 9px; }
-    .sentry-clear {
-      width: 100%; margin-top: 5px; padding: 3px 0;
-      border: 1px solid var(--border); border-radius: 5px;
-      background: transparent; color: var(--muted);
-      font-size: 10px; cursor: pointer;
-    }
-    .sentry-clear:hover { color: var(--red); border-color: rgba(255,59,85,0.3); }
-    .b-sentry { background: rgba(255,59,85,0.1); color: var(--red); border-color: rgba(255,59,85,0.3); }
+    .sentry-ind.active-motion { background: rgba(255,144,64,0.12); border-color: rgba(255,144,64,0.4); color: var(--orange); }
+    .sentry-ind.active-person { background: rgba(255,51,68,0.12);  border-color: rgba(255,51,68,0.4);  color: var(--red); animation: blink 0.5s infinite; }
+    .sentry-event-log { max-height: 80px; overflow-y: auto; }
+    .sentry-event-log::-webkit-scrollbar { width: 2px; }
+    .sentry-event-log::-webkit-scrollbar-thumb { background: var(--border2); }
+    .sentry-evt { display: flex; align-items: center; gap: 5px; padding: 2px 0; font-size: 10px; }
+    .sentry-evt-time { color: var(--muted); font-size: 9px; }
+    .evt-person .sentry-evt-type { color: var(--red); }
+    .evt-motion .sentry-evt-type { color: var(--orange); }
 
-    /* ── SCROLLBAR ──────────────────────────────────────────────────── */
-    ::-webkit-scrollbar { width: 3px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-
-    /* ═══════════════════════════════════════════════════════════════
-       SPLASH SCREEN
-    ═══════════════════════════════════════════════════════════════ */
-    #splash {
-      position: fixed; inset: 0; z-index: 9999;
-      background: #020408;
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      overflow: hidden;
-      cursor: pointer;
-    }
-    #splash.exit {
-      animation: splashExit 0.7s cubic-bezier(0.4,0,0.2,1) forwards;
-    }
-    @keyframes splashExit {
-      0%   { opacity: 1; transform: scale(1); }
-      30%  { opacity: 1; transform: scale(1.03); filter: brightness(1.8) saturate(2); }
-      100% { opacity: 0; transform: scale(0.92); pointer-events: none; }
-    }
-
-    /* ── Background grid ── */
-    .sp-grid {
-      position: absolute; inset: 0; pointer-events: none;
-      background-image:
-        linear-gradient(rgba(0,212,255,0.04) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0,212,255,0.04) 1px, transparent 1px);
-      background-size: 48px 48px;
-      animation: gridPulse 4s ease-in-out infinite;
-    }
-    @keyframes gridPulse {
-      0%,100% { opacity: 0.6; } 50% { opacity: 1; }
-    }
-
-    /* ── Scanline ── */
-    .sp-scan {
-      position: absolute; left: 0; right: 0; height: 2px;
-      background: linear-gradient(90deg, transparent, var(--cyan), rgba(0,212,255,0.4), transparent);
-      box-shadow: 0 0 18px 4px rgba(0,212,255,0.35);
-      animation: scanDown 3s cubic-bezier(0.4,0,0.6,1) infinite;
-      pointer-events: none;
-    }
-    @keyframes scanDown {
-      0%   { top: -4px; opacity: 0; }
-      5%   { opacity: 1; }
-      95%  { opacity: 0.7; }
-      100% { top: 100%; opacity: 0; }
-    }
-
-    /* ── Corner brackets ── */
-    .sp-corner {
-      position: absolute; width: 36px; height: 36px;
-      border-color: var(--cyan); border-style: solid; opacity: 0;
-      animation: cornerIn 0.4s ease forwards;
-    }
-    .sp-corner.tl { top: 22px; left: 22px; border-width: 2px 0 0 2px; animation-delay: 0.2s; }
-    .sp-corner.tr { top: 22px; right: 22px; border-width: 2px 2px 0 0; animation-delay: 0.3s; }
-    .sp-corner.bl { bottom: 22px; left: 22px; border-width: 0 0 2px 2px; animation-delay: 0.4s; }
-    .sp-corner.br { bottom: 22px; right: 22px; border-width: 0 2px 2px 0; animation-delay: 0.5s; }
-    @keyframes cornerIn {
-      from { opacity: 0; transform: scale(0.5); }
-      to   { opacity: 1; transform: scale(1); }
-    }
-
-    /* ── Side accent lines ── */
-    .sp-line {
-      position: absolute; background: linear-gradient(var(--cyan), transparent);
-      width: 1px; opacity: 0; animation: lineIn 0.6s ease forwards;
-    }
-    .sp-line.left  { left: 22px;  top: 60px; bottom: 60px; animation-delay: 0.5s; }
-    .sp-line.right { right: 22px; top: 60px; bottom: 60px; animation-delay: 0.6s; }
-    @keyframes lineIn { from { opacity: 0; } to { opacity: 0.35; } }
-
-    /* ── Center content ── */
-    .sp-center {
-      position: relative; z-index: 2;
-      display: flex; flex-direction: column; align-items: center;
-      gap: 0; text-align: center; padding: 0 40px;
-    }
-
-    /* ── Emblem ── */
-    .sp-emblem {
-      position: relative; width: 100px; height: 100px;
-      display: flex; align-items: center; justify-content: center;
-      margin-bottom: 28px; opacity: 0;
-      animation: emblemIn 0.6s cubic-bezier(0.175,0.885,0.32,1.275) 0.7s forwards;
-    }
-    @keyframes emblemIn {
-      from { opacity: 0; transform: scale(0.4) rotate(-20deg); }
-      to   { opacity: 1; transform: scale(1)   rotate(0deg); }
-    }
-    .sp-emblem-v {
-      font-size: 58px; font-weight: 900; color: var(--cyan);
-      letter-spacing: -2px;
-      text-shadow: 0 0 20px var(--cyan), 0 0 50px rgba(0,212,255,0.5), 0 0 90px rgba(0,212,255,0.2);
-      position: relative; z-index: 2; font-family: 'Segoe UI', sans-serif;
-    }
-    .sp-ring {
-      position: absolute; inset: 0; border-radius: 50%;
-      border: 1px solid rgba(0,212,255,0.35);
-      animation: ringRotate 6s linear infinite;
-    }
-    .sp-ring::before {
-      content: ''; position: absolute;
-      width: 8px; height: 8px; border-radius: 50%;
-      background: var(--cyan);
-      box-shadow: 0 0 8px var(--cyan);
-      top: -4px; left: calc(50% - 4px);
-    }
-    .sp-ring2 {
-      position: absolute; inset: 10px; border-radius: 50%;
-      border: 1px solid rgba(0,212,255,0.15);
-      animation: ringRotate 4s linear infinite reverse;
-    }
-    @keyframes ringRotate { to { transform: rotate(360deg); } }
-
-    /* ── Title ── */
-    .sp-title {
-      font-size: clamp(28px, 5vw, 46px);
-      font-weight: 900; letter-spacing: 10px;
-      color: #fff; text-transform: uppercase;
-      text-shadow: 0 0 30px rgba(0,212,255,0.4);
-      min-height: 1.2em; margin-bottom: 10px;
-      animation: titleGlitch 5s 2s infinite;
-    }
-    @keyframes titleGlitch {
-      0%,92%,100% { transform: none; text-shadow: 0 0 30px rgba(0,212,255,0.4); }
-      93%  { transform: skewX(-3deg) translateX(-4px); color: #00d4ff;
-             text-shadow: 4px 0 #ff3b55, -4px 0 #00e87a; }
-      94%  { transform: skewX(3deg)  translateX(4px);  color: #fff;
-             text-shadow: -4px 0 #ff3b55, 4px 0 #00e87a; }
-      95%  { transform: skewX(-1deg) translateX(-2px); color: #00d4ff; }
-      96%  { transform: none; text-shadow: 0 0 30px rgba(0,212,255,0.4); }
-    }
-
-    .sp-sub {
-      font-size: 11px; letter-spacing: 5px; color: var(--muted);
-      text-transform: uppercase; margin-bottom: 32px;
-      opacity: 0; animation: fadeUp 0.5s ease 1.9s forwards;
-    }
-    @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(8px); }
-      to   { opacity: 1; transform: none; }
-    }
-
-    /* ── Boot log ── */
-    .sp-boot {
-      width: min(400px, 90vw); margin-bottom: 20px;
-      display: flex; flex-direction: column; gap: 5px;
-      font-family: 'Consolas', monospace; font-size: 11px;
-      min-height: 84px;
-    }
-    .sp-boot-line {
-      display: flex; justify-content: space-between; align-items: center;
-      opacity: 0; transform: translateX(-12px);
-      animation: bootLine 0.3s ease forwards;
-      color: #3a4060;
-      padding: 2px 0;
-    }
-    .sp-boot-line.active { color: var(--muted); }
-    .sp-boot-text { display: flex; align-items: center; gap: 8px; }
-    .sp-boot-dot  { width: 5px; height: 5px; border-radius: 50%; background: var(--dim); flex-shrink: 0; }
-    .sp-boot-line.active .sp-boot-dot { background: var(--cyan); box-shadow: 0 0 5px var(--cyan); }
-    .sp-boot-tag {
-      padding: 1px 6px; border-radius: 3px; font-size: 9px;
-      font-weight: 700; letter-spacing: 1px;
-    }
-    .tag-ok   { background: rgba(0,232,122,0.12); color: var(--green); border: 1px solid rgba(0,232,122,0.3); }
-    .tag-wait { background: rgba(0,212,255,0.08); color: var(--cyan);  border: 1px solid rgba(0,212,255,0.25);
-                animation: blink 0.9s infinite; }
-    .tag-err  { background: rgba(255,59,85,0.12); color: var(--red);   border: 1px solid rgba(255,59,85,0.3); }
-    @keyframes bootLine {
-      to { opacity: 1; transform: none; }
-    }
-
-    /* ── Progress bar ── */
-    .sp-bar-wrap {
-      width: min(400px, 90vw); height: 3px;
-      background: var(--border); border-radius: 2px; overflow: hidden;
-      margin-bottom: 22px; opacity: 0;
-      animation: fadeUp 0.3s ease 2.2s forwards;
-    }
-    .sp-bar-fill {
-      height: 100%; width: 0%;
-      background: linear-gradient(90deg, rgba(0,212,255,0.6), var(--cyan));
-      border-radius: 2px;
-      box-shadow: 0 0 8px var(--cyan);
-      transition: width 0.25s ease;
-    }
-
-    /* ── Skip hint ── */
-    .sp-skip {
-      font-size: 10px; letter-spacing: 3px; color: var(--dim);
-      text-transform: uppercase;
-      opacity: 0; animation: fadeUp 0.4s ease 2.6s forwards;
-    }
-    .sp-skip span {
-      display: inline-block; padding: 2px 8px;
-      border: 1px solid var(--border); border-radius: 4px;
-      animation: blink 2s infinite;
-    }
-
-    /* Horizontal data lines across screen */
-    .sp-hline {
-      position: absolute; left: 0; right: 0; height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(0,212,255,0.06), transparent);
-      pointer-events: none;
-    }
+    /* ══════════════════════════════════════════════════════════
+       LOG
+    ══════════════════════════════════════════════════════════ */
+    .log-list { max-height: 70px; overflow-y: auto; }
+    .log-list::-webkit-scrollbar { width: 2px; }
+    .log-list::-webkit-scrollbar-thumb { background: var(--border2); }
+    .log-item { display: flex; gap: 6px; padding: 1.5px 0; font-size: 10px; color: var(--muted); border-bottom: 1px solid rgba(255,255,255,0.02); }
+    .log-item.new { color: var(--text); }
+    .log-item .ts { color: var(--dim); font-size: 9px; flex-shrink: 0; }
   </style>
 </head>
 <body>
 
-<!-- ══════════════════════════════════════════════════════════════
+<!-- ══════════════════════════════════════════════════════════
      SPLASH SCREEN
-══════════════════════════════════════════════════════════════ -->
+══════════════════════════════════════════════════════════ -->
 <div id="splash" onclick="skipSplash()">
-  <div class="sp-grid"></div>
-  <div class="sp-scan"></div>
-  <div class="sp-line left"></div>
-  <div class="sp-line right"></div>
-  <div class="sp-hline" style="top:25%"></div>
-  <div class="sp-hline" style="top:75%"></div>
+  <div class="sp-hlines"></div>
+  <div class="sp-rings">
+    <div class="sp-ring"></div>
+    <div class="sp-ring"></div>
+    <div class="sp-ring"></div>
+    <div class="sp-ring"></div>
+  </div>
   <div class="sp-corner tl"></div>
   <div class="sp-corner tr"></div>
   <div class="sp-corner bl"></div>
   <div class="sp-corner br"></div>
 
-  <div class="sp-center">
-    <div class="sp-emblem">
-      <div class="sp-ring"></div>
-      <div class="sp-ring2"></div>
-      <span class="sp-emblem-v">V</span>
-    </div>
+  <div class="sp-content">
+    <!-- VectorVance logo (splash size) -->
+    <svg class="sp-logo" viewBox="0 0 220 250" width="165" height="188">
+      <defs>
+        <linearGradient id="sg1" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#3a7ab8"/>
+          <stop offset="100%" stop-color="#1d4a70"/>
+        </linearGradient>
+        <linearGradient id="gg1" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#e8a030"/>
+          <stop offset="100%" stop-color="#a86010"/>
+        </linearGradient>
+        <filter id="gf1" x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur stdDeviation="2.5" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      <!-- Shield body -->
+      <path d="M55,12 L165,12 Q178,12 178,28 L178,120 Q178,160 110,196 Q42,160 42,120 L42,28 Q42,12 55,12 Z"
+            fill="url(#sg1)" opacity="0.82"/>
+      <path d="M55,12 L165,12 Q178,12 178,28 L178,120 Q178,160 110,196 Q42,160 42,120 L42,28 Q42,12 55,12 Z"
+            fill="none" stroke="#3a7ab8" stroke-width="2.5" opacity="0.9"/>
+      <!-- Left wing -->
+      <path d="M60,78 C50,68 12,60 5,72 C15,83 42,86 64,90 L110,156 Z"
+            fill="url(#gg1)" filter="url(#gf1)" opacity="0.95"/>
+      <!-- Right wing -->
+      <path d="M160,78 C170,68 208,60 215,72 C205,83 178,86 156,90 L110,156 Z"
+            fill="url(#gg1)" filter="url(#gf1)" opacity="0.95"/>
+      <!-- Inner V -->
+      <path d="M78,28 L110,128 L142,28"
+            fill="none" stroke="#C8861A" stroke-width="5.5"
+            stroke-linejoin="round" stroke-linecap="round"/>
+      <!-- Compass star -->
+      <g transform="translate(110,118)" filter="url(#gf1)">
+        <polygon points="0,-15 4,-4 0,15 -4,-4" fill="#e8a030"/>
+        <polygon points="-15,0 -4,4 15,0 -4,-4" fill="#e8a030" opacity="0.75"/>
+        <circle cx="0" cy="0" r="4.5" fill="#C8861A"/>
+      </g>
+      <!-- VECTORVANCE -->
+      <text x="110" y="218" text-anchor="middle"
+            font-family="Orbitron,monospace" font-size="19" font-weight="800"
+            letter-spacing="2" fill="#2B5F8E">VECTOR<tspan fill="#C8861A">VANCE</tspan></text>
+    </svg>
 
     <div class="sp-title" id="sp-title"></div>
-    <div class="sp-sub">Autonomous Vehicle System &nbsp;·&nbsp; v2.0</div>
-
+    <div class="sp-subtitle">The Advanced Pi-Based Autonomous Vehicle</div>
     <div class="sp-boot" id="sp-boot"></div>
-
-    <div class="sp-bar-wrap">
-      <div class="sp-bar-fill" id="sp-bar"></div>
-    </div>
-
-    <div class="sp-skip"><span>Click anywhere or press any key to skip</span></div>
+    <div class="sp-bar-wrap"><div class="sp-bar-fill" id="sp-bar"></div></div>
+    <div class="sp-skip">Click anywhere or press any key to skip</div>
   </div>
 </div>
 
-<!-- ── HEADER ── -->
-<header>
-  <div class="brand">
-    <span class="brand-name">VectorVance</span>
-    <span class="brand-sub">AV Dashboard</span>
-  </div>
+<!-- ══════════════════════════════════════════════════════════
+     MAIN APP
+══════════════════════════════════════════════════════════ -->
+<div id="app">
 
-  <div class="mode-tabs" id="mode-tabs">
-    <button class="mode-tab" data-mode="FSD"    onclick="setMode('FSD')"    disabled>FSD</button>
-    <button class="mode-tab" data-mode="LANE"   onclick="setMode('LANE')"   disabled>Lane</button>
-    <button class="mode-tab" data-mode="TRACK"  onclick="setMode('TRACK')"  disabled>Track</button>
-    <button class="mode-tab" data-mode="MANUAL" onclick="setMode('MANUAL')" disabled>Manual</button>
-    <button class="mode-tab" data-mode="SENTRY" onclick="setMode('SENTRY')" disabled>Sentry</button>
-  </div>
-
-  <div class="conn-row">
-    <div class="dot" id="conn-dot"></div>
-    <span id="conn-label">Connecting&hellip;</span>
-  </div>
-</header>
-
-<!-- ── MAIN ── -->
-<div class="main">
-
-  <!-- VIDEO -->
-  <div class="video-panel" id="video-panel">
-    <div class="video-title">
-      <div class="rec-dot" id="rec-dot"></div>
-      <span>Innomaker 130° &mdash; Front Camera</span>
+  <!-- HEADER -->
+  <header>
+    <div class="hdr-left">
+      <!-- VectorVance logo (compact) -->
+      <svg viewBox="0 0 195 42" width="195" height="42">
+        <defs>
+          <linearGradient id="sg2" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#3a7ab8"/><stop offset="100%" stop-color="#1d4a70"/>
+          </linearGradient>
+          <linearGradient id="gg2" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#e8a030"/><stop offset="100%" stop-color="#a86010"/>
+          </linearGradient>
+        </defs>
+        <!-- Shield -->
+        <path d="M12,3 L38,3 Q43,3 43,8 L43,25 Q43,35 25,41 Q7,35 7,25 L7,8 Q7,3 12,3 Z"
+              fill="url(#sg2)" opacity="0.85"/>
+        <path d="M12,3 L38,3 Q43,3 43,8 L43,25 Q43,35 25,41 Q7,35 7,25 L7,8 Q7,3 12,3 Z"
+              fill="none" stroke="#3a7ab8" stroke-width="1.5" opacity="0.9"/>
+        <!-- Left wing -->
+        <path d="M13,18 C9,15 1,13 0,17 C3,21 9,22 14,23 L25,38 Z"
+              fill="url(#gg2)" opacity="0.9"/>
+        <!-- Right wing -->
+        <path d="M37,18 C41,15 49,13 50,17 C47,21 41,22 36,23 L25,38 Z"
+              fill="url(#gg2)" opacity="0.9"/>
+        <!-- V -->
+        <path d="M17,7 L25,30 L33,7" fill="none" stroke="#C8861A" stroke-width="2.5"
+              stroke-linejoin="round" stroke-linecap="round"/>
+        <!-- Star -->
+        <g transform="translate(25,26)">
+          <polygon points="0,-6 1.8,-1.5 0,6 -1.8,-1.5" fill="#e8a030"/>
+          <polygon points="-6,0 -1.5,1.8 6,0 -1.5,-1.8" fill="#e8a030" opacity="0.75"/>
+          <circle cx="0" cy="0" r="2" fill="#C8861A"/>
+        </g>
+        <!-- Text -->
+        <text x="60" y="20" font-family="Orbitron,monospace" font-size="13" font-weight="800"
+              letter-spacing="1.5" fill="#2B5F8E">VECTOR<tspan fill="#C8861A">VANCE</tspan></text>
+      </svg>
     </div>
-    <div class="vid-banners">
-      <div class="vid-banner" id="obstacle-banner">Obstacle Detected</div>
-      <div class="vid-banner" id="stop-sign-banner">&#9101; Stop Sign Detected</div>
-    </div>
-    <div class="video-wrapper" id="video-wrapper">
-      <img src="/video_feed" alt="Camera feed" id="video-feed"
-           onerror="this.src='/video_feed'" />
-    </div>
-    <div id="aim-banner">Click the target on the video</div>
-  </div>
 
-  <!-- SIDEBAR -->
-  <div class="sidebar">
-
-    <!-- STATUS -->
-    <div class="card">
-      <div class="card-head"><span>Status</span></div>
-      <div class="card-body">
-        <div class="badge-row">
-          <span id="mode-badge" class="badge b-lane">LANE</span>
-          <span id="state-badge" class="badge b-state">—</span>
-          <span id="danger-badge" class="badge b-stop" style="display:none">STOP SIGN</span>
-        </div>
-        <div id="status-text">—</div>
+    <div class="hdr-mid">
+      <div class="mode-tabs" id="mode-tabs">
+        <button class="mode-tab" data-mode="FSD"    onclick="setMode('FSD')"    disabled>FSD</button>
+        <button class="mode-tab" data-mode="LANE"   onclick="setMode('LANE')"   disabled>Lane</button>
+        <button class="mode-tab" data-mode="TRACK"  onclick="setMode('TRACK')"  disabled>Track</button>
+        <button class="mode-tab" data-mode="MANUAL" onclick="setMode('MANUAL')" disabled>Manual</button>
+        <button class="mode-tab" data-mode="SENTRY" onclick="setMode('SENTRY')" disabled>Sentry</button>
+      </div>
+      <div class="speed-wrap">
+        <span class="speed-lbl">SPD</span>
+        <input type="range" class="speed-slider" min="10" max="100" value="80"
+               oninput="onSpeedChange(this.value)">
+        <span id="speed-val">0.80</span>
       </div>
     </div>
 
-    <!-- TELEMETRY -->
-    <div class="card">
-      <div class="card-head"><span>Telemetry</span></div>
-      <div class="card-body">
-        <div class="metrics">
-          <div class="metric">
-            <span class="mlabel">Front Dist</span>
-            <span class="mvalue" id="val-dist">— cm</span>
+    <div class="hdr-right">
+      <div class="conn-wrap">
+        <div class="conn-dot" id="conn-dot"></div>
+        <span id="conn-label">Connecting&hellip;</span>
+      </div>
+      <button class="e-stop" onclick="sendCmd('emergency_stop')">&#9632; E-STOP</button>
+    </div>
+  </header>
+
+  <!-- COCKPIT -->
+  <div class="cockpit">
+
+    <!-- ══ LEFT PANEL ══ -->
+    <div class="panel">
+
+      <!-- Steering Wheel -->
+      <div class="card">
+        <div class="card-head">Steering</div>
+        <div class="steering-card-body">
+          <div class="steering-container">
+            <svg id="steering-svg" viewBox="0 0 100 100" width="96" height="96">
+              <!-- Outer ring -->
+              <circle cx="50" cy="50" r="44" fill="none" stroke="#C8861A" stroke-width="5.5" opacity="0.9"/>
+              <!-- Inner rim -->
+              <circle cx="50" cy="50" r="36" fill="none" stroke="rgba(200,134,26,0.2)" stroke-width="1"/>
+              <!-- Hub -->
+              <circle cx="50" cy="50" r="10" fill="rgba(200,134,26,0.12)" stroke="#C8861A" stroke-width="2"/>
+              <!-- Spoke top -->
+              <line x1="50" y1="6" x2="50" y2="40" stroke="#C8861A" stroke-width="4.5" stroke-linecap="round"/>
+              <!-- Spoke bottom-left -->
+              <line x1="50" y1="60" x2="13" y2="83" stroke="#C8861A" stroke-width="4.5" stroke-linecap="round"/>
+              <!-- Spoke bottom-right -->
+              <line x1="50" y1="60" x2="87" y2="83" stroke="#C8861A" stroke-width="4.5" stroke-linecap="round"/>
+              <!-- Center dot -->
+              <circle cx="50" cy="50" r="4" fill="#C8861A"/>
+              <!-- Top marker (12 o'clock) -->
+              <rect x="47" y="2" width="6" height="4" rx="2" fill="#C8861A" opacity="0.5"/>
+            </svg>
           </div>
-          <div class="metric">
-            <span class="mlabel">FPS</span>
-            <span class="mvalue" id="val-fps">—</span>
-          </div>
-          <div class="metric">
-            <span class="mlabel">Steer Error</span>
-            <span class="mvalue" id="val-err">— px</span>
-          </div>
-          <div class="metric">
-            <span class="mlabel">Speed Limit</span>
-            <span class="mvalue" id="val-speed-limit">—</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- MOTORS -->
-    <div class="card">
-      <div class="card-head"><span>Motors</span></div>
-      <div class="card-body">
-        <div class="mrow">
-          <span class="mltr">L</span>
-          <div class="mbar-bg"><div class="mbar-fill" id="bar-left"></div></div>
-          <span class="mval" id="bar-left-val">0.00</span>
-        </div>
-        <div class="mrow">
-          <span class="mltr">R</span>
-          <div class="mbar-bg"><div class="mbar-fill" id="bar-right"></div></div>
-          <span class="mval" id="bar-right-val">0.00</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- SIGN DETECTION -->
-    <div class="card">
-      <div class="card-head"><span>Sign Detection</span></div>
-      <div class="card-body">
-        <div class="det-list" id="detection-list">
-          <div class="no-det">No detections</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- TRACK ITEM -->
-    <div class="card" id="track-card">
-      <div class="card-head"><span>Track Item</span></div>
-      <div class="card-body">
-        <div class="track-row">
-          <select id="track-select" class="track-select"
-                  onchange="onTrackChange(this.value)">
-            <option value="">— pick item —</option>
-          </select>
-          <button class="track-clear" onclick="onTrackChange('')">Clear</button>
-        </div>
-        <div class="track-row">
-          <button id="track-click-btn" class="track-click-btn"
-                  onclick="toggleClickAim()" style="flex:1">Click to Pick</button>
-        </div>
-        <div class="track-lock-row">
-          <div class="track-lock-dot" id="track-lock-dot"></div>
-          <span id="val-track-lock">No target</span>
-          <span id="val-track-conf" style="margin-left:auto;color:var(--muted);font-size:10px;"></span>
-        </div>
-        <div class="track-hint" id="track-hint">
-          Pick an item, then place it in front of the camera. The car will lock on and chase.
-        </div>
-        <div class="ai-track-row">
-          <input type="text" id="ai-track-input" class="ai-track-input"
-                 placeholder="e.g. go get that ball"
-                 onkeydown="if(event.key==='Enter') aiTrack()" />
-          <span class="ai-glow-wrap ai-glow-yellow"><button id="ai-track-btn" class="ai-track-btn" onclick="aiTrack()">AI</button></span>
-        </div>
-        <div id="ai-track-result" class="ai-track-result"></div>
-      </div>
-    </div>
-
-    <!-- MANUAL CONTROL -->
-    <div class="card">
-      <div class="card-head"><span>Manual Control</span></div>
-      <div class="card-body">
-        <div id="wasd-section">
-          <div class="wasd-hint">Switch to Manual mode to drive:</div>
-          <div class="wasd-grid">
-            <div class="wasd-row"><div class="key-box" id="key-w">W</div></div>
-            <div class="wasd-row">
-              <div class="key-box" id="key-a">A</div>
-              <div class="key-box" id="key-s">S</div>
-              <div class="key-box" id="key-d">D</div>
+          <div class="steering-data">
+            <div class="sd-item">
+              <span class="sd-lbl">Error</span>
+              <span class="sd-val" id="val-err">— px</span>
+            </div>
+            <div class="sd-item">
+              <span class="sd-lbl">PID Out</span>
+              <span class="sd-val" id="val-pid">—</span>
+            </div>
+            <div class="sd-item">
+              <span class="sd-lbl">FPS</span>
+              <span class="sd-val" id="val-fps">—</span>
+            </div>
+            <div class="sd-item">
+              <span class="sd-lbl">Speed Lim</span>
+              <span class="sd-val" id="val-speed-limit">—</span>
             </div>
           </div>
-          <div id="manual-status" class="manual-inactive">Manual mode not active</div>
         </div>
-        <div id="dpad-container">
-          <div class="dpad-label">Manual Drive Active</div>
-          <div class="dpad">
-            <div class="dpad-row"><button class="dpad-btn" id="dpad-w">&#8679;</button></div>
-            <div class="dpad-row">
-              <button class="dpad-btn" id="dpad-a">&#8678;</button>
-              <button class="dpad-btn dpad-stop" id="dpad-stop">&#9632;</button>
-              <button class="dpad-btn" id="dpad-d">&#8680;</button>
-            </div>
-            <div class="dpad-row"><button class="dpad-btn" id="dpad-s">&#8681;</button></div>
+      </div>
+
+      <!-- Motor Gauges (4 motors, 2×2 grid) -->
+      <div class="card">
+        <div class="card-head">Motor Speeds</div>
+        <div class="gauges-wrap">
+          <!-- FL — Front Left (r=24, C=150.8, 270°=113.1, gap=37.7) -->
+          <div class="gauge-item">
+            <svg class="gauge-svg" viewBox="0 0 66 66" width="66" height="66">
+              <circle cx="33" cy="33" r="24" class="g-arc-bg"
+                      stroke-dasharray="113.1 37.7" transform="rotate(135,33,33)"/>
+              <circle cx="33" cy="33" r="24" id="gauge-fl-arc" class="g-arc-fill"
+                      stroke-dasharray="113.1 37.7" transform="rotate(135,33,33)"/>
+              <text x="33" y="31" class="g-val" id="gauge-fl-val">0%</text>
+              <text x="33" y="41" class="g-unit">FL</text>
+            </svg>
           </div>
-          <div id="dpad-status">Hold to drive</div>
+          <!-- FR — Front Right -->
+          <div class="gauge-item">
+            <svg class="gauge-svg" viewBox="0 0 66 66" width="66" height="66">
+              <circle cx="33" cy="33" r="24" class="g-arc-bg"
+                      stroke-dasharray="113.1 37.7" transform="rotate(135,33,33)"/>
+              <circle cx="33" cy="33" r="24" id="gauge-fr-arc" class="g-arc-fill"
+                      stroke-dasharray="113.1 37.7" transform="rotate(135,33,33)"/>
+              <text x="33" y="31" class="g-val" id="gauge-fr-val">0%</text>
+              <text x="33" y="41" class="g-unit">FR</text>
+            </svg>
+          </div>
+          <!-- RL — Rear Left -->
+          <div class="gauge-item">
+            <svg class="gauge-svg" viewBox="0 0 66 66" width="66" height="66">
+              <circle cx="33" cy="33" r="24" class="g-arc-bg"
+                      stroke-dasharray="113.1 37.7" transform="rotate(135,33,33)"/>
+              <circle cx="33" cy="33" r="24" id="gauge-rl-arc" class="g-arc-fill"
+                      stroke-dasharray="113.1 37.7" transform="rotate(135,33,33)"/>
+              <text x="33" y="31" class="g-val" id="gauge-rl-val">0%</text>
+              <text x="33" y="41" class="g-unit">RL</text>
+            </svg>
+          </div>
+          <!-- RR — Rear Right -->
+          <div class="gauge-item">
+            <svg class="gauge-svg" viewBox="0 0 66 66" width="66" height="66">
+              <circle cx="33" cy="33" r="24" class="g-arc-bg"
+                      stroke-dasharray="113.1 37.7" transform="rotate(135,33,33)"/>
+              <circle cx="33" cy="33" r="24" id="gauge-rr-arc" class="g-arc-fill"
+                      stroke-dasharray="113.1 37.7" transform="rotate(135,33,33)"/>
+              <text x="33" y="31" class="g-val" id="gauge-rr-val">0%</text>
+              <text x="33" y="41" class="g-unit">RR</text>
+            </svg>
+          </div>
         </div>
+      </div>
 
-        <!-- AI DRIVE -->
-        <hr class="ai-drive-divider" />
-        <div class="ai-drive-label">AI Voice / Text Drive</div>
-        <div class="ai-drive-row">
-          <input type="text" id="ai-drive-input" class="ai-drive-input"
-                 placeholder="e.g. move forward, turn left…"
-                 onkeydown="if(event.key==='Enter') aiDrive()" />
-          <button id="mic-btn" class="mic-btn" onclick="toggleMic()" title="Click to record voice command">&#127908;</button>
-          <button id="ai-drive-send" class="ai-drive-send" onclick="aiDrive()">GO</button>
+      <!-- Status -->
+      <div class="card">
+        <div class="card-head">System Status</div>
+        <div class="card-body">
+          <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:5px;">
+            <span class="badge b-lane" id="mode-badge">LANE</span>
+            <span class="badge b-state" id="state-badge">—</span>
+            <span class="badge b-danger" id="danger-badge" style="display:none;"></span>
+          </div>
+          <div id="status-text" style="font-size:11px;color:var(--muted);">—</div>
         </div>
-        <div id="ai-drive-status" class="ai-drive-status">
-          <div class="ds-dot"></div>
-          <span class="ds-text">Ready</span>
+      </div>
+
+      <!-- Manual Control -->
+      <div class="card">
+        <div class="card-head">Manual Drive</div>
+        <div class="card-body">
+          <div id="wasd-section">
+            <div class="wasd-hint">Switch to Manual mode:</div>
+            <div class="wasd-grid">
+              <div class="wasd-row"><div class="key-box" id="key-w">W</div></div>
+              <div class="wasd-row">
+                <div class="key-box" id="key-a">A</div>
+                <div class="key-box" id="key-s">S</div>
+                <div class="key-box" id="key-d">D</div>
+              </div>
+            </div>
+            <div class="manual-inactive" id="manual-status">Manual mode not active</div>
+          </div>
+          <div id="dpad-container">
+            <div class="dpad-label">&#9679; MANUAL ACTIVE</div>
+            <div class="dpad">
+              <div class="dpad-row"><button class="dpad-btn" id="dpad-w">&#8679;</button></div>
+              <div class="dpad-row">
+                <button class="dpad-btn" id="dpad-a">&#8678;</button>
+                <button class="dpad-btn dpad-stop" id="dpad-stop">&#9632;</button>
+                <button class="dpad-btn" id="dpad-d">&#8680;</button>
+              </div>
+              <div class="dpad-row"><button class="dpad-btn" id="dpad-s">&#8681;</button></div>
+            </div>
+            <div id="dpad-status">Hold to drive</div>
+          </div>
+
+          <hr class="ai-drive-divider">
+
+          <!-- AI Text Drive -->
+          <div class="ai-section-lbl">AI Text Drive</div>
+          <div class="ai-text-row">
+            <input type="text" id="ai-drive-input" class="ai-drive-input"
+                   placeholder="e.g. move forward, turn left…"
+                   onkeydown="if(event.key==='Enter') aiDrive()">
+            <div class="ai-go-wrap">
+              <button id="ai-drive-send" class="ai-drive-send" onclick="aiDrive()">GO</button>
+            </div>
+          </div>
+
+          <hr class="ai-drive-divider">
+
+          <!-- Voice Command -->
+          <div class="ai-section-lbl">Voice Command</div>
+          <div class="voice-section">
+            <div class="voice-btn-outer">
+              <button id="mic-btn" class="voice-btn" onclick="toggleMic()" title="Click to record voice command">&#127908;</button>
+            </div>
+            <span class="voice-hint" id="voice-hint">Click to speak a command</span>
+          </div>
+
+          <div id="ai-drive-status" class="ai-drive-status">
+            <div class="ds-dot"></div>
+            <span class="ds-text">Ready</span>
+          </div>
         </div>
+      </div>
+
+    </div><!-- /panel-left -->
+
+    <!-- ══ CENTER: VIDEO ══ -->
+    <div class="video-panel" id="video-panel">
+      <div class="hud-corner tl"></div>
+      <div class="hud-corner tr"></div>
+      <div class="hud-corner bl"></div>
+      <div class="hud-corner br"></div>
+
+      <div class="video-title">
+        <div class="rec-dot" id="rec-dot"></div>
+        <span>Innomaker 130&deg; — Rear Camera</span>
+        <span style="margin-left:auto;font-size:7px;letter-spacing:1px;" id="vid-fps-label"></span>
+      </div>
+      <div class="vid-banners">
+        <div class="vid-banner" id="obstacle-banner">Obstacle Detected</div>
+        <div class="vid-banner" id="stop-sign-banner">&#9101; Stop Sign Detected</div>
+      </div>
+      <div class="video-wrapper" id="video-wrapper">
+        <img src="/video_feed" alt="Camera feed" id="video-feed" onerror="this.src='/video_feed'">
+      </div>
+      <div id="aim-banner">Click target on video to lock</div>
+      <div class="video-state">
+        <span class="badge b-lane" id="vid-mode-badge" style="flex-shrink:0;">LANE</span>
+        <span id="status-text" style="flex:1;font-size:11px;color:var(--muted);">—</span>
+        <span class="badge b-state" id="vid-state-badge" style="flex-shrink:0;">—</span>
       </div>
     </div>
 
-    <!-- SENTRY -->
-    <div class="card" id="sentry-card">
-      <div class="card-head"><span>Sentry Monitor</span><span id="sentry-event-count" style="color:var(--red);font-size:9px;font-weight:700;"></span></div>
-      <div class="card-body">
-        <button class="sentry-arm-btn" id="sentry-arm-btn" onclick="toggleSentry()">ARM SENTRY</button>
-        <div class="sentry-indicators">
-          <div class="sentry-ind" id="sentry-ind-motion">Motion</div>
-          <div class="sentry-ind" id="sentry-ind-person">Person</div>
+    <!-- ══ RIGHT PANEL ══ -->
+    <div class="panel">
+
+      <!-- Radar / Distance -->
+      <div class="card">
+        <div class="card-head">Rear Sensor<span class="card-head-muted" id="dist-badge" style="font-family:'Rajdhani';font-size:11px;color:var(--cyan);"></span></div>
+        <div class="radar-body">
+          <svg viewBox="0 0 120 120" width="120" height="120">
+            <defs>
+              <radialGradient id="sweepGrad" cx="60" cy="60" r="55" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="rgba(0,232,122,0.6)"/>
+                <stop offset="100%" stop-color="rgba(0,232,122,0)"/>
+              </radialGradient>
+            </defs>
+            <!-- Grid rings -->
+            <circle cx="60" cy="60" r="18" fill="none" stroke="rgba(0,212,255,0.12)" stroke-width="0.8"/>
+            <circle cx="60" cy="60" r="35" fill="none" stroke="rgba(0,212,255,0.10)" stroke-width="0.8"/>
+            <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(0,212,255,0.08)" stroke-width="0.8"/>
+            <!-- Crosshairs -->
+            <line x1="60" y1="8" x2="60" y2="112" stroke="rgba(0,212,255,0.06)" stroke-width="0.5"/>
+            <line x1="8"  y1="60" x2="112" y2="60" stroke="rgba(0,212,255,0.06)" stroke-width="0.5"/>
+            <!-- Ring labels -->
+            <text x="78" y="62" font-family="Orbitron,monospace" font-size="5" fill="rgba(0,212,255,0.4)">20</text>
+            <text x="95" y="62" font-family="Orbitron,monospace" font-size="5" fill="rgba(0,212,255,0.3)">50</text>
+            <!-- Sweep line group -->
+            <g class="radar-sweep" id="radar-sweep">
+              <path d="M60,60 L60,8" stroke="url(#sweepGrad)" stroke-width="1.2" opacity="0.7"/>
+              <path d="M60,60 L60,8" stroke="rgba(0,232,122,0.3)" stroke-width="1.5"
+                    transform="rotate(-8,60,60)" opacity="0.4"/>
+              <path d="M60,60 L60,8" stroke="rgba(0,232,122,0.15)" stroke-width="2"
+                    transform="rotate(-18,60,60)" opacity="0.25"/>
+            </g>
+            <!-- Center dot -->
+            <circle cx="60" cy="60" r="3" fill="var(--green)" opacity="0.8"/>
+            <!-- Distance blip (moved by JS) -->
+            <circle id="radar-blip" cx="60" cy="60" r="4" fill="var(--red)" opacity="0" filter="url(#gf1)"/>
+          </svg>
+          <div class="radar-dist-lbl" id="val-dist">— cm</div>
         </div>
-        <div class="sentry-event-log" id="sentry-event-log">
-          <div style="color:var(--dim);font-size:10px;text-align:center;padding:4px 0;">No events yet</div>
+      </div>
+
+      <!-- Sign Detections -->
+      <div class="card">
+        <div class="card-head">AI Detections</div>
+        <div class="card-body">
+          <div class="det-list" id="detection-list">
+            <div class="no-det">No detections</div>
+          </div>
         </div>
-        <button class="sentry-clear" onclick="sendCmd('clear_sentry_events')">Clear events</button>
       </div>
-    </div>
 
-    <!-- LOG (fills remaining space) -->
-    <div class="card log-card">
-      <div class="card-head"><span>Event Log</span></div>
-      <div class="card-body">
-        <div class="log-list" id="log-list"></div>
+
+      <!-- Track (TRACK mode) -->
+      <div class="card" id="track-card" style="display:none;">
+        <div class="card-head">Track Item</div>
+        <div class="card-body">
+          <div class="track-row">
+            <select id="track-select" class="track-select" onchange="onTrackChange(this.value)">
+              <option value="">— pick item —</option>
+            </select>
+            <button class="track-clear" onclick="onTrackChange('')">Clear</button>
+          </div>
+          <div class="track-row">
+            <button id="track-click-btn" class="track-click-btn" onclick="toggleClickAim()" style="flex:1;">Click to Pick</button>
+          </div>
+          <div class="track-lock-row">
+            <div class="track-lock-dot" id="track-lock-dot"></div>
+            <span id="val-track-lock">No target</span>
+            <span id="val-track-conf"></span>
+          </div>
+          <div class="track-hint" id="track-hint">Pick an item, then place it in front of the camera. The car will lock on and chase.</div>
+          <div class="ai-track-row">
+            <input type="text" id="ai-track-input" class="ai-track-input"
+                   placeholder="e.g. go get that ball"
+                   onkeydown="if(event.key==='Enter') aiTrack()">
+            <span class="ai-glow-wrap ai-glow-yellow">
+              <button id="ai-track-btn" class="ai-track-btn" onclick="aiTrack()">AI</button>
+            </span>
+          </div>
+          <div id="ai-track-result" class="ai-track-result"></div>
+        </div>
       </div>
-    </div>
 
-  </div><!-- /sidebar -->
-</div><!-- /main -->
+      <!-- Sentry (SENTRY mode) -->
+      <div class="card" id="sentry-card" style="display:none;">
+        <div class="card-head">Sentry Monitor<span id="sentry-event-count" style="color:var(--red);font-size:8px;font-weight:700;font-family:'Orbitron',monospace;"></span></div>
+        <div class="card-body">
+          <button class="sentry-arm-btn" id="sentry-arm-btn" onclick="toggleSentry()">ARM SENTRY</button>
+          <div class="sentry-indicators">
+            <div class="sentry-ind" id="sentry-ind-motion">Motion</div>
+            <div class="sentry-ind" id="sentry-ind-person">Person</div>
+          </div>
+          <div class="sentry-event-log" id="sentry-event-log">
+            <div style="color:var(--dim);font-size:10px;text-align:center;padding:4px 0;">No events yet</div>
+          </div>
+        </div>
+      </div>
 
-<!-- ── CONTROLS BAR ── -->
-<div class="controls">
-  <button class="btn btn-danger"  onclick="sendCmd('emergency_stop')">Emergency Stop</button>
-  <button class="btn btn-neutral" onclick="sendCmd('reset')">Reset</button>
-  <div class="speed-ctl">
-    <label for="speed-slider">Max Speed</label>
-    <input type="range" id="speed-slider" min="10" max="100" value="80"
-           oninput="onSpeedChange(this.value)" />
-    <span id="speed-val">0.80</span>
-    <button class="btn btn-set" onclick="sendCmd('set_speed')">Set</button>
-  </div>
-</div>
+      <!-- Log -->
+      <div class="card">
+        <div class="card-head">Event Log</div>
+        <div class="card-body" style="padding:4px 8px;">
+          <div class="log-list" id="log-list"></div>
+        </div>
+      </div>
+
+    </div><!-- /panel-right -->
+
+  </div><!-- /cockpit -->
+
+</div><!-- /#app -->
 
 <script>
-  /* ════════════════════════════════════════════════════════════════
-     SPLASH SCREEN
-  ════════════════════════════════════════════════════════════════ */
+  /* ═══════════════════════════════════════════════════════════════
+     SPLASH
+  ═══════════════════════════════════════════════════════════════ */
   (function () {
-    const BOOT_LINES = [
-      { text: 'Initializing hardware drivers',  tag: 'OK',   delay: 2100 },
-      { text: 'Loading SSD MobileNet v2',        tag: 'OK',   delay: 2500 },
-      { text: 'Calibrating wide-angle lens',     tag: 'OK',   delay: 2900 },
+    const BOOT = [
+      { text: 'Initializing hardware drivers',  tag: 'OK',   delay: 2000 },
+      { text: 'Loading SSD MobileNet v2 COCO',  tag: 'OK',   delay: 2450 },
+      { text: 'Calibrating 130° wide-angle lens',tag:'OK',   delay: 2850 },
       { text: 'Starting perception pipeline',    tag: 'OK',   delay: 3200 },
       { text: 'Establishing web interface',      tag: 'WAIT', delay: 3500 },
     ];
+    const TITLE = 'VECTORVANCE';
+    let done = false;
 
-    const TITLE_STR = 'VECTORVANCE';
-    let splashDone  = false;
-
-    function dismissSplash() {
-      if (splashDone) return;
-      splashDone = true;
+    function dismiss() {
+      if (done) return; done = true;
       const el = document.getElementById('splash');
-      if (!el) return;
       el.classList.add('exit');
-      setTimeout(() => { el.style.display = 'none'; }, 700);
+      setTimeout(() => { el.style.display = 'none'; }, 900);
     }
+    window.skipSplash = dismiss;
+    document.addEventListener('keydown', dismiss);
 
-    window.skipSplash = dismissSplash;
-    document.addEventListener('keydown', dismissSplash);
-
-    // Type out the title letter by letter
+    // Type title
     const titleEl = document.getElementById('sp-title');
-    let charIdx = 0;
-    const typeInterval = setInterval(() => {
-      if (charIdx < TITLE_STR.length) {
-        titleEl.textContent += TITLE_STR[charIdx++];
-      } else {
-        clearInterval(typeInterval);
-      }
-    }, 80);
-    // First char appears after emblem animation
-    setTimeout(() => { charIdx = 0; titleEl.textContent = ''; }, 1000);
     setTimeout(() => {
+      let i = 0;
       const t = setInterval(() => {
-        if (charIdx < TITLE_STR.length) {
-          titleEl.textContent += TITLE_STR[charIdx++];
-        } else {
-          clearInterval(t);
-        }
-      }, 75);
+        if (i < TITLE.length) titleEl.textContent += TITLE[i++];
+        else clearInterval(t);
+      }, 70);
     }, 1300);
 
     // Boot lines
     const bootEl = document.getElementById('sp-boot');
-    BOOT_LINES.forEach(({ text, tag, delay }) => {
+    BOOT.forEach(({ text, tag, delay }) => {
       setTimeout(() => {
         const line = document.createElement('div');
-        line.className = 'sp-boot-line active';
-        const tagClass = tag === 'OK' ? 'tag-ok' : tag === 'WAIT' ? 'tag-wait' : 'tag-err';
+        line.className = 'sp-boot-line';
+        const cls = tag === 'OK' ? 'tag-ok' : tag === 'WAIT' ? 'tag-wait' : 'tag-err';
         line.innerHTML = `
           <div class="sp-boot-text">
-            <div class="sp-boot-dot"></div>
-            <span>${text}</span>
+            <div class="sp-boot-dot"></div><span>${text}</span>
           </div>
-          <span class="sp-boot-tag ${tagClass}">${tag}</span>`;
+          <span class="sp-boot-tag ${cls}">${tag}</span>`;
         bootEl.appendChild(line);
       }, delay);
     });
 
     // Progress bar
     const bar = document.getElementById('sp-bar');
-    const steps = [
-      [2200,  15], [2600,  35], [3000,  55],
-      [3300,  72], [3600,  88], [3900, 100],
-    ];
-    steps.forEach(([t, pct]) => {
-      setTimeout(() => { bar.style.width = pct + '%'; }, t);
-    });
+    [[2100,12],[2500,32],[2900,55],[3200,72],[3550,88],[3850,100]]
+      .forEach(([t, p]) => setTimeout(() => { bar.style.width = p + '%'; }, t));
 
-    // Auto-dismiss after boot finishes
-    setTimeout(dismissSplash, 4400);
+    setTimeout(dismiss, 4300);
   })();
 
+  /* ═══════════════════════════════════════════════════════════════
+     STATE
+  ═══════════════════════════════════════════════════════════════ */
   let lastStatus  = '';
   let logEntries  = [];
   let connected   = false;
   let speedValue  = 0.80;
   let currentMode = 'LANE';
-
   const manualKeys = { w: false, a: false, s: false, d: false };
 
-  // ── Connection ─────────────────────────────────────────────────────
+  /* ═══════════════════════════════════════════════════════════════
+     CONNECTION
+  ═══════════════════════════════════════════════════════════════ */
   async function tryConnect() {
     try {
       const res = await fetch('/api/ping', { signal: AbortSignal.timeout(2000) });
       if (res.ok) {
         document.querySelectorAll('.mode-tab').forEach(btn => { btn.disabled = false; });
-        setInterval(fetchTelemetry, 500);
+        setInterval(fetchTelemetry, 400);
         fetchTelemetry();
         addLog('Connected to Pi');
         return;
@@ -1153,32 +1170,31 @@
     setTimeout(tryConnect, 1500);
   }
 
-  // ── Telemetry polling ──────────────────────────────────────────────
   async function fetchTelemetry() {
     try {
       const res = await fetch('/api/status', { signal: AbortSignal.timeout(1500) });
-      if (!res.ok) throw new Error('bad status');
+      if (!res.ok) throw new Error();
       const d = await res.json();
       setConnected(true);
       updateUI(d);
-    } catch {
-      setConnected(false);
-    }
+    } catch { setConnected(false); }
   }
 
   function setConnected(ok) {
     connected = ok;
-    const dot   = document.getElementById('conn-dot');
-    const label = document.getElementById('conn-label');
+    const dot = document.getElementById('conn-dot');
+    const lbl = document.getElementById('conn-label');
     const panel = document.getElementById('video-panel');
-    const rec   = document.getElementById('rec-dot');
-    dot.className     = 'dot ' + (ok ? 'live' : 'dead');
-    label.textContent = ok ? 'Connected' : 'Offline';
+    const rec = document.getElementById('rec-dot');
+    dot.className     = 'conn-dot ' + (ok ? 'live' : 'dead');
+    lbl.textContent   = ok ? 'Connected' : 'Offline';
     panel.classList.toggle('live', ok);
     rec.classList.toggle('live', ok);
   }
 
-  // ── Mode management ────────────────────────────────────────────────
+  /* ═══════════════════════════════════════════════════════════════
+     MODE
+  ═══════════════════════════════════════════════════════════════ */
   async function setMode(mode) {
     if (!connected) return;
     await sendCmd('set_mode', mode);
@@ -1188,145 +1204,173 @@
 
   function applyModeUI(mode) {
     currentMode = mode;
-
     document.querySelectorAll('.mode-tab').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.mode === mode);
     });
-
-    const badge = document.getElementById('mode-badge');
-    badge.textContent = mode;
-    badge.className = 'badge ' +
-      (mode === 'FSD'    ? 'b-fsd'    :
-       mode === 'MANUAL' ? 'b-manual' :
-       mode === 'TRACK'  ? 'b-track'  :
-       mode === 'SENTRY' ? 'b-sentry' : 'b-lane');
+    const cls = mode === 'FSD'    ? 'b-fsd'    :
+                mode === 'LANE'   ? 'b-lane'   :
+                mode === 'MANUAL' ? 'b-manual' :
+                mode === 'TRACK'  ? 'b-track'  :
+                mode === 'SENTRY' ? 'b-sentry' : 'b-lane';
+    ['mode-badge', 'vid-mode-badge'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.textContent = mode; el.className = 'badge ' + cls; }
+    });
 
     const wasd = document.getElementById('wasd-section');
     const dpad = document.getElementById('dpad-container');
     if (mode === 'MANUAL') {
-      wasd.style.display = 'none';
-      dpad.style.display = 'block';
+      wasd.style.display = 'none'; dpad.style.display = 'block';
     } else {
-      wasd.style.display = 'block';
-      dpad.style.display = 'none';
+      wasd.style.display = 'block'; dpad.style.display = 'none';
       stopManualDrive();
     }
-
-    document.getElementById('track-card').style.display =
-      mode === 'TRACK' ? 'block' : 'none';
-
-    document.getElementById('sentry-card').style.display =
-      mode === 'SENTRY' ? 'block' : 'none';
-
+    document.getElementById('track-card').style.display  = mode === 'TRACK'  ? 'block' : 'none';
+    document.getElementById('sentry-card').style.display = mode === 'SENTRY' ? 'block' : 'none';
     if (mode !== 'TRACK' && clickAimOn) toggleClickAim();
   }
 
-  // ── UI update ──────────────────────────────────────────────────────
+  /* ═══════════════════════════════════════════════════════════════
+     UI UPDATE
+  ═══════════════════════════════════════════════════════════════ */
   function updateUI(d) {
     const serverMode = d.drive_mode || 'LANE';
     if (serverMode !== currentMode) applyModeUI(serverMode);
 
-    // Status text
+    // Status text (only the video-state one)
     const statusEl = document.getElementById('status-text');
-    const carState  = d.car_state || '';
-    statusEl.textContent = d.status || '—';
-    statusEl.style.color = '';
+    if (statusEl) statusEl.textContent = d.status || '—';
 
-    // State badge
-    const stateLabels = {
-      LANE_FOLLOW: 'Lane Follow', FREE_ROAM: 'Free Roam',
-      TRACKING: 'Tracking', SENTRY: 'Sentry'
-    };
-    const sb = document.getElementById('state-badge');
-    sb.textContent = stateLabels[carState] || carState || '—';
-    sb.className = 'badge b-state';
+    // Car state badges
+    const stateLabels = { LANE_FOLLOW:'Lane Follow', FREE_ROAM:'Free Roam', TRACKING:'Tracking', SENTRY:'Sentry', FORK_WAITING:'Fork Wait', COLOR_FOLLOWING:'Color Follow', ARRIVED:'Arrived' };
+    const carState = d.car_state || '';
+    ['state-badge','vid-state-badge'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = stateLabels[carState] || carState || '—';
+    });
 
-    // Stop sign / danger badge
+    // Danger badge
     const db = document.getElementById('danger-badge');
-    if (d.stop_sign_active) {
-      db.style.display = 'inline-block';
-      db.textContent   = 'Stop Sign';
-    } else {
-      db.style.display = 'none';
-    }
+    if (d.stop_sign_active) { db.style.display = 'inline-block'; db.textContent = 'Stop Sign'; }
+    else db.style.display = 'none';
 
-    // Front distance
-    const dist   = d.front_distance_cm;
-    const distEl = document.getElementById('val-dist');
-    distEl.textContent = (dist == null || dist >= 299) ? '—' : dist + ' cm';
-    distEl.className   = 'mvalue' +
-      (dist < 20 ? ' danger' : dist < 50 ? ' warn' : ' good');
+    // Steering wheel rotation
+    const err = d.steering_error ?? 0;
+    const angle = Math.max(-45, Math.min(45, err * 0.3));
+    document.getElementById('steering-svg').style.transform = `rotate(${angle}deg)`;
+
+    // Steering/PID display
+    const errEl = document.getElementById('val-err');
+    errEl.textContent = err !== 0 ? err + ' px' : '0 px';
+    errEl.className   = 'sd-val' + (Math.abs(err) > 100 ? ' danger' : Math.abs(err) > 50 ? ' warn' : '');
+
+    const pidEl = document.getElementById('val-pid');
+    const pid   = d.pid_output;
+    pidEl.textContent = pid != null ? pid.toFixed(3) : '—';
+    pidEl.className   = 'sd-val' + (pid != null && Math.abs(pid) > 0.7 ? ' danger' : Math.abs(pid??0) > 0.4 ? ' warn' : '');
+
+    // FPS
+    document.getElementById('val-fps').textContent = d.fps ?? '—';
+    const fpsLbl = document.getElementById('vid-fps-label');
+    if (fpsLbl) fpsLbl.textContent = d.fps ? d.fps + ' FPS' : '';
 
     // Speed limit
-    const limit   = d.speed_limit_kmh;
+    const limit = d.speed_limit_kmh;
     const limitEl = document.getElementById('val-speed-limit');
-    const modeMap = {10: 'SLOW', 20: 'AVG', 30: 'NORM', 50: 'MAX'};
-    if (limit != null) {
-      limitEl.textContent = `${limit} (${modeMap[limit] || ''})`;
-      limitEl.className   = 'mvalue warn';
+    const modeMap = {10:'SLOW',20:'AVG',30:'NORM',50:'MAX'};
+    if (limit != null) { limitEl.textContent = `${limit} (${modeMap[limit]||''})`; limitEl.className = 'sd-val warn'; }
+    else { limitEl.textContent = '—'; limitEl.className = 'sd-val'; }
+
+    // Motor arc gauges — 4 motors
+    setMotorGauge('gauge-fl', d.speed_fl ?? d.speed_left  ?? 0);
+    setMotorGauge('gauge-rl', d.speed_rl ?? d.speed_left  ?? 0);
+    setMotorGauge('gauge-fr', d.speed_fr ?? d.speed_right ?? 0);
+    setMotorGauge('gauge-rr', d.speed_rr ?? d.speed_right ?? 0);
+
+    // Distance + radar
+    const dist = d.front_distance_cm;
+    const distEl = document.getElementById('val-dist');
+    const distBadge = document.getElementById('dist-badge');
+    if (dist == null || dist >= 299) {
+      distEl.textContent = '— cm';
+      distEl.style.color = 'var(--cyan)';
+      if (distBadge) distBadge.textContent = '';
     } else {
-      limitEl.textContent = '—';
-      limitEl.className   = 'mvalue';
+      distEl.textContent = dist + ' cm';
+      distEl.style.color = dist < 20 ? 'var(--red)' : dist < 50 ? 'var(--orange)' : 'var(--green)';
+      if (distBadge) { distBadge.textContent = dist + ' cm'; distBadge.style.color = distEl.style.color; }
     }
+    updateRadar(dist);
 
-    document.getElementById('val-fps').textContent = d.fps ?? '—';
-    document.getElementById('val-err').textContent =
-      d.steering_error != null ? d.steering_error + ' px' : '—';
-
-    // Motor bars
-    const l = d.speed_left  ?? 0;
-    const r = d.speed_right ?? 0;
-    document.getElementById('bar-left').style.width      = (l * 100) + '%';
-    document.getElementById('bar-right').style.width     = (r * 100) + '%';
-    document.getElementById('bar-left-val').textContent  = l.toFixed(2);
-    document.getElementById('bar-right-val').textContent = r.toFixed(2);
-
-    // Obstacle banner (overlaid on video)
+    // Obstacle banner
     const modifier = d.obstacle_modifier ?? 1;
     const ob = document.getElementById('obstacle-banner');
     if (modifier < 1.0) {
       ob.style.display = 'block';
       ob.className     = 'vid-banner' + (modifier === 0 ? '' : ' warn');
-      ob.textContent   = modifier === 0
-        ? 'Obstacle — Stopping'
-        : `Obstacle — Speed ×${modifier.toFixed(1)}`;
-    } else {
-      ob.style.display = 'none';
-    }
+      ob.textContent   = modifier === 0 ? 'Obstacle — Stopping' : `Obstacle — Speed ×${modifier.toFixed(1)}`;
+    } else { ob.style.display = 'none'; }
 
     // Stop sign banner
-    const ssb = document.getElementById('stop-sign-banner');
-    ssb.style.display = d.stop_sign_active ? 'block' : 'none';
+    document.getElementById('stop-sign-banner').style.display = d.stop_sign_active ? 'block' : 'none';
 
-    // Sign detections list
-    const dl   = document.getElementById('detection-list');
+    // Detections
+    const dl = document.getElementById('detection-list');
     const dets = d.dnn_detections || [];
     if (!d.dnn_enabled || dets.length === 0) {
       dl.innerHTML = `<div class="no-det">${d.dnn_enabled ? 'No detections' : 'Detector disabled'}</div>`;
     } else {
       dl.innerHTML = dets.map(det => {
         const lc  = det.label.toLowerCase();
-        const cls = lc.includes('stop') ? 'stop' :
-                    lc.includes('person') ? 'person' :
-                    (lc.includes('car') || lc.includes('truck') || lc.includes('bus')) ? 'vehicle' : '';
+        const cls = lc.includes('stop') ? 'stop' : lc.includes('person') ? 'person' :
+                    (lc.includes('car')||lc.includes('truck')||lc.includes('bus')) ? 'vehicle' : '';
         return `<div class="det-item ${cls}">
           <span class="det-name">${det.label}</span>
-          <span class="det-conf">${Math.round(det.conf * 100)}%</span>
+          <span class="det-conf">${Math.round(det.conf*100)}%</span>
         </div>`;
       }).join('');
     }
+
 
     updateKeyVisual();
     updateTrackUI(d);
     updateSentryUI(d);
 
-    if (d.status && d.status !== lastStatus) {
-      lastStatus = d.status;
-      addLog(d.status);
-    }
+    if (d.status && d.status !== lastStatus) { lastStatus = d.status; addLog(d.status); }
   }
 
-  // ── TRACK mode UI ─────────────────────────────────────────────────
+  /* ── Motor arc gauge ─── */
+  function setMotorGauge(id, fraction) {
+    const arcEl = document.getElementById(id + '-arc');
+    const valEl = document.getElementById(id + '-val');
+    if (!arcEl || !valEl) return;
+    const f      = Math.max(0, Math.min(1, fraction));
+    const maxLen = 113.1; // 270° arc at r=24
+    arcEl.style.strokeDashoffset = maxLen * (1 - f);
+    arcEl.style.stroke = f < 0.5 ? 'var(--cyan)' : f < 0.8 ? 'var(--orange)' : 'var(--red)';
+    valEl.textContent  = Math.round(f * 100) + '%';
+  }
+
+  /* ── Radar ── */
+  function updateRadar(dist) {
+    const blip = document.getElementById('radar-blip');
+    if (!blip) return;
+    if (dist == null || dist >= 299) {
+      blip.setAttribute('opacity', '0'); return;
+    }
+    // Map dist 0–200 cm to radius 0–52 px (radar max ring radius)
+    const r = Math.min(52, (dist / 200) * 52);
+    const cx = 60, cy = 60 - r;
+    blip.setAttribute('cx', cx);
+    blip.setAttribute('cy', cy);
+    blip.setAttribute('opacity', '0.85');
+    blip.setAttribute('fill', dist < 20 ? 'var(--red)' : dist < 50 ? 'var(--orange)' : 'var(--green)');
+  }
+
+
+  /* ═══════════════════════════════════════════════════════════════
+     TRACK MODE
+  ═══════════════════════════════════════════════════════════════ */
   let trackDropdownFilled = false;
 
   function fillTrackDropdown(classes) {
@@ -1334,135 +1378,106 @@
     const sel = document.getElementById('track-select');
     classes.forEach(name => {
       const o = document.createElement('option');
-      o.value       = name;
-      o.textContent = name;
-      sel.appendChild(o);
+      o.value = name; o.textContent = name; sel.appendChild(o);
     });
     trackDropdownFilled = true;
   }
 
   function updateTrackUI(d) {
     fillTrackDropdown(d.track_classes);
-
-    const sel     = document.getElementById('track-select');
-    const dot     = document.getElementById('track-lock-dot');
-    const lbl     = document.getElementById('val-track-lock');
-    const conf    = document.getElementById('val-track-conf');
+    const sel  = document.getElementById('track-select');
+    const dot  = document.getElementById('track-lock-dot');
+    const lbl  = document.getElementById('val-track-lock');
+    const conf = document.getElementById('val-track-conf');
     const clickBtn = document.getElementById('track-click-btn');
-
-    const mode   = d.track_mode || 'CLASS';
-    const target = d.track_target || '';
-    // Dropdown only reflects COCO class targets; in CLICK mode leave it blank.
-    const dropVal = mode === 'CLASS' ? target : '';
+    const mode     = d.track_mode || 'CLASS';
+    const target   = d.track_target || '';
+    const dropVal  = mode === 'CLASS' ? target : '';
     if (sel && sel.value !== dropVal) sel.value = dropVal;
-
-    // Disable click button if OpenCV CSRT is unavailable on the Pi
     if (d.track_click_available === false) {
-      clickBtn.disabled = true;
-      clickBtn.textContent = 'Click (unavailable)';
-      clickBtn.style.opacity = '0.4';
+      clickBtn.disabled = true; clickBtn.textContent = 'Click (unavailable)'; clickBtn.style.opacity = '0.4';
     }
-
     const label = mode === 'CLICK' ? 'ROI' : target;
     let state, cls;
-    if (!d.track_available && mode === 'CLASS') {
-      state = 'Detector unavailable'; cls = '';
-    } else if (!target) {
-      state = 'No target';           cls = '';
-    } else if (d.track_locked) {
-      state = 'Locked on ' + label;  cls = 'locked';
-    } else if ((d.track_lost_frames ?? 999) < 60) {
-      state = 'Searching ' + label;  cls = 'searching';
-    } else {
-      state = 'Lost ' + label;       cls = '';
-    }
-    lbl.textContent = state;
-    lbl.className   = cls;
+    if (!d.track_available && mode === 'CLASS') { state = 'Detector unavailable'; cls = ''; }
+    else if (!target)                           { state = 'No target';            cls = ''; }
+    else if (d.track_locked)                    { state = 'Locked on ' + label;   cls = 'locked'; }
+    else if ((d.track_lost_frames ?? 999) < 60) { state = 'Searching ' + label;  cls = 'searching'; }
+    else                                        { state = 'Lost ' + label;         cls = ''; }
+    lbl.textContent = state; lbl.className = cls;
     dot.className   = 'track-lock-dot ' + cls;
-    conf.textContent = d.track_locked && d.track_conf
-      ? Math.round(d.track_conf * 100) + '%' : '';
+    conf.textContent = d.track_locked && d.track_conf ? Math.round(d.track_conf*100) + '%' : '';
   }
 
-  function onTrackChange(value) {
-    sendCmd('set_track_target', value);
-    addLog(value ? 'Track → ' + value : 'Track cleared');
-  }
+  function onTrackChange(value) { sendCmd('set_track_target', value); addLog(value ? 'Track → ' + value : 'Track cleared'); }
 
-  // ── Click-to-track (CSRT) ─────────────────────────────────────────
+  /* ── Click-to-track ── */
   const FRAME_W = 640, FRAME_H = 480;
   let clickAimOn = false;
 
   function toggleClickAim() {
-    if (currentMode !== 'TRACK') {
-      addLog('Switch to TRACK mode first');
-      return;
-    }
+    if (currentMode !== 'TRACK') { addLog('Switch to TRACK mode first'); return; }
     clickAimOn = !clickAimOn;
-    document.getElementById('video-wrapper').classList.toggle('aim',     clickAimOn);
+    document.getElementById('video-wrapper').classList.toggle('aim', clickAimOn);
     document.getElementById('track-click-btn').classList.toggle('armed', clickAimOn);
-    document.getElementById('aim-banner').classList.toggle('on',         clickAimOn);
-    document.getElementById('track-click-btn').textContent =
-      clickAimOn ? 'Cancel Aim' : 'Click to Pick';
+    document.getElementById('aim-banner').classList.toggle('on', clickAimOn);
+    document.getElementById('track-click-btn').textContent = clickAimOn ? 'Cancel Aim' : 'Click to Pick';
   }
 
   function onVideoClick(e) {
     if (!clickAimOn) return;
     const img  = document.getElementById('video-feed');
     const rect = img.getBoundingClientRect();
-    // object-fit:contain → the drawn image is letter/pillar-boxed inside rect.
-    const natAspect = FRAME_W / FRAME_H;          // 4:3
+    const natAspect = FRAME_W / FRAME_H;
     const elAspect  = rect.width / rect.height;
     let drawW, drawH, offX, offY;
     if (elAspect > natAspect) {
-      drawH = rect.height; drawW = drawH * natAspect;
-      offX  = (rect.width - drawW) / 2; offY = 0;
+      drawH = rect.height; drawW = drawH * natAspect; offX = (rect.width-drawW)/2; offY = 0;
     } else {
-      drawW = rect.width;  drawH = drawW / natAspect;
-      offX  = 0;           offY  = (rect.height - drawH) / 2;
+      drawW = rect.width; drawH = drawW/natAspect; offX = 0; offY = (rect.height-drawH)/2;
     }
     const lx = e.clientX - rect.left - offX;
     const ly = e.clientY - rect.top  - offY;
     if (lx < 0 || ly < 0 || lx > drawW || ly > drawH) return;
-
-    const fx = Math.round(lx / drawW * FRAME_W);
-    const fy = Math.round(ly / drawH * FRAME_H);
-
+    const fx = Math.round(lx/drawW*FRAME_W);
+    const fy = Math.round(ly/drawH*FRAME_H);
     fetch('/api/command', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'track_click', x: fx, y: fy })
-    }).catch(() => {});
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'track_click', x:fx, y:fy })
+    }).catch(()=>{});
     addLog(`Click target @ ${fx},${fy}`);
-    toggleClickAim();  // disarm after one pick
+    toggleClickAim();
   }
 
   document.getElementById('video-wrapper').addEventListener('click', onVideoClick);
 
+  /* ═══════════════════════════════════════════════════════════════
+     LOG
+  ═══════════════════════════════════════════════════════════════ */
   function addLog(msg) {
-    const ts = new Date().toTimeString().slice(0, 8);
+    const ts = new Date().toTimeString().slice(0,8);
     logEntries.unshift({ ts, msg });
     if (logEntries.length > 30) logEntries.pop();
     const el = document.getElementById('log-list');
-    el.innerHTML = logEntries.map((e, i) =>
-      `<div class="log-item ${i === 0 ? 'new' : ''}"><span class="ts">${e.ts}</span>${e.msg}</div>`
+    el.innerHTML = logEntries.map((e,i) =>
+      `<div class="log-item ${i===0?'new':''}"><span class="ts">${e.ts}</span>${e.msg}</div>`
     ).join('');
   }
 
-  // ── Commands ───────────────────────────────────────────────────────
+  /* ═══════════════════════════════════════════════════════════════
+     COMMANDS
+  ═══════════════════════════════════════════════════════════════ */
   async function sendCmd(action, value) {
     const body = { action };
     if (action === 'set_speed') body.value = speedValue;
-    if (value !== undefined)   body.value  = value;
+    if (value !== undefined) body.value = value;
     try {
       await fetch('/api/command', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify(body)
       });
-      addLog(`CMD: ${action}${body.value != null ? ' = ' + body.value : ''}`);
-    } catch {
-      addLog('CMD failed: unreachable');
-    }
+      addLog(`CMD: ${action}${body.value!=null?' = '+body.value:''}`);
+    } catch { addLog('CMD failed: unreachable'); }
   }
 
   function onSpeedChange(val) {
@@ -1470,37 +1485,37 @@
     document.getElementById('speed-val').textContent = speedValue.toFixed(2);
   }
 
-  // ── WASD / D-pad ───────────────────────────────────────────────────
+  /* ═══════════════════════════════════════════════════════════════
+     WASD / D-PAD
+  ═══════════════════════════════════════════════════════════════ */
   function updateKeyVisual() {
     ['w','a','s','d'].forEach(k => {
-      const el = document.getElementById('key-' + k);
+      const el = document.getElementById('key-'+k);
       if (el) el.classList.toggle('active', manualKeys[k]);
     });
-    const dmap = { w: 'dpad-w', a: 'dpad-a', s: 'dpad-s', d: 'dpad-d' };
-    Object.entries(dmap).forEach(([k, id]) => {
+    const dmap = { w:'dpad-w', a:'dpad-a', s:'dpad-s', d:'dpad-d' };
+    Object.entries(dmap).forEach(([k,id]) => {
       const btn = document.getElementById(id);
       if (btn) btn.classList.toggle('pressed', manualKeys[k]);
     });
-    const active = Object.entries(manualKeys).filter(([,v]) => v).map(([k]) => k.toUpperCase());
-    const txt    = active.length ? 'Driving: ' + active.join('+') : 'Manual mode not active';
-    const statusEl = document.getElementById('manual-status');
-    if (statusEl) {
-      statusEl.textContent = currentMode === 'MANUAL'
-        ? (active.length ? 'Driving: ' + active.join('+') : 'Ready — use keys or buttons')
+    const active = Object.entries(manualKeys).filter(([,v])=>v).map(([k])=>k.toUpperCase());
+    const msEl = document.getElementById('manual-status');
+    if (msEl) {
+      msEl.textContent = currentMode==='MANUAL'
+        ? (active.length ? 'Driving: '+active.join('+') : 'Ready — use keys or buttons')
         : 'Manual mode not active';
-      statusEl.style.color = active.length ? 'var(--cyan)' : '';
+      msEl.style.color = active.length ? 'var(--cyan)' : '';
     }
-    const dpadSt = document.getElementById('dpad-status');
-    if (dpadSt) dpadSt.textContent = active.length ? 'Driving: ' + active.join('+') : 'Hold to drive';
+    const dsEl = document.getElementById('dpad-status');
+    if (dsEl) dsEl.textContent = active.length ? 'Driving: '+active.join('+') : 'Hold to drive';
   }
 
   async function sendManualDrive() {
     if (currentMode !== 'MANUAL') return;
     try {
       await fetch('/api/command', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'manual_drive', keys: { ...manualKeys } })
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ action:'manual_drive', keys:{...manualKeys} })
       });
     } catch {}
     updateKeyVisual();
@@ -1511,9 +1526,8 @@
     updateKeyVisual();
     try {
       await fetch('/api/command', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'manual_drive', keys: { w:false,a:false,s:false,d:false } })
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ action:'manual_drive', keys:{w:false,a:false,s:false,d:false} })
       });
     } catch {}
   }
@@ -1527,32 +1541,32 @@
   document.addEventListener('keyup', e => {
     const k = e.key.toLowerCase();
     if (!(k in manualKeys)) return;
-    manualKeys[k] = false;
-    sendManualDrive();
+    manualKeys[k] = false; sendManualDrive();
   });
   window.addEventListener('blur', stopManualDrive);
 
   function setupDpad() {
-    const map = { 'dpad-w': 'w', 'dpad-a': 'a', 'dpad-s': 's', 'dpad-d': 'd' };
+    const map = { 'dpad-w':'w', 'dpad-a':'a', 'dpad-s':'s', 'dpad-d':'d' };
     Object.entries(map).forEach(([btnId, key]) => {
       const btn = document.getElementById(btnId);
       if (!btn) return;
-      const press   = () => { if (currentMode !== 'MANUAL') return; manualKeys[key] = true;  sendManualDrive(); };
-      const release = () => { manualKeys[key] = false; sendManualDrive(); };
+      const press   = () => { if (currentMode!=='MANUAL') return; manualKeys[key]=true;  sendManualDrive(); };
+      const release = () => { manualKeys[key]=false; sendManualDrive(); };
       btn.addEventListener('mousedown',  press);
       btn.addEventListener('mouseup',    release);
       btn.addEventListener('mouseleave', release);
-      btn.addEventListener('touchstart', e => { e.preventDefault(); press(); },   { passive: false });
-      btn.addEventListener('touchend',   e => { e.preventDefault(); release(); }, { passive: false });
+      btn.addEventListener('touchstart', e => { e.preventDefault(); press(); },   {passive:false});
+      btn.addEventListener('touchend',   e => { e.preventDefault(); release(); }, {passive:false});
     });
     const stopBtn = document.getElementById('dpad-stop');
     stopBtn.addEventListener('mousedown',  stopManualDrive);
-    stopBtn.addEventListener('touchstart', e => { e.preventDefault(); stopManualDrive(); }, { passive: false });
+    stopBtn.addEventListener('touchstart', e => { e.preventDefault(); stopManualDrive(); }, {passive:false});
   }
-
   setupDpad();
 
-  // ── AI drive command ─────────────────────────────────────────────
+  /* ═══════════════════════════════════════════════════════════════
+     AI DRIVE
+  ═══════════════════════════════════════════════════════════════ */
   let aiDriveAbort = null;
 
   function setAiDriveStatus(state, text) {
@@ -1567,149 +1581,100 @@
     const btn   = document.getElementById('ai-drive-send');
     const text  = input.value.trim();
     if (!text) return;
-
-    // Cancel any running drive
     if (aiDriveAbort) { aiDriveAbort(); aiDriveAbort = null; }
-
-    // Switch to MANUAL automatically
     if (currentMode !== 'MANUAL') await setMode('MANUAL');
-
-    btn.classList.add('loading');
-    btn.textContent = '…';
+    btn.classList.add('loading'); btn.textContent = '…';
     setAiDriveStatus('', 'Asking AI…');
-
     try {
       const res = await fetch('/api/ai_drive', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
-        signal: AbortSignal.timeout(8000),
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ text }), signal: AbortSignal.timeout(8000),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-
       input.value = '';
-      const dur   = data.duration ?? 1.5;
-      const label = data.action   || 'executing';
-
+      const dur = data.duration ?? 1.5;
+      const label = data.action || 'executing';
       if (dur === 0) {
-        await stopManualDrive();
-        setAiDriveStatus('ok', 'Stopped');
-        addLog('AI drive: stopped');
-        return;
+        await stopManualDrive(); setAiDriveStatus('ok', 'Stopped'); addLog('AI drive: stopped'); return;
       }
-
       setAiDriveStatus('running', `${label} (${dur}s)`);
       addLog(`AI drive: ${label} for ${dur}s`);
-
-      const keys = { w: data.w, a: data.a, s: data.s, d: data.d };
-
-      // Send drive command
+      const keys = { w:data.w, a:data.a, s:data.s, d:data.d };
       await fetch('/api/command', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'manual_drive', keys }),
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ action:'manual_drive', keys }),
       });
-
-      // Wait for duration, with cancellation support
       await new Promise((resolve, reject) => {
         const t = setTimeout(resolve, dur * 1000);
         aiDriveAbort = () => { clearTimeout(t); reject(new Error('cancelled')); };
       });
-
       await stopManualDrive();
       setAiDriveStatus('ok', `Done: ${label}`);
-
     } catch (e) {
       await stopManualDrive();
-      if (e.message === 'cancelled') {
-        setAiDriveStatus('', 'Cancelled');
-      } else {
-        setAiDriveStatus('fail', e.message || 'Failed');
-      }
+      if (e.message === 'cancelled') setAiDriveStatus('', 'Cancelled');
+      else setAiDriveStatus('fail', e.message || 'Failed');
     } finally {
-      aiDriveAbort = null;
-      btn.classList.remove('loading');
-      btn.textContent = 'GO';
+      aiDriveAbort = null; btn.classList.remove('loading'); btn.textContent = 'GO';
     }
   }
 
-  // ── Speech recognition (MediaRecorder → /api/speech) ─────────────
-  let _mediaRecorder = null;
-  let _audioChunks   = [];
-  let _micRecording  = false;
+  /* ═══════════════════════════════════════════════════════════════
+     SPEECH
+  ═══════════════════════════════════════════════════════════════ */
+  let _mediaRecorder = null, _audioChunks = [], _micRecording = false;
 
-  function initSpeech() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
-    document.getElementById('mic-btn').disabled = false;
-  }
+  function initSpeech() { /* button always enabled; unsupported browser handled in _startMic */ }
 
-  function toggleMic() {
-    if (_micRecording) {
-      _stopMic();
-    } else {
-      _startMic();
-    }
-  }
+  function toggleMic() { _micRecording ? _stopMic() : _startMic(); }
 
   async function _startMic() {
     const btn = document.getElementById('mic-btn');
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setAiDriveStatus('fail', 'Mic not supported in this browser');
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      _audioChunks   = [];
-      _micRecording  = true;
-      btn.classList.add('recording');
-      setAiDriveStatus('', 'Listening…');
-
-      // Pick a MIME type the browser and Gemini both support
+      _audioChunks = []; _micRecording = true;
+      btn.classList.add('recording'); setAiDriveStatus('', 'Listening…');
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
-          ? 'audio/ogg;codecs=opus'
-          : 'audio/webm';
-
+        : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus') ? 'audio/ogg;codecs=opus' : 'audio/webm';
       _mediaRecorder = new MediaRecorder(stream, { mimeType });
       _mediaRecorder.ondataavailable = e => { if (e.data.size > 0) _audioChunks.push(e.data); };
       _mediaRecorder.onstop = async () => {
         stream.getTracks().forEach(t => t.stop());
-        const blob     = new Blob(_audioChunks, { type: mimeType });
-        _micRecording  = false;
-        btn.classList.remove('recording');
+        const blob = new Blob(_audioChunks, { type: mimeType });
+        _micRecording = false; btn.classList.remove('recording');
         setAiDriveStatus('', 'Transcribing…');
         try {
           const res  = await fetch('/api/speech', {
-            method: 'POST',
-            headers: { 'Content-Type': mimeType },
-            body: blob,
+            method:'POST', headers:{'Content-Type': mimeType}, body: blob,
             signal: AbortSignal.timeout(12000),
           });
           const data = await res.json();
           if (data.text) {
             document.getElementById('ai-drive-input').value = data.text;
-            setAiDriveStatus('', `Heard: "${data.text}"`);
-            aiDrive();
-          } else {
-            setAiDriveStatus('fail', data.error || 'Could not transcribe');
-          }
-        } catch (err) {
-          setAiDriveStatus('fail', 'Transcription failed: ' + err.message);
-        }
+            setAiDriveStatus('', `Heard: "${data.text}"`); aiDrive();
+          } else { setAiDriveStatus('fail', data.error || 'Could not transcribe'); }
+        } catch (err) { setAiDriveStatus('fail', 'Transcription failed: ' + err.message); }
       };
       _mediaRecorder.start();
     } catch (err) {
       setAiDriveStatus('fail', 'Mic access denied: ' + err.message);
-      btn.classList.remove('recording');
-      _micRecording = false;
+      btn.classList.remove('recording'); _micRecording = false;
     }
   }
 
   function _stopMic() {
-    if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
-      _mediaRecorder.stop();
-    }
+    if (_mediaRecorder && _mediaRecorder.state !== 'inactive') _mediaRecorder.stop();
   }
 
-  // ── AI track command ─────────────────────────────────────────────
+  /* ═══════════════════════════════════════════════════════════════
+     AI TRACK
+  ═══════════════════════════════════════════════════════════════ */
   async function aiTrack() {
     if (!connected) return;
     const input  = document.getElementById('ai-track-input');
@@ -1717,26 +1682,18 @@
     const result = document.getElementById('ai-track-result');
     const text   = input.value.trim();
     if (!text) return;
-
-    btn.classList.add('loading');
-    btn.textContent = '...';
-    result.textContent = '';
-    result.className   = 'ai-track-result';
-
+    btn.classList.add('loading'); btn.textContent = '...';
+    result.textContent = ''; result.className = 'ai-track-result';
     try {
-      const res = await fetch('/api/ai_track', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
-        signal: AbortSignal.timeout(8000),
+      const res  = await fetch('/api/ai_track', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ text }), signal: AbortSignal.timeout(8000),
       });
       const data = await res.json();
       if (data.matched) {
         result.textContent = '✓ Targeting: ' + data.matched;
         result.className   = 'ai-track-result ok';
-        input.value = '';
-        addLog('AI → tracking ' + data.matched);
-        // Reflect the new target in the dropdown if visible
+        input.value = ''; addLog('AI → tracking ' + data.matched);
         const sel = document.getElementById('track-select');
         if (sel) sel.value = data.matched;
       } else {
@@ -1746,44 +1703,34 @@
     } catch (e) {
       result.textContent = 'Request failed — is the Pi online?';
       result.className   = 'ai-track-result fail';
-    } finally {
-      btn.classList.remove('loading');
-      btn.textContent = 'AI';
-    }
+    } finally { btn.classList.remove('loading'); btn.textContent = 'AI'; }
   }
 
-  // ── SENTRY mode UI ────────────────────────────────────────────────
-  let sentryEventsCache = [];
-
+  /* ═══════════════════════════════════════════════════════════════
+     SENTRY
+  ═══════════════════════════════════════════════════════════════ */
   function updateSentryUI(d) {
     if (currentMode !== 'SENTRY') return;
-
-    const btn    = document.getElementById('sentry-arm-btn');
-    const armed  = d.sentry_armed;
+    const btn   = document.getElementById('sentry-arm-btn');
+    const armed = d.sentry_armed;
     btn.textContent = armed ? 'DISARM SENTRY' : 'ARM SENTRY';
     btn.classList.toggle('armed', armed);
-
-    const indMotion = document.getElementById('sentry-ind-motion');
-    const indPerson = document.getElementById('sentry-ind-person');
-    indMotion.className = 'sentry-ind' + (d.sentry_motion ? ' active-motion' : '');
-    indPerson.className = 'sentry-ind' + (d.sentry_person ? ' active-person' : '');
+    document.getElementById('sentry-ind-motion').className = 'sentry-ind' + (d.sentry_motion ? ' active-motion' : '');
+    document.getElementById('sentry-ind-person').className = 'sentry-ind' + (d.sentry_person ? ' active-person' : '');
   }
 
   async function toggleSentry() {
     if (!connected) return;
     const btn = document.getElementById('sentry-arm-btn');
-    const currentlyArmed = btn.classList.contains('armed');
-    await sendCmd(currentlyArmed ? 'disarm_sentry' : 'arm_sentry');
+    await sendCmd(btn.classList.contains('armed') ? 'disarm_sentry' : 'arm_sentry');
   }
 
-  // Poll sentry events separately (only when in SENTRY mode)
   setInterval(async () => {
     if (currentMode !== 'SENTRY') return;
     try {
       const res = await fetch('/api/sentry_events', { signal: AbortSignal.timeout(1500) });
       if (!res.ok) return;
-      const events = await res.json();
-      renderSentryEvents(events);
+      renderSentryEvents(await res.json());
     } catch {}
   }, 1000);
 
@@ -1792,8 +1739,7 @@
     const count = document.getElementById('sentry-event-count');
     count.textContent = events.length ? events.length + ' events' : '';
     if (!events.length) {
-      log.innerHTML = '<div style="color:var(--dim);font-size:10px;text-align:center;padding:4px 0;">No events yet</div>';
-      return;
+      log.innerHTML = '<div style="color:var(--dim);font-size:10px;text-align:center;padding:4px 0;">No events yet</div>'; return;
     }
     log.innerHTML = events.map(ev => {
       const cls = ev.type === 'person' ? 'evt-person' : 'evt-motion';
@@ -1804,7 +1750,7 @@
     }).join('');
   }
 
-  // Ripple burst on the AI button
+  /* AI track ripple */
   const aiWrap = document.querySelector('.ai-glow-wrap');
   if (aiWrap) {
     aiWrap.addEventListener('mousedown', e => {
@@ -1812,16 +1758,13 @@
       const size = Math.max(rect.width, rect.height) * 3.5;
       const r    = document.createElement('span');
       r.className = 'ai-ripple';
-      r.style.cssText =
-        `width:${size}px;height:${size}px;` +
-        `left:${e.clientX - rect.left - size / 2}px;` +
-        `top:${e.clientY - rect.top  - size / 2}px;` +
-        `background:rgba(255,209,102,0.3);`;
+      r.style.cssText = `width:${size}px;height:${size}px;left:${e.clientX-rect.left-size/2}px;top:${e.clientY-rect.top-size/2}px;background:rgba(255,209,102,0.3);`;
       aiWrap.appendChild(r);
       setTimeout(() => r.remove(), 650);
     });
   }
 
+  /* ── Boot ── */
   initSpeech();
   addLog('Dashboard loaded — connecting…');
   tryConnect();
