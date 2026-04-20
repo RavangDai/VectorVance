@@ -8,7 +8,10 @@
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('OK — status:', d['status']\\)\")",
       "Bash(python:*)",
       "Bash(ls *.py)",
-      "Bash(start:*)"
+      "Bash(start:*)",
+      "Read(./*.py)",
+      "Edit(./*.py)"
+    
     ]
   }
 }

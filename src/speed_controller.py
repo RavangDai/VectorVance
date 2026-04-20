@@ -17,7 +17,7 @@ class AdaptiveSpeedController:
         "STRAIGHT":       1.0,
         "GENTLE_CURVE":   0.85,
         "MODERATE_CURVE": 0.65,
-        "SHARP_CURVE":    0.40,
+        "SHARP_CURVE":    0.50,
     }
 
     def __init__(self, min_speed=0.2, max_speed=0.8):

@@ -268,6 +268,32 @@
       letter-spacing: 2px; text-transform: uppercase; color: var(--gold);
     }
     .card-head-muted { color: var(--muted); }
+
+    /* ── AI card — glowing ring edges on hover ── */
+    .ai-card { overflow: visible !important; transition: border-color 0.3s, box-shadow 0.3s; }
+    .ai-card::before,
+    .ai-card::after {
+      content: ''; position: absolute; pointer-events: none; opacity: 0;
+      border: 1px solid var(--gold); border-radius: calc(var(--r) + 4px);
+      inset: -5px; transition: opacity 0.3s;
+    }
+    .ai-card::after { inset: -12px; border-radius: calc(var(--r) + 11px); border-color: rgba(200,134,26,0.4); }
+    .ai-card:hover {
+      border-color: rgba(200,134,26,0.55);
+      box-shadow: 0 0 22px rgba(200,134,26,0.14), inset 0 0 18px rgba(200,134,26,0.04);
+    }
+    .ai-card:hover::before { opacity: 0.72; animation: aiCardRing 1.4s ease-in-out infinite; }
+    .ai-card:hover::after  { opacity: 0.28; animation: aiCardRing 1.4s ease-in-out 0.38s infinite; }
+    @keyframes aiCardRing { 0%,100% { opacity: 0.72; } 50% { opacity: 0.14; } }
+    .ai-card-head { transition: color 0.3s; }
+    .ai-card:hover .ai-card-head { color: var(--gold2) !important; }
+    .ai-card-tag {
+      font-family: 'Orbitron', monospace; font-size: 7px; color: var(--muted);
+      letter-spacing: 2px; transition: color 0.3s, text-shadow 0.3s;
+    }
+    .ai-card:hover .ai-card-tag {
+      color: var(--gold); text-shadow: 0 0 8px rgba(200,134,26,0.6);
+    }
     .card-body { padding: 8px 10px; }
 
     /* Badges */
@@ -883,64 +909,57 @@
         </div>
       </div>
 
-      <!-- Manual Control -->
-      <div class="card">
-        <div class="card-head">Manual Drive</div>
+      <!-- Track Item (TRACK mode) -->
+      <div class="card" id="track-card" style="display:none;">
+        <div class="card-head">Track Item</div>
         <div class="card-body">
-          <div id="wasd-section">
-            <div class="wasd-hint">Switch to Manual mode:</div>
-            <div class="wasd-grid">
-              <div class="wasd-row"><div class="key-box" id="key-w">W</div></div>
-              <div class="wasd-row">
-                <div class="key-box" id="key-a">A</div>
-                <div class="key-box" id="key-s">S</div>
-                <div class="key-box" id="key-d">D</div>
-              </div>
-            </div>
-            <div class="manual-inactive" id="manual-status">Manual mode not active</div>
+          <div class="track-row">
+            <select id="track-select" class="track-select" onchange="onTrackChange(this.value)">
+              <option value="">— pick item —</option>
+            </select>
+            <button class="track-clear" onclick="onTrackChange('')">Clear</button>
           </div>
-          <div id="dpad-container">
-            <div class="dpad-label">&#9679; MANUAL ACTIVE</div>
-            <div class="dpad">
-              <div class="dpad-row"><button class="dpad-btn" id="dpad-w">&#8679;</button></div>
-              <div class="dpad-row">
-                <button class="dpad-btn" id="dpad-a">&#8678;</button>
-                <button class="dpad-btn dpad-stop" id="dpad-stop">&#9632;</button>
-                <button class="dpad-btn" id="dpad-d">&#8680;</button>
-              </div>
-              <div class="dpad-row"><button class="dpad-btn" id="dpad-s">&#8681;</button></div>
-            </div>
-            <div id="dpad-status">Hold to drive</div>
+          <div class="track-row">
+            <button id="track-click-btn" class="track-click-btn" onclick="toggleClickAim()" style="flex:1;">Click to Pick</button>
           </div>
-
-          <hr class="ai-drive-divider">
-
-          <!-- AI Text Drive -->
-          <div class="ai-section-lbl">AI Text Drive</div>
-          <div class="ai-text-row">
-            <input type="text" id="ai-drive-input" class="ai-drive-input"
-                   placeholder="e.g. move forward, turn left…"
-                   onkeydown="if(event.key==='Enter') aiDrive()">
-            <div class="ai-go-wrap">
-              <button id="ai-drive-send" class="ai-drive-send" onclick="aiDrive()">GO</button>
-            </div>
+          <div class="track-lock-row">
+            <div class="track-lock-dot" id="track-lock-dot"></div>
+            <span id="val-track-lock">No target</span>
+            <span id="val-track-conf"></span>
           </div>
-
-          <hr class="ai-drive-divider">
-
-          <!-- Voice Command -->
-          <div class="ai-section-lbl">Voice Command</div>
-          <div class="voice-section">
-            <div class="voice-btn-outer">
-              <button id="mic-btn" class="voice-btn" onclick="toggleMic()" title="Click to record voice command">&#127908;</button>
-            </div>
-            <span class="voice-hint" id="voice-hint">Click to speak a command</span>
+          <div class="track-hint" id="track-hint">Pick an item, then place it in front of the camera. The car will lock on and chase.</div>
+          <div class="ai-track-row">
+            <input type="text" id="ai-track-input" class="ai-track-input"
+                   placeholder="e.g. go get that ball"
+                   onkeydown="if(event.key==='Enter') aiTrack()">
+            <span class="ai-glow-wrap ai-glow-yellow">
+              <button id="ai-track-btn" class="ai-track-btn" onclick="aiTrack()">AI</button>
+            </span>
           </div>
+          <div id="ai-track-result" class="ai-track-result"></div>
+        </div>
+      </div>
 
-          <div id="ai-drive-status" class="ai-drive-status">
-            <div class="ds-dot"></div>
-            <span class="ds-text">Ready</span>
+      <!-- Sentry Monitor (SENTRY mode) -->
+      <div class="card" id="sentry-card" style="display:none;">
+        <div class="card-head">Sentry Monitor<span id="sentry-event-count" style="color:var(--red);font-size:8px;font-weight:700;font-family:'Orbitron',monospace;"></span></div>
+        <div class="card-body">
+          <button class="sentry-arm-btn" id="sentry-arm-btn" onclick="toggleSentry()">ARM SENTRY</button>
+          <div class="sentry-indicators">
+            <div class="sentry-ind" id="sentry-ind-motion">Motion</div>
+            <div class="sentry-ind" id="sentry-ind-person">Person</div>
           </div>
+          <div class="sentry-event-log" id="sentry-event-log">
+            <div style="color:var(--dim);font-size:10px;text-align:center;padding:4px 0;">No events yet</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Event Log -->
+      <div class="card">
+        <div class="card-head">Event Log</div>
+        <div class="card-body" style="padding:4px 8px;">
+          <div class="log-list" id="log-list"></div>
         </div>
       </div>
 
@@ -1024,60 +1043,73 @@
         </div>
       </div>
 
-
-      <!-- Track (TRACK mode) -->
-      <div class="card" id="track-card" style="display:none;">
-        <div class="card-head">Track Item</div>
-        <div class="card-body">
-          <div class="track-row">
-            <select id="track-select" class="track-select" onchange="onTrackChange(this.value)">
-              <option value="">— pick item —</option>
-            </select>
-            <button class="track-clear" onclick="onTrackChange('')">Clear</button>
-          </div>
-          <div class="track-row">
-            <button id="track-click-btn" class="track-click-btn" onclick="toggleClickAim()" style="flex:1;">Click to Pick</button>
-          </div>
-          <div class="track-lock-row">
-            <div class="track-lock-dot" id="track-lock-dot"></div>
-            <span id="val-track-lock">No target</span>
-            <span id="val-track-conf"></span>
-          </div>
-          <div class="track-hint" id="track-hint">Pick an item, then place it in front of the camera. The car will lock on and chase.</div>
-          <div class="ai-track-row">
-            <input type="text" id="ai-track-input" class="ai-track-input"
-                   placeholder="e.g. go get that ball"
-                   onkeydown="if(event.key==='Enter') aiTrack()">
-            <span class="ai-glow-wrap ai-glow-yellow">
-              <button id="ai-track-btn" class="ai-track-btn" onclick="aiTrack()">AI</button>
-            </span>
-          </div>
-          <div id="ai-track-result" class="ai-track-result"></div>
-        </div>
-      </div>
-
-      <!-- Sentry (SENTRY mode) -->
-      <div class="card" id="sentry-card" style="display:none;">
-        <div class="card-head">Sentry Monitor<span id="sentry-event-count" style="color:var(--red);font-size:8px;font-weight:700;font-family:'Orbitron',monospace;"></span></div>
-        <div class="card-body">
-          <button class="sentry-arm-btn" id="sentry-arm-btn" onclick="toggleSentry()">ARM SENTRY</button>
-          <div class="sentry-indicators">
-            <div class="sentry-ind" id="sentry-ind-motion">Motion</div>
-            <div class="sentry-ind" id="sentry-ind-person">Person</div>
-          </div>
-          <div class="sentry-event-log" id="sentry-event-log">
-            <div style="color:var(--dim);font-size:10px;text-align:center;padding:4px 0;">No events yet</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Log -->
+      <!-- Manual Drive -->
       <div class="card">
-        <div class="card-head">Event Log</div>
-        <div class="card-body" style="padding:4px 8px;">
-          <div class="log-list" id="log-list"></div>
+        <div class="card-head">Manual Drive</div>
+        <div class="card-body">
+          <div id="wasd-section">
+            <div class="wasd-hint">Switch to Manual mode:</div>
+            <div class="wasd-grid">
+              <div class="wasd-row"><div class="key-box" id="key-w">W</div></div>
+              <div class="wasd-row">
+                <div class="key-box" id="key-a">A</div>
+                <div class="key-box" id="key-s">S</div>
+                <div class="key-box" id="key-d">D</div>
+              </div>
+            </div>
+            <div class="manual-inactive" id="manual-status">Manual mode not active</div>
+          </div>
+          <div id="dpad-container">
+            <div class="dpad-label">&#9679; MANUAL ACTIVE</div>
+            <div class="dpad">
+              <div class="dpad-row"><button class="dpad-btn" id="dpad-w">&#8679;</button></div>
+              <div class="dpad-row">
+                <button class="dpad-btn" id="dpad-a">&#8678;</button>
+                <button class="dpad-btn dpad-stop" id="dpad-stop">&#9632;</button>
+                <button class="dpad-btn" id="dpad-d">&#8680;</button>
+              </div>
+              <div class="dpad-row"><button class="dpad-btn" id="dpad-s">&#8681;</button></div>
+            </div>
+            <div id="dpad-status">Hold to drive</div>
+          </div>
         </div>
       </div>
+
+      <!-- AI Drive (text + voice) — glows on hover -->
+      <div class="card ai-card">
+        <div class="card-head ai-card-head">
+          <span>AI Drive</span>
+          <span class="ai-card-tag">&#9675; AI</span>
+        </div>
+        <div class="card-body">
+          <div class="ai-section-lbl">Text Command</div>
+          <div class="ai-text-row">
+            <input type="text" id="ai-drive-input" class="ai-drive-input"
+                   placeholder="e.g. move forward, turn left…"
+                   onkeydown="if(event.key==='Enter') aiDrive()">
+            <div class="ai-go-wrap">
+              <button id="ai-drive-send" class="ai-drive-send" onclick="aiDrive()">GO</button>
+            </div>
+          </div>
+
+          <hr class="ai-drive-divider">
+
+          <div class="ai-section-lbl">Voice Command</div>
+          <div class="voice-section">
+            <div class="voice-btn-outer">
+              <button id="mic-btn" class="voice-btn" onclick="toggleMic()" title="Click to record voice command">&#127908;</button>
+            </div>
+            <span class="voice-hint" id="voice-hint">Click to speak a command</span>
+          </div>
+
+          <div id="ai-drive-status" class="ai-drive-status">
+            <div class="ds-dot"></div>
+            <span class="ds-text">Ready</span>
+          </div>
+        </div>
+      </div>
+
+
 
     </div><!-- /panel-right -->
 
@@ -1532,13 +1564,20 @@
     } catch {}
   }
 
+  function isTyping() {
+    const tag = document.activeElement && document.activeElement.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+  }
+
   document.addEventListener('keydown', e => {
+    if (isTyping()) return;
     const k = e.key.toLowerCase();
     if (!(k in manualKeys)) return;
     e.preventDefault();
     if (!manualKeys[k]) { manualKeys[k] = true; sendManualDrive(); }
   });
   document.addEventListener('keyup', e => {
+    if (isTyping()) return;
     const k = e.key.toLowerCase();
     if (!(k in manualKeys)) return;
     manualKeys[k] = false; sendManualDrive();
@@ -1593,13 +1632,15 @@
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       input.value = '';
-      const dur = data.duration ?? 1.5;
+      const dur   = data.duration ?? 1.5;
       const label = data.action || 'executing';
+      const scene = data.scene  || '';
       if (dur === 0) {
         await stopManualDrive(); setAiDriveStatus('ok', 'Stopped'); addLog('AI drive: stopped'); return;
       }
-      setAiDriveStatus('running', `${label} (${dur}s)`);
-      addLog(`AI drive: ${label} for ${dur}s`);
+      const sceneNote = scene ? ` · ${scene}` : '';
+      setAiDriveStatus('running', `${label} (${dur}s)${sceneNote}`);
+      addLog(`AI drive: ${label} for ${dur}s${sceneNote}`);
       const keys = { w:data.w, a:data.a, s:data.s, d:data.d };
       await fetch('/api/command', {
         method:'POST', headers:{'Content-Type':'application/json'},
@@ -1610,7 +1651,7 @@
         aiDriveAbort = () => { clearTimeout(t); reject(new Error('cancelled')); };
       });
       await stopManualDrive();
-      setAiDriveStatus('ok', `Done: ${label}`);
+      setAiDriveStatus('ok', `Done: ${label}${sceneNote}`);
     } catch (e) {
       await stopManualDrive();
       if (e.message === 'cancelled') setAiDriveStatus('', 'Cancelled');

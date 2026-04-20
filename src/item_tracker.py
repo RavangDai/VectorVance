@@ -60,8 +60,8 @@ def _create_tracker(prefer: str = "KCF"):
     CSRT for similar accuracy on medium-sized, high-contrast targets.
     Falls back: KCF → CSRT → legacy.MOSSE → None.
     """
-    order = ["TrackerKCF_create", "TrackerCSRT_create"] if prefer == "KCF" else \
-            ["TrackerCSRT_create", "TrackerKCF_create"]
+    order = ["TrackerCSRT_create", "TrackerKCF_create"] if prefer == "CSRT" else \
+            ["TrackerKCF_create", "TrackerCSRT_create"]
     for factory in order:
         fn = getattr(cv2, factory, None)
         if fn is not None:
@@ -86,8 +86,10 @@ class ItemTracker:
                         MobileNet doesn't know (custom toys, coloured balls, etc).
     """
 
-    LOST_TIMEOUT = 20   # frames of no-detection → declare lost
-    CLICK_ROI    = 90   # initial bbox side length (px) around a click
+    LOST_TIMEOUT      = 20   # frames of no-detection → declare lost
+    CLICK_ROI         = 90   # initial bbox side length (px) around a click
+    REINIT_MAX_DIST   = 300  # px — max distance from last position to accept a re-detect
+    VERIFY_INTERVAL   = 12   # frames — how often to cross-check tracker with DNN
 
     def __init__(self,
                  model_name: str       = "ssd_mobilenet_v2_coco.pb",
@@ -96,7 +98,7 @@ class ItemTracker:
                  frame_height: int     = 480,
                  skip_frames: int      = 3,
                  net = None,
-                 prefer_tracker: str = "KCF"):
+                 prefer_tracker: str = "CSRT"):
         self.conf_threshold = conf_threshold
         self.frame_width    = frame_width
         self.frame_height   = frame_height
@@ -114,6 +116,8 @@ class ItemTracker:
         # Click/ROI tracker state
         self._click_tracker      = None
         self._click_init_bbox: tuple | None = None   # deferred init — needs a frame
+        self._click_last_center: tuple | None = None  # last confirmed (cx, cy)
+        self._click_verify_ctr:  int = 0              # frame counter for periodic DNN verify
         self._prefer_tracker     = prefer_tracker
         probe, probe_name        = _create_tracker(prefer_tracker)
         self.click_available     = probe is not None
@@ -144,12 +148,14 @@ class ItemTracker:
     # ── Target selection ─────────────────────────────────────────────────────
 
     def _reset_state(self):
-        self.target_class       = None
-        self.last_bbox          = None
-        self.last_conf          = 0.0
-        self.lost_frames        = 999
-        self._click_tracker     = None
-        self._click_init_bbox   = None
+        self.target_class         = None
+        self.last_bbox            = None
+        self.last_conf            = 0.0
+        self.lost_frames          = 999
+        self._click_tracker       = None
+        self._click_init_bbox     = None
+        self._click_last_center   = None
+        self._click_verify_ctr    = 0
 
     def set_target(self, name: str | None):
         """Switch to CLASS mode (COCO class lookup) or clear."""
@@ -195,6 +201,45 @@ class ItemTracker:
 
     # ── Detection ────────────────────────────────────────────────────────────
 
+    def _nearest_dnn_detection(self, frame: np.ndarray,
+                                center: tuple,
+                                conf_override: float | None = None,
+                                max_dist: float | None = None) -> "tuple | None":
+        """
+        Run a quick DNN pass and return the bbox (x,y,w,h) of the detection
+        whose centre is closest to `center`, within max_dist pixels.
+        Returns None when nothing is close enough.
+        """
+        threshold = conf_override if conf_override is not None else self.conf_threshold
+        search_r  = max_dist if max_dist is not None else self.REINIT_MAX_DIST
+        blob = cv2.dnn.blobFromImage(
+            frame, scalefactor=1 / 127.5, size=_INPUT_SIZE,
+            mean=(127.5, 127.5, 127.5), swapRB=True, crop=False,
+        )
+        self._net.setInput(blob)
+        raw = self._net.forward()
+        cx0, cy0 = center
+        best_bbox = None
+        best_dist = float("inf")
+        for i in range(raw.shape[2]):
+            conf = float(raw[0, 0, i, 2])
+            if conf < threshold:
+                continue
+            x1 = int(raw[0, 0, i, 3] * self.frame_width)
+            y1 = int(raw[0, 0, i, 4] * self.frame_height)
+            x2 = int(raw[0, 0, i, 5] * self.frame_width)
+            y2 = int(raw[0, 0, i, 6] * self.frame_height)
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(self.frame_width - 1, x2), min(self.frame_height - 1, y2)
+            if x2 <= x1 or y2 <= y1:
+                continue
+            dcx, dcy = (x1 + x2) // 2, (y1 + y2) // 2
+            dist = ((dcx - cx0) ** 2 + (dcy - cy0) ** 2) ** 0.5
+            if dist < best_dist and dist < search_r:
+                best_dist = dist
+                best_bbox = (x1, y1, x2 - x1, y2 - y1)
+        return best_bbox
+
     def detect(self, frame: np.ndarray):
         self._frame_counter += 1
         if self.target_class is None:
@@ -207,20 +252,86 @@ class ItemTracker:
                 if inst is None:
                     self.target_class = None
                     return
+
+                # Snap to nearest DNN detection so CSRT gets exact object bounds,
+                # not an arbitrary fixed-size square around the click point.
+                init_bbox = self._click_init_bbox
+                if self.available:
+                    cx = init_bbox[0] + init_bbox[2] // 2
+                    cy = init_bbox[1] + init_bbox[3] // 2
+                    snapped = self._nearest_dnn_detection(
+                        frame, (cx, cy),
+                        conf_override=0.30,   # lenient — item may be far/small
+                        max_dist=self.CLICK_ROI,
+                    )
+                    if snapped is not None:
+                        init_bbox = snapped
+
                 self._click_tracker = inst
-                self._click_tracker.init(frame, self._click_init_bbox)
-                self._click_init_bbox = None
+                self._click_tracker.init(frame, init_bbox)
+                x, y, w, h = init_bbox
+                self.last_bbox          = init_bbox
+                self._click_last_center = (x + w // 2, y + h // 2)
+                self._click_init_bbox   = None
                 return  # keep the initial bbox shown this frame
             if self._click_tracker is None:
                 return
+
             ok, bbox = self._click_tracker.update(frame)
+            self._click_verify_ctr += 1
+
             if ok:
                 x, y, w, h = (int(v) for v in bbox)
-                self.last_bbox   = (x, y, w, h)
-                self.last_conf   = 0.90   # CV trackers don't expose a score
-                self.lost_frames = 0
+                self.last_bbox          = (x, y, w, h)
+                self.last_conf          = 0.90
+                self.lost_frames        = 0
+                self._click_last_center = (x + w // 2, y + h // 2)
+
+                # Periodic DNN cross-check: if the tracker has drifted far from any
+                # real detection, re-initialise on the nearest detection instead.
+                if self.available and self._click_verify_ctr % self.VERIFY_INTERVAL == 0:
+                    candidate = self._nearest_dnn_detection(frame, self._click_last_center)
+                    if candidate is not None:
+                        cx, cy, cw, ch = candidate
+                        ccx, ccy = cx + cw // 2, cy + ch // 2
+                        lcx, lcy = self._click_last_center
+                        drift = ((ccx - lcx) ** 2 + (ccy - lcy) ** 2) ** 0.5
+                        # Only re-init when DNN target has moved significantly from tracker
+                        if drift > 40:
+                            inst, _ = _create_tracker(self._prefer_tracker)
+                            if inst is not None:
+                                try:
+                                    inst.init(frame, candidate)
+                                    self._click_tracker = inst
+                                    self.last_bbox = candidate
+                                    self._click_last_center = (ccx, ccy)
+                                except Exception:
+                                    pass
             else:
+                # Tracker lost — do NOT keep stale bbox (that causes "chasing the dot")
+                self.last_bbox   = None
                 self.lost_frames += 1
+
+                # Attempt DNN re-detection near last known position
+                if self.available and self._click_last_center is not None:
+                    candidate = self._nearest_dnn_detection(
+                        frame, self._click_last_center,
+                        conf_override=0.30,  # lenient threshold — item may be far/small
+                    )
+                    if candidate is not None:
+                        inst, _ = _create_tracker(self._prefer_tracker)
+                        if inst is not None:
+                            try:
+                                inst.init(frame, candidate)
+                                self._click_tracker  = inst
+                                cx, cy, cw, ch       = candidate
+                                self.last_bbox        = candidate
+                                self.last_conf        = 0.75
+                                self.lost_frames      = 0
+                                self._click_last_center = (cx + cw // 2, cy + ch // 2)
+                                print(f"[Tracker] Re-locked via DNN at {self._click_last_center}")
+                            except Exception:
+                                pass
             return
 
         # ── CLASS mode — DNN inference (gated by skip_frames) ────────────

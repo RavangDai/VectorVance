@@ -258,57 +258,103 @@ def _resolve_via_keywords(text: str) -> str | None:
 
 # ── AI drive command resolver ─────────────────────────────────────────────────
 
-def _resolve_drive_command(text: str) -> dict:
+def _resolve_drive_command(text: str, frame=None) -> dict:
     """
     Map a natural-language drive command to keys + duration.
-    Returns {"w","a","s","d": bool, "duration": float, "action": str}.
-    Tries Gemini first, falls back to keyword matching.
+    Returns {"w","a","s","d": bool, "duration": float, "action": str, "scene": str}.
+    Passes camera frame to Gemini when available for vision-aware decisions.
     """
-    result = _resolve_drive_via_gemini(text)
+    result = _resolve_drive_via_gemini(text, frame=frame)
     if result:
         return result
     return _resolve_drive_via_keywords(text)
 
 
-def _resolve_drive_via_gemini(text: str) -> dict | None:
+def _resolve_drive_via_gemini(text: str, frame=None) -> dict | None:
     api_key = os.environ.get("GEMINI_API_KEY", "")
     if not api_key:
         return None
     try:
         import google.generativeai as genai
         import json as _json
+        import base64
         genai.configure(api_key=api_key)
-        prompt = (
-            "You control a 4-wheel RC car. Parse the driving command into WASD keys and duration.\n"
-            "Keys: w=forward, s=backward, a=turn-left, d=turn-right. Combinations allowed (e.g. w+a).\n"
-            "Duration in seconds (0.3–5.0). Use 0.0 for stop.\n"
-            "Reply with ONLY valid JSON, no markdown, no explanation.\n"
-            "Schema: {\"w\":bool,\"a\":bool,\"s\":bool,\"d\":bool,\"duration\":float,\"action\":string}\n"
-            "Examples:\n"
-            "  'move forward'      → {\"w\":true,\"a\":false,\"s\":false,\"d\":false,\"duration\":1.5,\"action\":\"moving forward\"}\n"
-            "  'turn left'         → {\"w\":false,\"a\":true,\"s\":false,\"d\":false,\"duration\":1.0,\"action\":\"turning left\"}\n"
-            "  'go right a bit'    → {\"w\":false,\"a\":false,\"s\":false,\"d\":true,\"duration\":0.4,\"action\":\"slight right\"}\n"
-            "  'reverse slowly'    → {\"w\":false,\"a\":false,\"s\":true,\"d\":false,\"duration\":1.5,\"action\":\"reversing\"}\n"
-            "  'forward left'      → {\"w\":true,\"a\":true,\"s\":false,\"d\":false,\"duration\":1.0,\"action\":\"forward-left\"}\n"
-            "  'stop'              → {\"w\":false,\"a\":false,\"s\":false,\"d\":false,\"duration\":0.0,\"action\":\"stopping\"}\n"
-            "  'go forward 3 sec'  → {\"w\":true,\"a\":false,\"s\":false,\"d\":false,\"duration\":3.0,\"action\":\"moving forward 3s\"}\n\n"
-            f"Command: {text}"
+
+        schema = (
+            'Schema: {"w":bool,"a":bool,"s":bool,"d":bool,'
+            '"duration":float,"action":string,"scene":string}\n'
+            '"scene": one short phrase — what you see relevant to the command '
+            '(e.g. "clear path", "person on right", "obstacle ahead").\n'
         )
-        model   = genai.GenerativeModel("gemini-2.5-flash")
-        raw     = model.generate_content(prompt).text.strip()
-        # Strip markdown fences if Gemini wraps the JSON
+
+        if frame is not None:
+            _, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            img_b64 = base64.b64encode(buf.tobytes()).decode()
+            prompt = (
+                "You control a 4-wheel RC car. "
+                "The attached image is the car's LIVE camera view RIGHT NOW.\n"
+                "Use what you SEE to decide the best action for the command.\n"
+                "• Objects on the LEFT of the image → car's LEFT\n"
+                "• Objects on the RIGHT → car's RIGHT\n"
+                "• Large objects are CLOSE. Small objects are FAR.\n\n"
+                "Keys: w=forward, s=backward, a=spin-left, d=spin-right. "
+                "Combinations allowed.\n"
+                "Duration in seconds (0.3–5.0). Use 0.0 for stop.\n"
+                "Reply ONLY with valid JSON, no markdown.\n"
+                + schema +
+                "Examples:\n"
+                "  'go forward' + clear path  → "
+                '{"w":true,"a":false,"s":false,"d":false,"duration":1.5,'
+                '"action":"moving forward","scene":"clear path ahead"}\n'
+                "  'go to the bottle' + bottle on left → "
+                '{"w":true,"a":true,"s":false,"d":false,"duration":1.0,'
+                '"action":"forward-left toward bottle","scene":"bottle on left"}\n'
+                "  'turn toward the person' + person on right → "
+                '{"w":false,"a":false,"s":false,"d":true,"duration":0.8,'
+                '"action":"turning right toward person","scene":"person on right"}\n'
+                "  'avoid the obstacle' + obstacle ahead → "
+                '{"w":false,"a":true,"s":false,"d":false,"duration":0.6,'
+                '"action":"spinning left to avoid","scene":"obstacle straight ahead"}\n\n'
+                f"Command: {text}"
+            )
+            contents = [prompt, {"mime_type": "image/jpeg", "data": img_b64}]
+        else:
+            prompt = (
+                "You control a 4-wheel RC car. Parse the driving command.\n"
+                "Keys: w=forward, s=backward, a=spin-left, d=spin-right. "
+                "Combinations allowed.\n"
+                "Duration in seconds (0.3–5.0). Use 0.0 for stop.\n"
+                "Reply ONLY with valid JSON, no markdown.\n"
+                + schema +
+                "Examples:\n"
+                "  'move forward'     → "
+                '{"w":true,"a":false,"s":false,"d":false,"duration":1.5,'
+                '"action":"moving forward","scene":""}\n'
+                "  'turn left'        → "
+                '{"w":false,"a":true,"s":false,"d":false,"duration":1.0,'
+                '"action":"turning left","scene":""}\n'
+                "  'stop'             → "
+                '{"w":false,"a":false,"s":false,"d":false,"duration":0.0,'
+                '"action":"stopping","scene":""}\n\n'
+                f"Command: {text}"
+            )
+            contents = [prompt]
+
+        model = genai.GenerativeModel("gemini-2.5-flash")
+        raw   = model.generate_content(contents).text.strip()
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"):
                 raw = raw[4:]
         data = _json.loads(raw.strip())
         return {
-            "w":        bool(data.get("w",  False)),
-            "a":        bool(data.get("a",  False)),
-            "s":        bool(data.get("s",  False)),
-            "d":        bool(data.get("d",  False)),
+            "w":        bool(data.get("w",       False)),
+            "a":        bool(data.get("a",       False)),
+            "s":        bool(data.get("s",       False)),
+            "d":        bool(data.get("d",       False)),
             "duration": max(0.0, min(5.0, float(data.get("duration", 1.5)))),
-            "action":   str(data.get("action", "executing command")),
+            "action":   str(data.get("action",   "executing command")),
+            "scene":    str(data.get("scene",    "")),
         }
     except Exception as e:
         print(f"[AI Drive] Gemini error: {e}")
@@ -439,8 +485,11 @@ def start_server(port: int = 5000) -> bool:
         text = str(body.get('text', '')).strip()
         if not text:
             return jsonify({"error": "No text provided"}), 400
-        result = _resolve_drive_command(text)
-        print(f"[AI Drive] '{text}' → {result}")
+        with _frame_lock:
+            frame = _latest_frame.copy() if _latest_frame is not None else None
+        result = _resolve_drive_command(text, frame=frame)
+        scene  = result.get("scene", "")
+        print(f"[AI Drive] '{text}' → {result.get('action')} | scene: {scene or 'n/a'}")
         return jsonify(result)
 
     @app.route('/api/ai_track', methods=['POST'])

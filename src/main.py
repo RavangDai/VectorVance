@@ -121,8 +121,6 @@ class FrontSensor:
     def distance_cm(self) -> float:
         with self._lock:
             raw = self._distance
-        # Subtract the camera body offset.  Readings at or below the offset are
-        # reflections off the camera housing itself — treat them as clear (max range).
         if raw <= self.CAMERA_OFFSET:
             return self.MAX_RANGE
         return raw - self.CAMERA_OFFSET
@@ -263,7 +261,7 @@ class FreeRoamController:
 class AutonomousVehicle:
 
     def __init__(self,
-                 max_speed        = 0.8,
+                 max_speed        = 1.0,
                  dnn_model        = "ssd_mobilenet_v2_coco.pb",
                  dnn_skip         = 5,
                  enable_web       = True,
@@ -328,6 +326,10 @@ class AutonomousVehicle:
         # ── Front ultrasonic (HC-SR04 facing forward) ────────────────
         self.front_sensor = FrontSensor(trig=TRIG_PIN, echo=ECHO_PIN)
         self.front_sensor.start()
+
+        # ── Track search state ────────────────────────────────────────
+        self._track_search_dir    = 1   # 1 = pan right, -1 = pan left
+        self._track_search_frames = 0
 
         # ── Web / display ─────────────────────────────────────────────
         self.web_enabled  = enable_web
@@ -454,18 +456,18 @@ class AutonomousVehicle:
 
     def _apply_manual_drive(self, keys: dict):
         """Translate WASD key state into motor commands."""
-        spd = 0.85
+        spd = 1.0
         w, a, s, d = keys.get("w"), keys.get("a"), keys.get("s"), keys.get("d")
         if w:
-            if a:   l, r = spd * 0.25, spd      # forward-left
-            elif d: l, r = spd,        spd * 0.25  # forward-right
-            else:   l, r = spd,        spd          # straight forward
+            if a:   l, r = 0.0,  spd       # forward-left  (pivot on left wheel)
+            elif d: l, r = spd,  0.0        # forward-right (pivot on right wheel)
+            else:   l, r = spd,  spd        # straight forward
         elif s:
-            if a:   l, r = -spd * 0.25, -spd     # reverse-left
-            elif d: l, r = -spd, -spd * 0.25      # reverse-right
-            else:   l, r = -spd, -spd              # straight reverse
-        elif a:     l, r = -spd * 0.5,  spd * 0.5  # spin left
-        elif d:     l, r =  spd * 0.5, -spd * 0.5  # spin right
+            if a:   l, r = 0.0,  -spd      # reverse-left
+            elif d: l, r = -spd, 0.0       # reverse-right
+            else:   l, r = -spd, -spd      # straight reverse
+        elif a:     l, r = -spd * 0.9,  spd * 0.9  # spin left
+        elif d:     l, r =  spd * 0.9, -spd * 0.9  # spin right
         else:       l, r = 0.0, 0.0
         self._drive_manual(l, r)
         # Update smooth values so motor bars on the dashboard reflect actual commands
@@ -546,23 +548,34 @@ class AutonomousVehicle:
 
         if target is None:
             left, right, status = 0.0, 0.0, "TRACK: pick an item"
+            self._track_search_frames = 0
         elif front_dist < STOP_DISTANCE:
             left, right, status = 0.0, 0.0, "TRACK: obstacle -- stopped"
         elif not locked:
-            hint = "seeking" if self.track_detector.lost_frames < 60 else "lost"
-            left, right, status = 0.0, 0.0, f"TRACK: {hint} {target}..."
+            lost = self.track_detector.lost_frames
+            if lost < 80:
+                # Slowly pan left/right to scan for the item instead of stopping
+                self._track_search_frames += 1
+                if self._track_search_frames % 28 == 0:
+                    self._track_search_dir *= -1
+                spd = min(0.22, self.current_speed_limit)
+                left  = spd if self._track_search_dir > 0 else 0.0
+                right = 0.0 if self._track_search_dir > 0 else spd
+                status = f"TRACK: seeking {target}..."
+            else:
+                left, right, status = 0.0, 0.0, f"TRACK: lost {target}"
+                self._track_search_frames = 0
         else:
+            self._track_search_frames = 0
             offset   = self.track_detector.get_steering_offset() or 0.0
             distance = self.track_detector.get_distance_proxy()  or 0.0
 
-            # bbox height ≥ 55% of frame → we're right on top of it; stop.
-            if distance > 0.55:
+            # bbox height ≥ 60% of frame → close enough; stop.
+            if distance > 0.60:
                 left = right = 0.0
                 status = f"TRACK: arrived at {target}"
             else:
-                # Closer target → slower approach. 0.7 max drops to 0.25 near the
-                # stop threshold, then clamped by the user's speed slider.
-                base = max(0.25, 0.70 * (1.0 - distance * 1.3))
+                base = max(0.25, 0.70 * (1.0 - distance * 1.2))
                 if front_dist < SLOW_DISTANCE:
                     base *= 0.6
                 base  = min(base, self.current_speed_limit)
@@ -1116,7 +1129,7 @@ class AutonomousVehicle:
 # ─────────────────────────────────────────────────────────────────────────────
 def main():
     p = argparse.ArgumentParser(description="VectorVance Autonomous Car")
-    p.add_argument("--speed",       type=float, default=0.8)
+    p.add_argument("--speed",       type=float, default=1.0)
     p.add_argument("--dnn-model",     type=str,   default="ssd_mobilenet_v2_coco.pb")
     p.add_argument("--dnn-skip",      type=int,   default=5)
     p.add_argument("--port",          type=int,   default=5000)
