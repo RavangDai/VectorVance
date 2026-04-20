@@ -55,7 +55,7 @@ def push_frame(frame):
     """Push the latest processed frame. Called every loop iteration."""
     global _latest_frame
     with _frame_lock:
-        _latest_frame = frame.copy() if frame is not None else None
+        _latest_frame = frame  # main loop allocates a new frame each iteration — no copy needed
 
 
 def push_rear_frame(frame):
@@ -107,26 +107,23 @@ def clear_sentry_events():
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
-def _encode_frame_jpeg(quality: int = 55) -> bytes | None:
+def _encode_frame_jpeg(quality: int = 50) -> bytes | None:
+    # Grab reference under lock (fast), encode outside lock so main loop is never blocked
     with _frame_lock:
-        if _latest_frame is None:
-            return None
-        ret, buf = cv2.imencode(
-            '.jpg', _latest_frame,
-            [cv2.IMWRITE_JPEG_QUALITY, quality]
-        )
-        return buf.tobytes() if ret else None
+        f = _latest_frame
+    if f is None:
+        return None
+    ret, buf = cv2.imencode('.jpg', f, [cv2.IMWRITE_JPEG_QUALITY, quality])
+    return buf.tobytes() if ret else None
 
 
-def _encode_rear_frame_jpeg(quality: int = 70) -> bytes | None:
+def _encode_rear_frame_jpeg(quality: int = 60) -> bytes | None:
     with _rear_frame_lock:
-        if _latest_rear_frame is None:
-            return None
-        ret, buf = cv2.imencode(
-            '.jpg', _latest_rear_frame,
-            [cv2.IMWRITE_JPEG_QUALITY, quality]
-        )
-        return buf.tobytes() if ret else None
+        f = _latest_rear_frame
+    if f is None:
+        return None
+    ret, buf = cv2.imencode('.jpg', f, [cv2.IMWRITE_JPEG_QUALITY, quality])
+    return buf.tobytes() if ret else None
 
 
 _STREAM_FPS = 15          # hard cap — protects Pi 3 CPU during heavy perception

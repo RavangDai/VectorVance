@@ -1059,9 +1059,10 @@ class AutonomousVehicle:
 
             if self.web_enabled:
                 pi_server.push_frame(debug_frame)
-                pi_server.push_telemetry(self._build_telemetry(left, right, status))
-                if self.drive_mode == "SENTRY":
-                    pi_server.push_sentry_events(self.sentry.events)
+                if self.frame_count % 3 == 0:   # dashboard polls every 400ms — 10Hz is plenty
+                    pi_server.push_telemetry(self._build_telemetry(left, right, status))
+                    if self.drive_mode == "SENTRY":
+                        pi_server.push_sentry_events(self.sentry.events)
 
             if self.show_display:
                 state_info = f"  [{self.car_state}]" if self.drive_mode == "LANE" else ""

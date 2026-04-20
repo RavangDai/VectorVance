@@ -1673,7 +1673,16 @@
   async function _startMic() {
     const btn = document.getElementById('mic-btn');
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setAiDriveStatus('fail', 'Mic not supported in this browser');
+      // Browsers block mic on plain HTTP (non-localhost). Fix options:
+      // 1. Chrome: go to chrome://flags/#unsafely-treat-insecure-origin-as-secure
+      //            add http://<pi-ip>:5000 and relaunch
+      // 2. Access the dashboard from the Pi itself at http://localhost:5000
+      const isHttp = location.protocol === 'http:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1';
+      const msg = isHttp
+        ? 'Mic blocked on HTTP — open chrome://flags, enable "Insecure origins treated as secure", add ' + location.origin
+        : 'Mic not available in this browser';
+      setAiDriveStatus('fail', msg);
+      document.getElementById('voice-hint').textContent = isHttp ? '⚠ HTTP blocks mic — see console for fix' : 'Mic unavailable';
       return;
     }
     try {
