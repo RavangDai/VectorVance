@@ -269,22 +269,71 @@
     }
     .card-head-muted { color: var(--muted); }
 
-    /* ── AI card — glowing ring edges on hover ── */
-    .ai-card { overflow: visible !important; transition: border-color 0.3s, box-shadow 0.3s; }
-    .ai-card::before,
-    .ai-card::after {
-      content: ''; position: absolute; pointer-events: none; opacity: 0;
-      border: 1px solid var(--gold); border-radius: calc(var(--r) + 4px);
-      inset: -5px; transition: opacity 0.3s;
+    /* ── AI card — comet travels the border on hover ── */
+
+    /*
+     * cometColorShift: the comet head cycles through theme colors as it travels.
+     * Stroke + drop-shadow change together so the glow matches the head color.
+     * drop-shadow on an SVG element radiates from the stroke pixels only → edge glow.
+     */
+    @keyframes cometColorShift {
+      0%   { stroke: #00d4ff; filter: drop-shadow(0 0 4px rgba(0,212,255,1))   drop-shadow(0 0 12px rgba(0,212,255,0.45)); }
+      33%  { stroke: #e8a030; filter: drop-shadow(0 0 5px rgba(232,160,48,1))  drop-shadow(0 0 14px rgba(232,160,48,0.5)); }
+      66%  { stroke: #00e87a; filter: drop-shadow(0 0 4px rgba(0,232,122,0.95)) drop-shadow(0 0 12px rgba(0,232,122,0.42)); }
+      100% { stroke: #00d4ff; filter: drop-shadow(0 0 4px rgba(0,212,255,1))   drop-shadow(0 0 12px rgba(0,212,255,0.45)); }
     }
-    .ai-card::after { inset: -12px; border-radius: calc(var(--r) + 11px); border-color: rgba(200,134,26,0.4); }
+
+    .ai-card {
+      overflow: visible !important;
+      position: relative; isolation: isolate;
+      transition: border-color 0.4s, box-shadow 0.5s;
+    }
+
+    /* Faint dim track — shows the full path the comet travels on */
+    .ai-card::before {
+      content: ''; position: absolute; pointer-events: none;
+      inset: -1px; border-radius: calc(var(--r) + 1px);
+      border: 1px solid rgba(0,212,255,0.1);
+      opacity: 0; transition: opacity 0.4s cubic-bezier(0.25,1,0.5,1);
+    }
+    /* Ambient edge glow via box-shadow (inherently edge-only, never fills interior) */
+    .ai-card::after { content: none; }
+
     .ai-card:hover {
-      border-color: rgba(200,134,26,0.55);
-      box-shadow: 0 0 22px rgba(200,134,26,0.14), inset 0 0 18px rgba(200,134,26,0.04);
+      border-color: transparent !important;
+      box-shadow:
+        0 0 0 1px rgba(0,212,255,0.13),
+        0 0 20px rgba(0,212,255,0.09),
+        0 0 40px rgba(200,134,26,0.06),
+        inset 0 0 14px rgba(0,212,255,0.03);
     }
-    .ai-card:hover::before { opacity: 0.72; animation: aiCardRing 1.4s ease-in-out infinite; }
-    .ai-card:hover::after  { opacity: 0.28; animation: aiCardRing 1.4s ease-in-out 0.38s infinite; }
-    @keyframes aiCardRing { 0%,100% { opacity: 0.72; } 50% { opacity: 0.14; } }
+    .ai-card:hover::before { opacity: 1; }
+
+    /* SVG comet overlay — positioned absolute, fades in on hover */
+    .ai-ring-svg {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      pointer-events: none; overflow: visible;
+      opacity: 0; transition: opacity 0.38s cubic-bezier(0.25,1,0.5,1);
+    }
+    .ai-card:hover .ai-ring-svg { opacity: 1; }
+
+    .ai-ring-head, .ai-ring-trail { fill: none; stroke-linecap: round; }
+
+    /* Head: bright, color-shifting, strong glow */
+    .ai-ring-head {
+      stroke: #00d4ff;
+      stroke-width: 2;
+      animation: cometColorShift 2.4s ease-in-out infinite;
+      animation-play-state: paused;
+    }
+    /* Trail: warm gold, dimmer, soft glow — always 26px behind head */
+    .ai-ring-trail {
+      stroke: #C8861A;
+      stroke-width: 2;
+      opacity: 0.48;
+      filter: drop-shadow(0 0 3px rgba(200,134,26,0.75));
+    }
     .ai-card-head { transition: color 0.3s; }
     .ai-card:hover .ai-card-head { color: var(--gold2) !important; }
     .ai-card-tag {
@@ -314,13 +363,13 @@
        STEERING WHEEL
     ══════════════════════════════════════════════════════════ */
     .steering-card-body {
-      display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 10px 8px;
+      display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 10px 10px;
     }
     .steering-container {
-      width: 96px; height: 96px;
-      filter: drop-shadow(0 0 8px rgba(200,134,26,0.3));
+      width: 160px; height: 160px;
+      filter: drop-shadow(0 0 14px rgba(80,110,200,0.45));
     }
-    #steering-svg { transition: transform 0.12s ease-out; }
+    #steering-svg { transition: transform 0.12s cubic-bezier(0.25,1,0.5,1); }
     .steering-data {
       display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; width: 100%;
     }
@@ -801,6 +850,128 @@
       }
       .radar-sweep { animation: none !important; }
     }
+
+    /* ══════════════════════════════════════════════════════════
+       RADIAL MODE DIAL  (replaces flat mode-tabs)
+    ══════════════════════════════════════════════════════════ */
+    .radial-mode { position: relative; display: flex; align-items: center; }
+
+    .radial-trigger {
+      display: flex; align-items: center; gap: 7px;
+      padding: 5px 10px 5px 8px;
+      background: var(--bg); border: 1px solid rgba(0,232,122,0.28);
+      border-radius: 8px; cursor: pointer; outline: none;
+      font-family: 'Orbitron', monospace; font-size: 9px;
+      font-weight: 700; letter-spacing: 2px; color: var(--green);
+      transition: border-color 0.25s, color 0.25s, box-shadow 0.25s, transform 0.1s;
+      user-select: none; position: relative;
+    }
+    .radial-trigger:disabled { cursor: not-allowed; opacity: 0.28; color: var(--muted) !important; border-color: var(--border) !important; box-shadow: none !important; }
+    .radial-trigger:not(:disabled):hover { box-shadow: 0 0 18px rgba(200,134,26,0.2); }
+    .radial-trigger:not(:disabled):active { transform: scale(0.95); }
+
+    /* Outer hover ring */
+    .radial-trigger::after {
+      content: ''; position: absolute; inset: -3px; border-radius: 10px;
+      border: 1px solid currentColor; opacity: 0; pointer-events: none;
+      transition: opacity 0.25s;
+    }
+    .radial-trigger:not(:disabled):hover::after { opacity: 0.22; }
+
+    /* Burst ring on mode change */
+    @keyframes triggerBurst {
+      0%   { transform: scale(1);   opacity: 0.8; }
+      100% { transform: scale(1.6); opacity: 0; }
+    }
+    .radial-trigger.bursting::before {
+      content: ''; position: absolute; inset: -3px; border-radius: 10px;
+      border: 1px solid currentColor; pointer-events: none;
+      animation: triggerBurst 0.55s cubic-bezier(0.25,1,0.5,1) forwards;
+    }
+
+    .rtrig-icon { flex-shrink: 0; transition: transform 0.55s cubic-bezier(0.34,1.56,0.64,1); }
+    .radial-mode.open .rtrig-icon { transform: rotate(36deg); }
+
+    .rtrig-label { min-width: 52px; text-align: left; letter-spacing: 2px; }
+    .rtrig-caret { opacity: 0.4; flex-shrink: 0; transition: transform 0.3s cubic-bezier(0.25,1,0.5,1); }
+    .radial-mode.open .rtrig-caret { transform: rotate(180deg); }
+
+    /* Picker overlay */
+    .radial-overlay {
+      position: fixed; inset: 0; z-index: 200;
+      pointer-events: none; display: flex;
+    }
+    .radial-overlay.open { pointer-events: all; }
+
+    .radial-picker-wrap {
+      position: absolute; width: 220px; height: 220px;
+      pointer-events: all; transform-origin: center top;
+      display: none; border-radius: 50%;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.85), 0 0 0 1px rgba(255,255,255,0.04);
+    }
+    .radial-picker-wrap.open { display: block; }
+    .radial-picker-svg { display: block; overflow: visible; }
+
+    @keyframes rDialOpen {
+      0%   { opacity: 0; transform: scale(0.2) translateY(-24px); }
+      62%  { opacity: 1; transform: scale(1.07) translateY(3px); }
+      82%  { transform: scale(0.97) translateY(-1px); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    @keyframes rDialClose {
+      from { opacity: 1; transform: scale(1) translateY(0); }
+      to   { opacity: 0; transform: scale(0.2) translateY(-12px); }
+    }
+    .radial-picker-wrap.anim-open  { animation: rDialOpen  0.52s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+    .radial-picker-wrap.anim-close { animation: rDialClose 0.26s cubic-bezier(0.4,0,1,1) forwards; }
+
+    .rpick-g { cursor: pointer; }
+    .rpick-g .rpick-wedge-path,
+    .rpick-g .rpick-outer-path { transition: all 0.14s ease; }
+    .rpick-g .rpick-label-text  { transition: opacity 0.14s, fill 0.14s; }
+
+    /* ══ OVERDRIVE: Atmospheric depth layers ══ */
+    body::after {
+      content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background:
+        radial-gradient(ellipse 42% 32% at 6% 90%, rgba(200,134,26,0.06) 0%, transparent 62%),
+        radial-gradient(ellipse 28% 22% at 94% 6%, rgba(43,95,142,0.08) 0%, transparent 56%),
+        radial-gradient(ellipse 18% 38% at 99% 52%, rgba(0,212,255,0.028) 0%, transparent 52%);
+      animation: atmosphereFlow 18s ease-in-out infinite alternate;
+    }
+    @keyframes atmosphereFlow {
+      0%   { opacity: 0.55; transform: scale(1) translate(0,0); }
+      50%  { opacity: 1;    transform: scale(1.07) translate(-0.6%, 0.6%); }
+      100% { opacity: 0.72; transform: scale(0.96) translate(0.9%, -0.5%); }
+    }
+
+    /* ══ COLORIZE: Enhanced card heads ══ */
+    .card-head {
+      background: linear-gradient(135deg, rgba(200,134,26,0.065) 0%, rgba(10,13,24,0.0) 100%);
+    }
+
+    /* Header separator: gold → cyan sweep */
+    header::after {
+      background: linear-gradient(90deg, transparent 0%, var(--gold) 30%, var(--cyan) 68%, transparent 100%);
+      opacity: 0.5;
+    }
+
+    /* ══ COLORIZE: Semantic glow reinforcement ══ */
+    .tele-val.good   { text-shadow: 0 0 7px rgba(0,232,122,0.35); }
+    .tele-val.danger { text-shadow: 0 0 10px rgba(255,51,68,0.55); }
+    .sd-val.good     { text-shadow: 0 0 7px rgba(0,232,122,0.35); }
+    .sd-val.danger   { text-shadow: 0 0 10px rgba(255,51,68,0.55); }
+
+    /* ══ LAYOUT: Breathing room improvements ══ */
+    .cockpit { gap: 7px; padding: 7px; }
+    .card-body { padding: 9px 11px; }
+    .speed-wrap {
+      border-left: 1px solid var(--border);
+      padding-left: 10px; margin-left: 6px;
+    }
+
+    /* ══ OVERDRIVE: Video live glow sharpened ══ */
+    .video-panel.live .video-title { background: rgba(0,212,255,0.038); }
   </style>
 </head>
 <body>
@@ -918,12 +1089,23 @@
     </div>
 
     <div class="hdr-mid">
-      <div class="mode-tabs" id="mode-tabs">
-        <button class="mode-tab" data-mode="FSD"    onclick="setMode('FSD')"    disabled>FSD</button>
-        <button class="mode-tab" data-mode="LANE"   onclick="setMode('LANE')"   disabled>Lane</button>
-        <button class="mode-tab" data-mode="TRACK"  onclick="setMode('TRACK')"  disabled>Track</button>
-        <button class="mode-tab" data-mode="MANUAL" onclick="setMode('MANUAL')" disabled>Manual</button>
-        <button class="mode-tab" data-mode="SENTRY" onclick="setMode('SENTRY')" disabled>Sentry</button>
+      <div class="radial-mode" id="radial-mode">
+        <button class="radial-trigger" id="radial-trigger" onclick="toggleRadialPicker()" disabled aria-label="Mode selector">
+          <!-- Mini 5-segment dial icon (arcs pre-computed at r=7.5, 64° each, 8° gaps) -->
+          <svg class="rtrig-icon" id="rtrig-icon" viewBox="-10 -10 20 20" width="20" height="20" aria-hidden="true">
+            <path d="M -3.97 -6.36 A 7.5 7.5 0 0 1 3.97 -6.36"  fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" opacity="0.18"/>
+            <path d="M 4.82 -5.75 A 7.5 7.5 0 0 1 7.28 1.81"    fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" opacity="0.18"/>
+            <path d="M 6.95 2.81 A 7.5 7.5 0 0 1 0.52 7.48"     fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" opacity="0.18"/>
+            <path d="M -0.52 7.48 A 7.5 7.5 0 0 1 -6.95 2.81"   fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" opacity="0.18"/>
+            <path d="M -7.28 1.81 A 7.5 7.5 0 0 1 -4.82 -5.75"  fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" opacity="0.18"/>
+            <path id="rtrig-active-arc" d="M -3.97 -6.36 A 7.5 7.5 0 0 1 3.97 -6.36" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/>
+            <circle cx="0" cy="0" r="2" fill="currentColor" opacity="0.7"/>
+          </svg>
+          <span id="rtrig-label" class="rtrig-label">LANE</span>
+          <svg class="rtrig-caret" viewBox="0 0 8 5" width="8" height="5" aria-hidden="true">
+            <path d="M0.5 0.5L4 4L7.5 0.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
       </div>
       <div class="speed-wrap">
         <span class="speed-lbl">SPD</span>
@@ -953,23 +1135,119 @@
         <div class="card-head">Steering</div>
         <div class="steering-card-body">
           <div class="steering-container">
-            <svg id="steering-svg" viewBox="0 0 100 100" width="96" height="96">
-              <!-- Outer ring -->
-              <circle cx="50" cy="50" r="44" fill="none" stroke="#C8861A" stroke-width="5.5" opacity="0.9"/>
-              <!-- Inner rim -->
-              <circle cx="50" cy="50" r="36" fill="none" stroke="rgba(200,134,26,0.2)" stroke-width="1"/>
-              <!-- Hub -->
-              <circle cx="50" cy="50" r="10" fill="rgba(200,134,26,0.12)" stroke="#C8861A" stroke-width="2"/>
-              <!-- Spoke top -->
-              <line x1="50" y1="6" x2="50" y2="40" stroke="#C8861A" stroke-width="4.5" stroke-linecap="round"/>
-              <!-- Spoke bottom-left -->
-              <line x1="50" y1="60" x2="13" y2="83" stroke="#C8861A" stroke-width="4.5" stroke-linecap="round"/>
-              <!-- Spoke bottom-right -->
-              <line x1="50" y1="60" x2="87" y2="83" stroke="#C8861A" stroke-width="4.5" stroke-linecap="round"/>
-              <!-- Center dot -->
-              <circle cx="50" cy="50" r="4" fill="#C8861A"/>
-              <!-- Top marker (12 o'clock) -->
-              <rect x="47" y="2" width="6" height="4" rx="2" fill="#C8861A" opacity="0.5"/>
+            <svg id="steering-svg" viewBox="0 0 120 120" width="160" height="160">
+              <defs>
+                <!-- Chrome gradient vertical -->
+                <linearGradient id="sg-chrome" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%"   stop-color="#ECEEF2"/>
+                  <stop offset="45%"  stop-color="#C4C7CE"/>
+                  <stop offset="100%" stop-color="#8A8D96"/>
+                </linearGradient>
+                <!-- Chrome gradient horizontal (for circular ring) -->
+                <linearGradient id="sg-chrome-h" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%"   stop-color="#9C9FA8"/>
+                  <stop offset="30%"  stop-color="#E4E7EE"/>
+                  <stop offset="70%"  stop-color="#E4E7EE"/>
+                  <stop offset="100%" stop-color="#9C9FA8"/>
+                </linearGradient>
+                <!-- Blue hub radial gradient — lighter at top-left -->
+                <radialGradient id="sg-blue" cx="44%" cy="28%" r="72%">
+                  <stop offset="0%"   stop-color="#3C74E8"/>
+                  <stop offset="50%"  stop-color="#1C3EA0"/>
+                  <stop offset="100%" stop-color="#0C1E5E"/>
+                </radialGradient>
+                <!-- Rim dark body -->
+                <radialGradient id="sg-rim-body" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%"   stop-color="#2E3448"/>
+                  <stop offset="100%" stop-color="#141820"/>
+                </radialGradient>
+                <!-- Metallic V logo gradient -->
+                <linearGradient id="sg-v" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%"   stop-color="#ECEEF4"/>
+                  <stop offset="45%"  stop-color="#B0B4BC"/>
+                  <stop offset="100%" stop-color="#D4D8DF"/>
+                </linearGradient>
+              </defs>
+
+              <!-- Outer drop shadow -->
+              <circle cx="60" cy="62" r="58" fill="rgba(0,0,0,0.28)"/>
+
+              <!-- ── RIM BODY (annulus r=41→57 via thick stroke) ── -->
+              <circle cx="60" cy="60" r="49" fill="none"
+                      stroke="url(#sg-rim-body)" stroke-width="16"/>
+
+              <!-- ── INNER BACKGROUND (dark — visible in spoke windows) ── -->
+              <circle cx="60" cy="60" r="40" fill="#0C1018"/>
+
+              <!-- ── BLUE SPOKES (drawn behind hub so hub caps ends) ── -->
+              <!-- Lower-left spoke: hub edge (44,73) → inner rim (32,88) -->
+              <line x1="44" y1="73" x2="32" y2="88"
+                    stroke="#142C7C" stroke-width="13" stroke-linecap="round"/>
+              <!-- Lower-right spoke: mirror -->
+              <line x1="76" y1="73" x2="88" y2="88"
+                    stroke="#142C7C" stroke-width="13" stroke-linecap="round"/>
+              <!-- Top spoke: (60,20) → (60,41) -->
+              <line x1="60" y1="20" x2="60" y2="41"
+                    stroke="#142C7C" stroke-width="9" stroke-linecap="round"/>
+
+              <!-- ── BLUE HUB OVAL ── -->
+              <!-- rx=22, ry=19; top at y=41, bottom at y=79, sides at x=38 and x=82 -->
+              <ellipse cx="60" cy="60" rx="22" ry="19" fill="url(#sg-blue)"/>
+              <!-- Subtle reflection ellipse on hub face -->
+              <ellipse cx="57" cy="53" rx="9" ry="6"
+                       fill="none" stroke="#5888F0" stroke-width="0.8" opacity="0.22"/>
+
+              <!-- ── CHROME SPOKE TRIM LINES ── -->
+              <!-- Top spoke: edges at x=55.5 and x=64.5 -->
+              <line x1="55.5" y1="20" x2="55.5" y2="41"
+                    stroke="url(#sg-chrome)" stroke-width="1.4" stroke-linecap="round" opacity="0.9"/>
+              <line x1="64.5" y1="20" x2="64.5" y2="41"
+                    stroke="url(#sg-chrome)" stroke-width="1.4" stroke-linecap="round" opacity="0.9"/>
+              <!-- Lower-left spoke: perp offset ±6.5 from spoke direction (-12,15) -->
+              <!-- Right edge: (49.1,68.9)→(37.1,83.9) | Left edge: (38.9,77.1)→(26.9,92.1) -->
+              <line x1="49.1" y1="68.9" x2="37.1" y2="83.9"
+                    stroke="url(#sg-chrome)" stroke-width="1.4" stroke-linecap="round" opacity="0.9"/>
+              <line x1="38.9" y1="77.1" x2="26.9" y2="92.1"
+                    stroke="url(#sg-chrome)" stroke-width="1.4" stroke-linecap="round" opacity="0.9"/>
+              <!-- Lower-right spoke: mirror of lower-left -->
+              <line x1="70.9" y1="68.9" x2="82.9" y2="83.9"
+                    stroke="url(#sg-chrome)" stroke-width="1.4" stroke-linecap="round" opacity="0.9"/>
+              <line x1="81.1" y1="77.1" x2="93.1" y2="92.1"
+                    stroke="url(#sg-chrome)" stroke-width="1.4" stroke-linecap="round" opacity="0.9"/>
+
+              <!-- ── HUB CHROME BORDER ── -->
+              <ellipse cx="60" cy="60" rx="22" ry="19" fill="none"
+                       stroke="url(#sg-chrome-h)" stroke-width="2"/>
+              <!-- Hub inner blue accent ring -->
+              <ellipse cx="60" cy="60" rx="17" ry="14.5" fill="none"
+                       stroke="#2A54C8" stroke-width="0.9" opacity="0.5"/>
+
+              <!-- ── V LOGO (bold metallic chrome V) ── -->
+              <!-- Stroke pass for rounded feel -->
+              <path d="M 46,51 L 60,70 L 74,51"
+                    fill="none" stroke="url(#sg-v)" stroke-width="5.5"
+                    stroke-linecap="round" stroke-linejoin="round"/>
+              <!-- Solid fill for depth and solidity -->
+              <path d="M 46,51 L 49.5,51 L 60,67.5 L 70.5,51 L 74,51 L 60,72.5 Z"
+                    fill="url(#sg-v)"/>
+
+              <!-- ── RIM CHROME EDGES (drawn last — crisp trim on top) ── -->
+              <!-- Outer chrome ring -->
+              <circle cx="60" cy="60" r="57.5" fill="none"
+                      stroke="url(#sg-chrome-h)" stroke-width="2.5"/>
+              <!-- Outer faint highlight -->
+              <circle cx="60" cy="60" r="58.5" fill="none"
+                      stroke="#DCDFE8" stroke-width="0.8" opacity="0.45"/>
+              <!-- Inner dark shadow between rim and inner area -->
+              <circle cx="60" cy="60" r="41" fill="none"
+                      stroke="rgba(0,0,0,0.7)" stroke-width="1.6"/>
+              <!-- Inner chrome edge -->
+              <circle cx="60" cy="60" r="41.8" fill="none"
+                      stroke="url(#sg-chrome)" stroke-width="2"/>
+
+              <!-- ── 12 O'CLOCK POSITION MARKER ── -->
+              <rect x="57.5" y="5" width="5" height="3.5" rx="1.75" fill="#C2C6CE"/>
+              <rect x="58.5" y="5.5" width="3" height="1.8" rx="0.9" fill="#E4E8F0" opacity="0.7"/>
             </svg>
           </div>
           <div class="steering-data">
@@ -1225,6 +1503,10 @@
 
       <!-- AI Drive (text + voice) — glows on hover -->
       <div class="card ai-card">
+        <svg class="ai-ring-svg" aria-hidden="true" focusable="false">
+          <rect class="ai-ring-trail"/>
+          <rect class="ai-ring-head"/>
+        </svg>
         <div class="card-head ai-card-head">
           <span>AI Drive</span>
           <span class="ai-card-tag">&#9675; AI</span>
@@ -1264,6 +1546,15 @@
   </div><!-- /cockpit -->
 
 </div><!-- /#app -->
+
+<!-- ══════════════════════════════════════════════════════════
+     RADIAL MODE PICKER OVERLAY
+══════════════════════════════════════════════════════════ -->
+<div id="radial-overlay" class="radial-overlay" onclick="closeRadialPicker()">
+  <div id="radial-picker-wrap" class="radial-picker-wrap" onclick="event.stopPropagation()">
+    <svg id="radial-svg" class="radial-picker-svg" viewBox="-110 -110 220 220" width="220" height="220"></svg>
+  </div>
+</div>
 
 <script>
   /* ═══════════════════════════════════════════════════════════════
@@ -1354,7 +1645,8 @@
     try {
       const res = await fetch('/api/ping', { signal: AbortSignal.timeout(2000) });
       if (res.ok) {
-        document.querySelectorAll('.mode-tab').forEach(btn => { btn.disabled = false; });
+        const rt = document.getElementById('radial-trigger');
+        if (rt) rt.disabled = false;
         setInterval(fetchTelemetry, 400);
         fetchTelemetry();
         addLog('Connected to Pi');
@@ -1398,9 +1690,8 @@
 
   function applyModeUI(mode) {
     currentMode = mode;
-    document.querySelectorAll('.mode-tab').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.mode === mode);
-    });
+    updateTriggerDial(mode);
+    if (document.getElementById('radial-picker-wrap')?.classList.contains('open')) updateRadialActive(mode);
     const cls = mode === 'FSD'    ? 'b-fsd'    :
                 mode === 'LANE'   ? 'b-lane'   :
                 mode === 'MANUAL' ? 'b-manual' :
@@ -1980,6 +2271,308 @@
       setTimeout(() => r.remove(), 650);
     });
   }
+
+  /* ═══════════════════════════════════════════════════════════════
+     RADIAL MODE DIAL
+  ═══════════════════════════════════════════════════════════════ */
+  const RADIAL_MODES = [
+    { id: 'FSD',    label: 'FSD',    sub: 'Auto',   color: '#00d4ff', idx: 0 },
+    { id: 'LANE',   label: 'LANE',   sub: 'Follow', color: '#00e87a', idx: 1 },
+    { id: 'TRACK',  label: 'TRACK',  sub: 'Object', color: '#C8861A', idx: 2 },
+    { id: 'MANUAL', label: 'MANUAL', sub: 'Drive',  color: '#ff9040', idx: 3 },
+    { id: 'SENTRY', label: 'SENTRY', sub: 'Guard',  color: '#ff3344', idx: 4 },
+  ];
+
+  /* Mini trigger icon — pre-computed arcs (r=7.5, 64° each, 8° gaps, centered) */
+  const RTRIG_ARCS = [
+    "M -3.97 -6.36 A 7.5 7.5 0 0 1 3.97 -6.36",   // FSD   (top, -90°)
+    "M 4.82 -5.75 A 7.5 7.5 0 0 1 7.28 1.81",      // LANE  (-18°)
+    "M 6.95 2.81 A 7.5 7.5 0 0 1 0.52 7.48",       // TRACK (54°)
+    "M -0.52 7.48 A 7.5 7.5 0 0 1 -6.95 2.81",     // MANUAL(126°)
+    "M -7.28 1.81 A 7.5 7.5 0 0 1 -4.82 -5.75",    // SENTRY(198°)
+  ];
+
+  const MODE_COLORS = { FSD:'#00d4ff', LANE:'#00e87a', TRACK:'#C8861A', MANUAL:'#ff9040', SENTRY:'#ff3344' };
+
+  let _rdOpen = false;
+
+  /* SVG helpers */
+  function _svgEl(tag, attrs) {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const [k,v] of Object.entries(attrs)) el.setAttribute(k, String(v));
+    return el;
+  }
+  function _hexA(hex, a) {
+    const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+    return `rgba(${r},${g},${b},${a})`;
+  }
+  function _deg2rad(d) { return d * Math.PI / 180; }
+  function _polar(r, deg) {
+    const rad = _deg2rad(deg);
+    return { x: +(Math.cos(rad) * r).toFixed(4), y: +(Math.sin(rad) * r).toFixed(4) };
+  }
+  function _slicePath(index, total, outerR, innerR) {
+    const FULL = 360, START = -90, span = FULL / total;
+    const mid = START + span * index, s = mid - span/2, e = mid + span/2;
+    const oS = _polar(outerR,s), oE = _polar(outerR,e);
+    const iS = _polar(innerR,s), iE = _polar(innerR,e);
+    const laf = span > 180 ? 1 : 0;
+    return `M${oS.x} ${oS.y}A${outerR} ${outerR} 0 ${laf} 1 ${oE.x} ${oE.y}L${iE.x} ${iE.y}A${innerR} ${innerR} 0 ${laf} 0 ${iS.x} ${iS.y}Z`;
+  }
+
+  function buildRadialSVG() {
+    /* dial geometry */
+    const OR1=105, IR1=93, OR2=83, IR2=37, ICR=60, CR=29, N=RADIAL_MODES.length;
+    const svg = document.getElementById('radial-svg');
+    svg.innerHTML = '';
+
+    /* base plate */
+    svg.appendChild(_svgEl('circle',{cx:0,cy:0,r:107,fill:'var(--card)',stroke:'var(--border)','stroke-width':1}));
+    /* inner guide ring */
+    svg.appendChild(_svgEl('circle',{cx:0,cy:0,r:IR1+1,fill:'none',stroke:'rgba(255,255,255,0.04)','stroke-width':0.6}));
+    /* outer guide ring */
+    svg.appendChild(_svgEl('circle',{cx:0,cy:0,r:OR1,fill:'none',stroke:'rgba(255,255,255,0.04)','stroke-width':0.6}));
+
+    RADIAL_MODES.forEach((m, i) => {
+      const hex = m.color;
+      const span = 360/N, mid = -90 + span*i;
+      const {x:lx, y:ly} = _polar(ICR, mid);
+      const isActive = m.id === currentMode;
+
+      const g = _svgEl('g', {class:'rpick-g','data-mode':m.id});
+      g.addEventListener('mouseenter', () => _rdHover(i, true));
+      g.addEventListener('mouseleave', () => _rdHover(i, false));
+      g.addEventListener('click', () => radialSelect(m.id));
+
+      /* outer ring band */
+      g.appendChild(_svgEl('path',{
+        d: _slicePath(i,N,OR1,IR1),
+        fill: _hexA(hex, isActive ? 0.18 : 0.09),
+        stroke: _hexA(hex, isActive ? 0.45 : 0.2), 'stroke-width':0.6,
+        id:`rp-or-${i}`, class:'rpick-outer-path'
+      }));
+
+      /* main wedge band */
+      g.appendChild(_svgEl('path',{
+        d: _slicePath(i,N,OR2,IR2),
+        fill: _hexA(hex, isActive ? 0.25 : 0.07),
+        stroke: _hexA(hex, isActive ? 0.55 : 0.22), 'stroke-width': isActive ? 1.2 : 0.8,
+        id:`rp-wp-${i}`, class:'rpick-wedge-path'
+      }));
+
+      /* active glow overlay */
+      if (isActive) {
+        const glowPath = _svgEl('path',{
+          d: _slicePath(i,N,OR2,IR2),
+          fill: _hexA(hex, 0.08), stroke:'none',
+          filter: `drop-shadow(0 0 6px ${hex})`,
+          id:`rp-gp-${i}`
+        });
+        g.appendChild(glowPath);
+      }
+
+      /* mode label */
+      const lt = _svgEl('text',{
+        x:lx, y:ly-5, 'text-anchor':'middle', 'dominant-baseline':'middle',
+        'font-family':'Orbitron,monospace', 'font-size':8, 'font-weight':700,
+        'letter-spacing':0.8, fill: hex, opacity: isActive ? 1 : 0.72,
+        class:'rpick-label-text', id:`rp-lt-${i}`
+      });
+      lt.textContent = m.label;
+
+      /* sub-label */
+      const st = _svgEl('text',{
+        x:lx, y:ly+8, 'text-anchor':'middle', 'dominant-baseline':'middle',
+        'font-family':'Rajdhani,sans-serif', 'font-size':7.5,
+        fill: isActive ? _hexA(hex,0.5) : 'rgba(255,255,255,0.25)',
+        class:'rpick-sub-text', id:`rp-st-${i}`
+      });
+      st.textContent = m.sub;
+
+      g.appendChild(lt);
+      g.appendChild(st);
+      svg.appendChild(g);
+    });
+
+    /* center disc */
+    svg.appendChild(_svgEl('circle',{cx:0,cy:0,r:CR,fill:'var(--surface)',stroke:'var(--border2)','stroke-width':1}));
+    svg.appendChild(_svgEl('circle',{cx:0,cy:0,r:CR-5,fill:'none',stroke:'rgba(255,255,255,0.05)','stroke-width':0.5}));
+
+    const cm = RADIAL_MODES.find(m=>m.id===currentMode);
+    const centerMode = _svgEl('text',{
+      x:0, y:-4, 'text-anchor':'middle', 'dominant-baseline':'middle',
+      'font-family':'Orbitron,monospace', 'font-size':7, 'font-weight':900,
+      'letter-spacing':1.5, fill: cm ? cm.color : 'var(--gold)', id:'rp-center-mode'
+    });
+    centerMode.textContent = currentMode;
+
+    const centerSub = _svgEl('text',{
+      x:0, y:7, 'text-anchor':'middle', 'dominant-baseline':'middle',
+      'font-family':'Rajdhani,sans-serif', 'font-size':8,
+      fill:'var(--muted)', id:'rp-center-sub'
+    });
+    centerSub.textContent = cm ? cm.sub : '';
+
+    svg.appendChild(_svgEl('circle',{cx:0,cy:0,r:3,fill:cm?cm.color:'var(--gold)',opacity:0.6}));
+    svg.appendChild(centerMode);
+    svg.appendChild(centerSub);
+  }
+
+  function _rdHover(idx, on) {
+    const m = RADIAL_MODES[idx];
+    if (!m) return;
+    const wp = document.getElementById(`rp-wp-${idx}`);
+    const op = document.getElementById(`rp-or-${idx}`);
+    const lt = document.getElementById(`rp-lt-${idx}`);
+    const st = document.getElementById(`rp-st-${idx}`);
+    const isActive = m.id === currentMode;
+    if (on) {
+      if (wp) { wp.setAttribute('fill', _hexA(m.color, 0.3)); wp.setAttribute('stroke', _hexA(m.color, 0.65)); wp.setAttribute('stroke-width','1.4'); }
+      if (op) { op.setAttribute('fill', _hexA(m.color, 0.22)); }
+      if (lt) { lt.setAttribute('opacity','1'); }
+      if (st) { st.setAttribute('fill', _hexA(m.color, 0.55)); }
+    } else {
+      if (wp) { wp.setAttribute('fill', _hexA(m.color, isActive?0.25:0.07)); wp.setAttribute('stroke', _hexA(m.color, isActive?0.55:0.22)); wp.setAttribute('stroke-width', isActive?'1.2':'0.8'); }
+      if (op) { op.setAttribute('fill', _hexA(m.color, isActive?0.18:0.09)); }
+      if (lt) { lt.setAttribute('opacity', isActive?'1':'0.72'); }
+      if (st) { st.setAttribute('fill', isActive?_hexA(m.color,0.5):'rgba(255,255,255,0.25)'); }
+    }
+  }
+
+  function updateRadialActive(mode) {
+    RADIAL_MODES.forEach((m, i) => _rdHover(i, false));
+    const m = RADIAL_MODES.find(m=>m.id===mode);
+    const cm = document.getElementById('rp-center-mode');
+    const cs = document.getElementById('rp-center-sub');
+    if (cm) { cm.textContent = mode; cm.setAttribute('fill', m ? m.color : 'var(--gold)'); }
+    if (cs && m) cs.textContent = m.sub;
+  }
+
+  function updateTriggerDial(mode) {
+    const m = RADIAL_MODES.find(m=>m.id===mode);
+    if (!m) return;
+    const label  = document.getElementById('rtrig-label');
+    const arc    = document.getElementById('rtrig-active-arc');
+    const trigger= document.getElementById('radial-trigger');
+    if (label)  label.textContent = mode;
+    if (arc)    arc.setAttribute('d', RTRIG_ARCS[m.idx]);
+    if (trigger) {
+      trigger.style.color       = m.color;
+      trigger.style.borderColor = _hexA(m.color, 0.35);
+      /* burst ring */
+      trigger.classList.remove('bursting');
+      void trigger.offsetWidth;
+      trigger.classList.add('bursting');
+      trigger.addEventListener('animationend', () => trigger.classList.remove('bursting'), { once:true });
+    }
+  }
+
+  function toggleRadialPicker() {
+    const rt = document.getElementById('radial-trigger');
+    if (!rt || rt.disabled) return;
+    _rdOpen ? closeRadialPicker() : openRadialPicker();
+  }
+
+  function openRadialPicker() {
+    _rdOpen = true;
+    const trigger = document.getElementById('radial-trigger');
+    const overlay = document.getElementById('radial-overlay');
+    const wrap    = document.getElementById('radial-picker-wrap');
+    if (!overlay || !wrap) return;
+
+    /* Position centered below the trigger */
+    const rect = trigger.getBoundingClientRect();
+    const cx   = rect.left + rect.width  / 2;
+    const cy   = rect.bottom + 12;
+    wrap.style.left = (cx - 110) + 'px';
+    wrap.style.top  = cy + 'px';
+
+    document.getElementById('radial-mode')?.classList.add('open');
+    overlay.classList.add('open');
+    wrap.classList.add('open');
+    wrap.classList.remove('anim-close');
+    wrap.classList.add('anim-open');
+    buildRadialSVG();
+  }
+
+  function closeRadialPicker() {
+    if (!_rdOpen) return;
+    _rdOpen = false;
+    const overlay = document.getElementById('radial-overlay');
+    const wrap    = document.getElementById('radial-picker-wrap');
+    if (!overlay || !wrap) return;
+    document.getElementById('radial-mode')?.classList.remove('open');
+    wrap.classList.remove('anim-open');
+    wrap.classList.add('anim-close');
+    setTimeout(() => {
+      overlay.classList.remove('open');
+      wrap.classList.remove('open','anim-close');
+    }, 280);
+  }
+
+  function radialSelect(mode) {
+    closeRadialPicker();
+    setMode(mode);
+  }
+
+  /* Close on Escape */
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && _rdOpen) closeRadialPicker();
+  });
+
+  /* ── AI Drive comet ring ── */
+  function initAiRing() {
+    const card = document.querySelector('.ai-card');
+    if (!card) return;
+    const head  = card.querySelector('.ai-ring-head');
+    const trail = card.querySelector('.ai-ring-trail');
+    if (!head || !trail) return;
+
+    let headAnim = null, trailAnim = null;
+
+    function setup() {
+      const w = card.offsetWidth, h = card.offsetHeight;
+      const P = Math.round(2 * (w + h));
+      const HEAD_LEN = 52, TRAIL_LEN = 96, TRAIL_LAG = 26, SPEED = 300;
+      const DUR = (P / SPEED) * 1000;
+      const trailStart = P - TRAIL_LAG - TRAIL_LEN;
+
+      [head, trail].forEach(r => {
+        r.setAttribute('x', 1);
+        r.setAttribute('y', 1);
+        r.setAttribute('width', w - 2);
+        r.setAttribute('height', h - 2);
+        r.setAttribute('rx', 6);
+        r.setAttribute('ry', 6);
+      });
+      head.style.strokeDasharray  = `${HEAD_LEN} ${P - HEAD_LEN}`;
+      trail.style.strokeDasharray = `${TRAIL_LEN} ${P - TRAIL_LEN}`;
+
+      const wasRunning = headAnim?.playState === 'running';
+      headAnim?.cancel(); trailAnim?.cancel();
+
+      const opts = { duration: DUR, iterations: Infinity, easing: 'linear' };
+      headAnim  = head.animate([{ strokeDashoffset: 0 }, { strokeDashoffset: -P }], opts);
+      trailAnim = trail.animate([{ strokeDashoffset: -trailStart }, { strokeDashoffset: -(trailStart + P) }], opts);
+
+      if (!wasRunning && !card.matches(':hover')) {
+        headAnim.pause(); trailAnim.pause();
+      }
+    }
+
+    new ResizeObserver(setup).observe(card);
+    setup();
+
+    card.addEventListener('mouseenter', () => {
+      headAnim?.play(); trailAnim?.play();
+      head.style.animationPlayState = 'running';
+    });
+    card.addEventListener('mouseleave', () => {
+      headAnim?.pause(); trailAnim?.pause();
+      head.style.animationPlayState = 'paused';
+    });
+  }
+  initAiRing();
 
   /* ── Boot ── */
   initSpeech();
