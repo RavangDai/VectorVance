@@ -197,3 +197,24 @@ Key fields pushed to the dashboard every frame:
 - Camera auto-detects at `/dev/video0` through `/dev/video3`. Override with `--cam-index N` if needed.
 - `safety.py` `simulate_sensors()` method is for development only (derives fake distances from frame brightness). Production uses actual HC-SR04 readings set directly on `self.safety.sensors['front']['distance']`.
 - `use_tracking` parameter retained in `DNNDetector` for API compatibility but is unused (SSD is single-shot, no tracking).
+
+---
+
+## Dashboard UI Design System (`webapp/templates/dashboard.html`)
+
+Single-file HTML/CSS/JS dashboard served by Flask on port 5000. No build step, no framework — vanilla JS only.
+
+**Design approach**: dark industrial HUD aesthetic, gold (#C8861A) as dominant brand color, cyan for live data values only.
+
+**Animation patterns in use**:
+- Card entrance: cards start `opacity: 0` until `#app.app-entered` is set by `dismiss()` (splash exit), then stagger in with `cardRise` keyframe and `cubic-bezier(0.25, 1, 0.5, 1)` easing
+- Value flash: `flashIfChanged(el, key, newVal)` — flashes gold on the element when a telemetry value's zone category changes (e.g. dist zone `clear→warn→danger`)
+- Button micro-interactions: CSS `:active` `transform: scale(0.92–0.95)` on all interactive controls
+- Detection items: auto-animate via CSS `detSlideIn` each time `innerHTML` is rebuilt
+- `prefers-reduced-motion` media query disables all animations/transitions
+
+**Banned patterns** (per impeccable skill):
+- No `border-left`/`border-right` > 1px as colored stripe on cards
+- No gradient text (`background-clip: text`)
+- No glassmorphism
+- No bounce/elastic easing — use `cubic-bezier(0.25,1,0.5,1)` (ease-out-quart) instead

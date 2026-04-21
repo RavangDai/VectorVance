@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VectorVance — DASH</title>
+  <title>VectorVance - DASH</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -653,6 +653,154 @@
     .log-item { display: flex; gap: 6px; padding: 1.5px 0; font-size: 10px; color: var(--muted); border-bottom: 1px solid rgba(255,255,255,0.02); }
     .log-item.new { color: var(--text); }
     .log-item .ts { color: var(--dim); font-size: 9px; flex-shrink: 0; }
+
+    /* ══════════════════════════════════════════════════════════
+       BOLDER + ANIMATE ENHANCEMENTS
+    ══════════════════════════════════════════════════════════ */
+
+    /* ── App entrance: cards start hidden, reveal after splash ── */
+    @keyframes cardRise {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    #app:not(.app-entered) .panel .card,
+    #app:not(.app-entered) .video-panel { opacity: 0; }
+
+    #app.app-entered .video-panel {
+      animation: cardRise 0.55s cubic-bezier(0.25, 1, 0.5, 1) 0.04s both;
+    }
+    #app.app-entered .panel:first-child .card:nth-child(1) { animation: cardRise 0.48s cubic-bezier(0.25, 1, 0.5, 1) 0.07s both; }
+    #app.app-entered .panel:first-child .card:nth-child(2) { animation: cardRise 0.48s cubic-bezier(0.25, 1, 0.5, 1) 0.13s both; }
+    #app.app-entered .panel:first-child .card:nth-child(3) { animation: cardRise 0.48s cubic-bezier(0.25, 1, 0.5, 1) 0.19s both; }
+    #app.app-entered .panel:first-child .card:nth-child(4) { animation: cardRise 0.48s cubic-bezier(0.25, 1, 0.5, 1) 0.24s both; }
+    #app.app-entered .panel:first-child .card:nth-child(5) { animation: cardRise 0.48s cubic-bezier(0.25, 1, 0.5, 1) 0.28s both; }
+    #app.app-entered .panel:first-child .card:nth-child(6) { animation: cardRise 0.48s cubic-bezier(0.25, 1, 0.5, 1) 0.32s both; }
+    #app.app-entered .panel:last-child  .card:nth-child(1) { animation: cardRise 0.48s cubic-bezier(0.25, 1, 0.5, 1) 0.09s both; }
+    #app.app-entered .panel:last-child  .card:nth-child(2) { animation: cardRise 0.48s cubic-bezier(0.25, 1, 0.5, 1) 0.16s both; }
+    #app.app-entered .panel:last-child  .card:nth-child(3) { animation: cardRise 0.48s cubic-bezier(0.25, 1, 0.5, 1) 0.22s both; }
+    #app.app-entered .panel:last-child  .card:nth-child(4) { animation: cardRise 0.48s cubic-bezier(0.25, 1, 0.5, 1) 0.27s both; }
+
+    /* ── Button micro-interactions ── */
+    .mode-tab:not(:disabled):active { transform: scale(0.92); transition: transform 0.08s !important; }
+    .dpad-btn:active       { transform: scale(0.87); }
+    .track-click-btn:active { transform: scale(0.95); }
+    .sentry-arm-btn:active  { transform: scale(0.97); }
+    .ai-drive-send:active   { transform: scale(0.92); }
+    .ai-track-btn:active    { transform: scale(0.92); }
+    .track-clear:active     { transform: scale(0.95); }
+
+    /* ── E-STOP: safety-critical — make it unmistakable ── */
+    .e-stop {
+      padding: 6px 18px !important;
+      font-size: 9px !important;
+      letter-spacing: 3px !important;
+      box-shadow: 0 0 0 1px rgba(255,51,68,0.18), inset 0 0 10px rgba(255,51,68,0.06);
+      transition: all 0.18s cubic-bezier(0.25, 1, 0.5, 1) !important;
+    }
+    .e-stop:hover {
+      background: rgba(255,51,68,0.22) !important;
+      box-shadow: 0 0 22px rgba(255,51,68,0.45), 0 0 0 1px rgba(255,51,68,0.6) !important;
+      transform: translateY(-1px);
+    }
+    .e-stop:active { transform: scale(0.94) translateY(0) !important; }
+
+    /* ── Telemetry value flash on change ── */
+    @keyframes valChanged {
+      0%   { color: var(--gold2); text-shadow: 0 0 8px rgba(232,160,48,0.6); }
+      70%  { color: var(--gold);  text-shadow: 0 0 4px rgba(232,160,48,0.3); }
+      100% { text-shadow: none; }
+    }
+    .val-changed { animation: valChanged 0.55s cubic-bezier(0.25, 1, 0.5, 1) !important; }
+
+    /* ── Detection item entry ── */
+    @keyframes detSlideIn {
+      from { opacity: 0; transform: translateX(-10px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+    .det-item { animation: detSlideIn 0.22s cubic-bezier(0.25, 1, 0.5, 1); }
+
+    /* ── Log newest item flash ── */
+    @keyframes logNewFlash {
+      0%   { background: rgba(200,134,26,0.14); }
+      100% { background: transparent; }
+    }
+    .log-item.new { animation: logNewFlash 1.4s ease-out; }
+
+    /* ── Mode tab active indicator line ── */
+    .mode-tab { position: relative; }
+    .mode-tab.active::after {
+      content: '';
+      position: absolute; bottom: -1px; left: 18%; right: 18%;
+      height: 2px; border-radius: 1px; background: currentColor; opacity: 0.65;
+      animation: tabLine 0.28s cubic-bezier(0.25, 1, 0.5, 1);
+    }
+    @keyframes tabLine {
+      from { transform: scaleX(0); opacity: 0; }
+      to   { transform: scaleX(1); opacity: 0.65; }
+    }
+
+    /* ── Connection dot: steady breathe when live ── */
+    @keyframes connBreath {
+      0%, 100% { box-shadow: 0 0 4px var(--green), 0 0 0 0 rgba(0,232,122,0.35); }
+      50%       { box-shadow: 0 0 8px var(--green), 0 0 0 5px rgba(0,232,122,0); }
+    }
+    .conn-dot.live { animation: connBreath 2.8s ease-in-out infinite; }
+
+    /* ── Danger badge — purposeful pulse instead of blink ── */
+    .b-danger { animation: none !important; }
+    .b-danger {
+      animation: dangerPulse 0.9s ease-in-out infinite !important;
+    }
+    @keyframes dangerPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(255,51,68,0.4); opacity: 1; }
+      50%       { box-shadow: 0 0 10px 3px rgba(255,51,68,0.15); opacity: 0.72; }
+    }
+
+    /* ── Obstacle banner slide-in ── */
+    @keyframes bannerIn {
+      from { transform: translateY(-100%); opacity: 0; }
+      to   { transform: translateY(0);     opacity: 1; }
+    }
+    #obstacle-banner[style*="block"],
+    #stop-sign-banner[style*="block"] {
+      animation: bannerIn 0.22s cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    /* ── Background: more structural depth ── */
+    body::before {
+      background-image:
+        radial-gradient(ellipse 72% 52% at 50% -5%, rgba(43,95,142,0.16) 0%, transparent 62%),
+        radial-gradient(ellipse 40% 30% at 85% 95%,  rgba(200,134,26,0.06) 0%, transparent 55%),
+        linear-gradient(rgba(0,212,255,0.016) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,212,255,0.016) 1px, transparent 1px) !important;
+      background-size: 100% 100%, 100% 100%, 44px 44px, 44px 44px !important;
+    }
+
+    /* ── Radar blip pulse when object detected ── */
+    #radar-blip[opacity="0.85"] {
+      animation: blipPulse 0.9s ease-in-out infinite;
+    }
+    @keyframes blipPulse {
+      0%, 100% { r: 4; }
+      50%       { r: 6; }
+    }
+
+    /* ── Video panel: crisper live glow ── */
+    .video-panel { transition: box-shadow 0.5s ease, border-color 0.5s ease; }
+    .video-panel.live {
+      border-color: rgba(0,212,255,0.28) !important;
+      box-shadow: 0 0 28px rgba(0,212,255,0.07), inset 0 0 0 1px rgba(0,212,255,0.10) !important;
+    }
+
+    /* ── Prefers-reduced-motion ── */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+      .radar-sweep { animation: none !important; }
+    }
   </style>
 </head>
 <body>
@@ -1136,6 +1284,7 @@
       if (done) return; done = true;
       const el = document.getElementById('splash');
       el.classList.add('exit');
+      document.getElementById('app').classList.add('app-entered');
       setTimeout(() => { el.style.display = 'none'; }, 900);
     }
     window.skipSplash = dismiss;
@@ -1184,6 +1333,19 @@
   let speedValue  = 0.80;
   let currentMode = 'LANE';
   const manualKeys = { w: false, a: false, s: false, d: false };
+
+  /* ── Value flash helper ── */
+  const _prevVals = {};
+  function flashIfChanged(el, key, newVal) {
+    if (!el) return;
+    const prev = _prevVals[key];
+    _prevVals[key] = newVal;
+    if (prev === undefined || prev === newVal) return;
+    el.classList.remove('val-changed');
+    void el.offsetWidth;
+    el.classList.add('val-changed');
+    el.addEventListener('animationend', () => el.classList.remove('val-changed'), { once: true });
+  }
 
   /* ═══════════════════════════════════════════════════════════════
      CONNECTION
@@ -1293,8 +1455,10 @@
 
     // Steering/PID display
     const errEl = document.getElementById('val-err');
+    const errClass = 'sd-val' + (Math.abs(err) > 100 ? ' danger' : Math.abs(err) > 50 ? ' warn' : '');
+    if (errEl.className !== errClass) errEl.className = errClass;
     errEl.textContent = err !== 0 ? err + ' px' : '0 px';
-    errEl.className   = 'sd-val' + (Math.abs(err) > 100 ? ' danger' : Math.abs(err) > 50 ? ' warn' : '');
+    flashIfChanged(errEl, 'steer_err', Math.round(err / 20));
 
     const pidEl = document.getElementById('val-pid');
     const pid   = d.pid_output;
@@ -1329,8 +1493,11 @@
       if (distBadge) distBadge.textContent = '';
     } else {
       distEl.textContent = dist + ' cm';
-      distEl.style.color = dist < 20 ? 'var(--red)' : dist < 50 ? 'var(--orange)' : 'var(--green)';
-      if (distBadge) { distBadge.textContent = dist + ' cm'; distBadge.style.color = distEl.style.color; }
+      const distColor = dist < 20 ? 'var(--red)' : dist < 50 ? 'var(--orange)' : 'var(--green)';
+      distEl.style.color = distColor;
+      if (distBadge) { distBadge.textContent = dist + ' cm'; distBadge.style.color = distColor; }
+      const distZone = dist < 20 ? 'danger' : dist < 50 ? 'warn' : 'clear';
+      flashIfChanged(distEl, 'dist_zone', distZone);
     }
     updateRadar(dist);
 
