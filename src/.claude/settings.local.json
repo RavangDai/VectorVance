@@ -10,8 +10,8 @@
       "Bash(ls *.py)",
       "Bash(start:*)",
       "Read(./*.py)",
-      "Edit(./*.py)"
-    
+      "Edit(./*.py)",
+      "Bash(npx skills *)"
     ]
   }
 }
