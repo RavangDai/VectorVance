@@ -1,9 +1,6 @@
 """
-perception.py - Premium "Tesla-Style" Lane Detection
-Optimized for Raspberry Pi 3.
-Features: Color-based lane filtering, EMA smoothing, neon-glow UI, safety cutoffs.
-FIXED: Removed hardcoded 180° rotation — caller (mainv2.py) handles rotation
-       based on source type (webcam vs video file).
+perception.py — Single center-line detection via sliding-window + degree-2 polynomial.
+White tape on dark floor. Draws the actual curve shape, not a straight line.
 """
 
 import cv2
@@ -12,7 +9,6 @@ from collections import deque
 
 
 class SmoothValue:
-    """Utility class for smoothly interpolating any numeric value over time."""
     def __init__(self, initial=0.0, alpha=0.15):
         self.value = initial
         self.alpha = alpha
@@ -26,330 +22,188 @@ class SmoothValue:
 
 
 class LaneDetector:
-    def __init__(self, width=640, height=480, smoothing_window=5):
-        self.width = width
+    def __init__(self, width=640, height=480):
+        self.width  = width
         self.height = height
 
-        # ── TESLA-STYLE SMOOTHING (EMA) ──────────────────────────────
-        self.ema_alpha = 0.15
-        self.ema_left_fit = None
-        self.ema_right_fit = None
+        # EMA over 3-element polynomial [A, B, C] where x = A*y² + B*y + C
+        self.ema_alpha  = 0.25
+        self.ema_fit    = None
+        self.confidence = 0.0
 
-        self.smoothing_window = smoothing_window
-        self.error_history = deque(maxlen=smoothing_window)
+        self.error_history = deque(maxlen=5)
 
-        # ── SMOOTH UI VALUES ─────────────────────────────────────────
-        self.smooth_lane_center = SmoothValue(width // 2, alpha=0.12)
-        self.smooth_error = SmoothValue(0.0, alpha=0.12)
-        self.smooth_left_conf = SmoothValue(0.0, alpha=0.08)
-        self.smooth_right_conf = SmoothValue(0.0, alpha=0.08)
+        self.smooth_center    = SmoothValue(width // 2, alpha=0.15)
+        self.smooth_error     = SmoothValue(0.0,        alpha=0.15)
+        self.smooth_conf_disp = SmoothValue(0.0,        alpha=0.08)
 
-        # ── DIRECTION HYSTERESIS ─────────────────────────────────────
         self._direction_label = "STRAIGHT"
         self._direction_color = (0, 255, 0)
-        self._direction_hold = 0
+        self._direction_hold  = 0
 
-        # ── ROI — trapezoid covering bottom 55% of frame ────────────
+        # ROI trapezoid — bottom 55%, wide top to match 130° FOV
         roi_bottom = height
-        roi_top = int(height * 0.45)
-        roi_top_width_fraction = 0.60
+        roi_top    = int(height * 0.45)
+        roi_twf    = 0.70
 
         self.roi_vertices = np.array([[
-            (int(width * 0.02), roi_bottom),
-            (int(width * (0.5 - roi_top_width_fraction / 2)), roi_top),
-            (int(width * (0.5 + roi_top_width_fraction / 2)), roi_top),
-            (int(width * 0.98), roi_bottom)
+            (int(width * 0.01),               roi_bottom),
+            (int(width * (0.5 - roi_twf / 2)), roi_top),
+            (int(width * (0.5 + roi_twf / 2)), roi_top),
+            (int(width * 0.99),               roi_bottom),
         ]], dtype=np.int32)
 
-        # ── VISION TUNING ────────────────────────────────────────────
-        self.canny_low = 50
-        self.canny_high = 150
-        self.hough_threshold = 35
-        self.hough_min_line_length = 35
-        self.hough_max_line_gap = 120
-        self.min_segment_length = 35
+        # Sliding window
+        self._n_windows = 9
+        self._margin    = 70
+        self._min_pix   = 20
 
-        self.left_confidence = 0.0
-        self.right_confidence = 0.0
-
-        # ── LANE FIT VALIDATION ──────────────────────────────────────
-        self._prev_left_slope = None
-        self._prev_right_slope = None
-        self._max_slope_change = 0.40   # allow faster inter-frame slope transitions
-
-        # ── CACHED DRAW POINTS ───────────────────────────────────────
-        self._prev_left_pts = None
-        self._prev_right_pts = None
-
-    # ─────────────────────────────────────────────────────────────────
-    #  COLOR-BASED LANE MASK
-    # ─────────────────────────────────────────────────────────────────
-    def _extract_lane_colors(self, frame):
-        """
-        Extract white and yellow lane markings using HSV + HLS color spaces.
-        Dramatically reduces false detections from non-lane objects.
-        """
-        # --- WHITE LANES (HLS: high lightness + low saturation) ---
+    # ── White tape mask ───────────────────────────────────────────────
+    def _extract_white(self, frame):
         hls = cv2.cvtColor(frame, cv2.COLOR_BGR2HLS)
-        white_lower = np.array([0,   160, 0],  dtype=np.uint8)
-        white_upper = np.array([255, 255, 70], dtype=np.uint8)
-        white_mask  = cv2.inRange(hls, white_lower, white_upper)
-
-        # --- YELLOW LANES (HSV: hue range + saturation) ---
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        yellow_lower = np.array([15,  80, 120], dtype=np.uint8)
-        yellow_upper = np.array([35, 255, 255], dtype=np.uint8)
-        yellow_mask  = cv2.inRange(hsv, yellow_lower, yellow_upper)
+        white_mask = cv2.inRange(hls,
+            np.array([0,   170,  0], dtype=np.uint8),
+            np.array([255, 255, 50], dtype=np.uint8))
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        _, bright_mask = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
 
-        # Bright-on-dark contrast mask (catches white tape on dark floors).
-        # Threshold at 220 (not 180) to avoid picking up walls/doors indoors.
-        _, bright_mask = cv2.threshold(gray, 220, 255, cv2.THRESH_BINARY)
-
-        # Combine
-        combined = cv2.bitwise_or(white_mask, yellow_mask)
-        combined = cv2.bitwise_or(combined, bright_mask)
-
-        # Cleanup
-        kernel = np.ones((3, 3), np.uint8)
+        combined = cv2.bitwise_or(white_mask, bright_mask)
+        kernel   = np.ones((3, 3), np.uint8)
         combined = cv2.morphologyEx(combined, cv2.MORPH_CLOSE, kernel)
         combined = cv2.dilate(combined, kernel, iterations=1)
+        return combined
 
-        return combined, gray
+    # ── ROI ───────────────────────────────────────────────────────────
+    def _apply_roi(self, binary):
+        mask = np.zeros_like(binary)
+        cv2.fillPoly(mask, self.roi_vertices, 255)
+        return cv2.bitwise_and(binary, mask)
 
-    # ─────────────────────────────────────────────────────────────────
-    #  FAILSAFE HELPERS
-    # ─────────────────────────────────────────────────────────────────
-    def _draw_warning_overlay(self, frame, message):
-        debug = frame.copy()
-        overlay = np.zeros_like(debug, dtype=np.uint8)
-        cv2.rectangle(overlay, (0, 0), (self.width, self.height), (0, 0, 255), -1)
-        cv2.addWeighted(overlay, 0.4, debug, 0.6, 0, debug)
-        cv2.putText(debug, message, (20, self.height // 2),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 3)
-        return debug
+    # ── Sliding window — single center line ───────────────────────────
+    def _find_line_pixels(self, binary):
+        h = self.height
 
-    # ─────────────────────────────────────────────────────────────────
-    #  MAIN PIPELINE
-    # ─────────────────────────────────────────────────────────────────
+        # Find tape starting x from histogram of bottom 40%
+        histogram = np.sum(binary[int(h * 0.60):, :], axis=0)
+        peak_x    = int(np.argmax(histogram))
+
+        if histogram[peak_x] < 30:
+            return None, None
+
+        roi_height    = int(h * 0.55)
+        window_height = max(1, roi_height // self._n_windows)
+
+        nonzeroy = np.asarray(binary.nonzero()[0], dtype=np.int32)
+        nonzerox = np.asarray(binary.nonzero()[1], dtype=np.int32)
+
+        xs, ys = [], []
+        cur_x  = peak_x
+
+        for w in range(self._n_windows):
+            y_low  = h - (w + 1) * window_height
+            y_high = h - w * window_height
+
+            good = np.where(
+                (nonzeroy >= y_low)  & (nonzeroy < y_high) &
+                (nonzerox >= cur_x - self._margin) &
+                (nonzerox <  cur_x + self._margin)
+            )[0]
+
+            xs.extend(nonzerox[good])
+            ys.extend(nonzeroy[good])
+
+            if len(good) > self._min_pix:
+                cur_x = int(np.mean(nonzerox[good]))
+
+        xs = np.array(xs, dtype=np.float32)
+        ys = np.array(ys, dtype=np.float32)
+        return (xs, ys) if len(xs) >= 40 else (None, None)
+
+    # ── Degree-2 polynomial fit ───────────────────────────────────────
+    def _fit_poly(self, xs, ys):
+        if xs is None:
+            return None
+        try:
+            fit = np.polyfit(ys, xs, 2)
+        except np.linalg.LinAlgError:
+            return None
+        # Sanity: bottom-of-frame x must land within frame bounds
+        x_bot = fit[0] * self.height**2 + fit[1] * self.height + fit[2]
+        if not (-self.width * 0.5 < x_bot < self.width * 1.5):
+            return None
+        return fit
+
+    def _eval_poly(self, fit, y):
+        if fit is None:
+            return None
+        return float(fit[0] * y**2 + fit[1] * y + fit[2])
+
+    def _make_curve_points(self, fit):
+        """Sample 30 points along the polynomial within the ROI for polylines drawing."""
+        if fit is None:
+            return None
+        ys = np.linspace(self.height, int(self.height * 0.45), 30)
+        xs = fit[0] * ys**2 + fit[1] * ys + fit[2]
+        pts = [(int(x), int(y)) for x, y in zip(xs, ys) if 0 <= x < self.width]
+        return pts if len(pts) >= 5 else None
+
+    # ── EMA + confidence ──────────────────────────────────────────────
+    def _update_ema(self, new_fit):
+        if new_fit is None:
+            if self.confidence <= 0.1:
+                self.ema_fit = None
+            return
+        alpha = self.ema_alpha * (0.5 + 0.5 * self.confidence)
+        if self.ema_fit is None:
+            self.ema_fit = new_fit
+        else:
+            self.ema_fit = self.ema_fit * (1.0 - alpha) + new_fit * alpha
+
+    def _update_confidence(self, fit):
+        if fit is not None:
+            self.confidence = min(1.0, self.confidence + 0.20)
+        else:
+            self.confidence = max(0.0, self.confidence - 0.05)
+
+    # ── Main pipeline ─────────────────────────────────────────────────
     def process_frame(self, frame):
-        """
-        Process a single frame for lane detection.
-        IMPORTANT: Frame must already be correctly oriented BEFORE calling this.
-                   Rotation is handled by the caller (mainv2.py) based on source type.
-        """
-        frame = cv2.resize(frame, (self.width, self.height))
-        # NOTE: No rotation here — the caller rotates if needed (webcam/Pi camera)
+        frame  = cv2.resize(frame, (self.width, self.height))
+        binary = self._apply_roi(self._extract_white(frame))
 
-        # ── COLOR EXTRACTION ─────────────────────────────────────────
-        color_mask, gray = self._extract_lane_colors(frame)
+        xs, ys  = self._find_line_pixels(binary)
+        raw_fit = self._fit_poly(xs, ys)
 
-        # Apply color mask BEFORE edge detection
-        masked_gray = cv2.bitwise_and(gray, color_mask)
-        blur = cv2.GaussianBlur(masked_gray, (5, 5), 0)
-        edges = cv2.Canny(blur, self.canny_low, self.canny_high)
-        masked_edges = self._apply_roi(edges)
+        self._update_confidence(raw_fit)
+        self._update_ema(raw_fit)
 
-        lines = cv2.HoughLinesP(
-            masked_edges, rho=2, theta=np.pi / 180,
-            threshold=self.hough_threshold,
-            minLineLength=self.hough_min_line_length,
-            maxLineGap=self.hough_max_line_gap
-        )
+        if self.ema_fit is None:
+            return None, self._draw_warning_overlay(frame, "LOST LANE")
 
-        raw_left_fit, raw_right_fit = self._separate_lanes(lines)
-
-        # ── VALIDATE FITS ────────────────────────────────────────────
-        raw_left_fit = self._validate_fit(raw_left_fit, self._prev_left_slope)
-        raw_right_fit = self._validate_fit(raw_right_fit, self._prev_right_slope)
-        if raw_left_fit is not None:
-            self._prev_left_slope = raw_left_fit[0]
-        if raw_right_fit is not None:
-            self._prev_right_slope = raw_right_fit[0]
-
-        self._update_confidence(raw_left_fit, raw_right_fit)
-
-        # ── FAILSAFE 2: LOST LANES ───────────────────────────────────
-        # Only trigger if BOTH lanes are lost (AND), not just one
-        if self.left_confidence < 0.15 and self.right_confidence < 0.15:
-            self.ema_left_fit = None
-            self.ema_right_fit = None
-            return None, self._draw_warning_overlay(frame, "WARNING: LOST LANES")
-
-        # EMA Smoothing
-        self.ema_left_fit = self._update_ema(self.ema_left_fit, raw_left_fit, self.left_confidence)
-        self.ema_right_fit = self._update_ema(self.ema_right_fit, raw_right_fit, self.right_confidence)
-
-        # Steering error
-        lane_center, left_x, right_x = self._compute_center(self.ema_left_fit, self.ema_right_fit)
-        frame_center = self.width // 2
-        raw_error = (frame_center - lane_center) if lane_center is not None else 0
+        # Steering: error = how far the line is from frame center
+        control_y = int(self.height * 0.75)
+        line_x    = self._eval_poly(self.ema_fit, control_y)
+        raw_error = int(self.width // 2 - line_x) if line_x is not None else 0
 
         self.error_history.append(raw_error)
         weights = np.linspace(0.5, 1.0, len(self.error_history))
         steering_error = int(np.average(list(self.error_history), weights=weights))
 
-        # Smooth display values
-        display_center = self.smooth_lane_center.update(
-            lane_center if lane_center is not None else frame_center
-        )
-        display_error = self.smooth_error.update(float(steering_error))
+        display_x   = int(self.smooth_center.update(line_x if line_x else self.width // 2))
+        display_err = int(self.smooth_error.update(float(steering_error)))
 
-        # Draw overlay
-        debug_frame = self._draw_premium_overlay(
-            frame, self.ema_left_fit, self.ema_right_fit,
-            int(display_center), int(display_error), masked_edges
-        )
+        debug = self._draw_overlay(frame, binary, display_x, display_err)
+        return steering_error, debug
 
-        return steering_error, debug_frame
-
-    # ─────────────────────────────────────────────────────────────────
-    #  FIT VALIDATION
-    # ─────────────────────────────────────────────────────────────────
-    def _validate_fit(self, fit, prev_slope):
-        if fit is None:
-            return None
-        slope = fit[0]
-        if abs(slope) < 0.1 or abs(slope) > 5.0:
-            return None
-        if prev_slope is not None:
-            if abs(slope - prev_slope) > self._max_slope_change:
-                return None
-        return fit
-
-    # ─────────────────────────────────────────────────────────────────
-    #  EMA + CONFIDENCE
-    # ─────────────────────────────────────────────────────────────────
-    def _update_ema(self, ema_fit, new_fit, confidence):
-        if new_fit is None:
-            if confidence <= 0.1:
-                return None
-            return ema_fit
-        if ema_fit is None:
-            return new_fit
-        adaptive_alpha = self.ema_alpha * (0.5 + 0.5 * confidence)
-        return ema_fit * (1.0 - adaptive_alpha) + new_fit * adaptive_alpha
-
-    def _update_confidence(self, left_fit, right_fit):
-        if left_fit is not None:
-            self.left_confidence = min(1.0, self.left_confidence + 0.20)
-        else:
-            self.left_confidence = max(0.0, self.left_confidence - 0.05)
-        if right_fit is not None:
-            self.right_confidence = min(1.0, self.right_confidence + 0.20)
-        else:
-            self.right_confidence = max(0.0, self.right_confidence - 0.05)
-
-    # ─────────────────────────────────────────────────────────────────
-    #  GEOMETRY
-    # ─────────────────────────────────────────────────────────────────
-    def _apply_roi(self, edges):
-        mask = np.zeros_like(edges)
-        cv2.fillPoly(mask, self.roi_vertices, 255)
-        return cv2.bitwise_and(edges, mask)
-
-    def _separate_lanes(self, lines):
-        left_lines = []
-        right_lines = []
-        if lines is None:
-            return None, None
-
-        cx = self.width / 2
-        for line in lines:
-            x1, y1, x2, y2 = line[0]
-            if x2 == x1:
-                continue
-            seg_len = np.hypot(x2 - x1, y2 - y1)
-            if seg_len < self.min_segment_length:
-                continue
-            slope = (y2 - y1) / (x2 - x1)
-            angle = abs(np.degrees(np.arctan(slope)))
-
-            if angle < 25 or angle > 70:
-                continue
-
-            mid_x = (x1 + x2) / 2
-            if slope < 0 and mid_x < cx:
-                left_lines.append(line[0])
-            elif slope > 0 and mid_x > cx:
-                right_lines.append(line[0])
-
-        return self._fit_lane(left_lines), self._fit_lane(right_lines)
-
-    def _fit_lane(self, line_segments):
-        if not line_segments or len(line_segments) < 2:
-            return None
-        pts = []
-        for x1, y1, x2, y2 in line_segments:
-            pts.extend([(x1, y1), (x2, y2)])
-        xs = np.array([p[0] for p in pts], dtype=np.float32)
-        ys = np.array([p[1] for p in pts], dtype=np.float32)
-        try:
-            fit = np.polyfit(ys, xs, 1)
-            predicted = np.polyval(fit, ys)
-            residual = np.mean(np.abs(xs - predicted))
-            if residual > 25:   # tightened: reject noisy/scattered fits
-                return None
-            return fit
-        except np.linalg.LinAlgError:
-            return None
-
-    def _compute_center(self, left_fit, right_fit):
-        y_eval = int(self.height * 0.75)
-        left_x = self._eval_fit(left_fit, y_eval)
-        right_x = self._eval_fit(right_fit, y_eval)
-
-        if left_x is not None and right_x is not None:
-            if right_x - left_x < 80:
-                return None, left_x, right_x
-            center = (left_x + right_x) // 2
-        elif left_x is not None:
-            center = left_x + 160
-        elif right_x is not None:
-            center = right_x - 160
-        else:
-            center = None
-
-        return center, left_x, right_x
-
-    def _eval_fit(self, fit, y):
-        if fit is None:
-            return None
-        x = int(fit[0] * y + fit[1])
-        if x < -300 or x > self.width + 300:
-            return None
-        return x
-
-    def _make_lane_points(self, fit):
-        if fit is None:
-            return None
-        y_bottom = self.height
-        y_top = int(self.height * 0.45)   # matches ROI top
-        x_bottom = int(fit[0] * y_bottom + fit[1])
-        x_top = int(fit[0] * y_top + fit[1])
-        return (x_bottom, y_bottom), (x_top, y_top)
-
-    def _smooth_points(self, new_pts, prev_pts, alpha=0.2):
-        if prev_pts is None or new_pts is None:
-            return new_pts
-        p0 = (int(prev_pts[0][0] + alpha * (new_pts[0][0] - prev_pts[0][0])),
-              int(prev_pts[0][1] + alpha * (new_pts[0][1] - prev_pts[0][1])))
-        p1 = (int(prev_pts[1][0] + alpha * (new_pts[1][0] - prev_pts[1][0])),
-              int(prev_pts[1][1] + alpha * (new_pts[1][1] - prev_pts[1][1])))
-        return p0, p1
-
-    # ─────────────────────────────────────────────────────────────────
-    #  DIRECTION LABEL WITH HYSTERESIS
-    # ─────────────────────────────────────────────────────────────────
+    # ── Direction label ───────────────────────────────────────────────
     def _get_direction(self, error):
         abs_err = abs(error)
         if abs_err < 8:
             new_dir, new_col = "STRAIGHT", (0, 255, 0)
         elif error > 15:
-            new_dir, new_col = "LEFT", (0, 165, 255)
+            new_dir, new_col = "LEFT",     (0, 165, 255)
         elif error < -15:
-            new_dir, new_col = "RIGHT", (255, 0, 255)
+            new_dir, new_col = "RIGHT",    (255, 0, 255)
         else:
             return self._direction_label, self._direction_color
 
@@ -358,138 +212,90 @@ class LaneDetector:
             if self._direction_hold >= 4:
                 self._direction_label = new_dir
                 self._direction_color = new_col
-                self._direction_hold = 0
+                self._direction_hold  = 0
         else:
             self._direction_hold = 0
 
         return self._direction_label, self._direction_color
 
-    # ─────────────────────────────────────────────────────────────────
-    #  DRAWING
-    # ─────────────────────────────────────────────────────────────────
-    def _draw_premium_overlay(self, frame, left_fit, right_fit, lane_center, error, edges):
+    # ── Drawing ───────────────────────────────────────────────────────
+    def _draw_overlay(self, frame, binary, line_x, error):
         debug = frame.copy()
-        h, w = debug.shape[:2]
-        overlay = np.zeros_like(debug, dtype=np.uint8)
+        h, w  = debug.shape[:2]
 
-        raw_left_pts = self._make_lane_points(left_fit)
-        raw_right_pts = self._make_lane_points(right_fit)
-
-        left_pts = self._smooth_points(raw_left_pts, self._prev_left_pts, alpha=0.25)
-        right_pts = self._smooth_points(raw_right_pts, self._prev_right_pts, alpha=0.25)
-        self._prev_left_pts = left_pts
-        self._prev_right_pts = right_pts
-
-        # ── FOV TRAPEZOID (camera field-of-view boundary) ────────────
+        # FOV boundary
         cv2.polylines(debug, self.roi_vertices, isClosed=True,
-                      color=(0, 220, 255), thickness=2)
+                      color=(0, 220, 255), thickness=1)
 
-        # ── LANE POLYGON (green tinted driving corridor) ─────────────
-        if left_pts and right_pts:
-            poly = np.array([left_pts[0], left_pts[1], right_pts[1], right_pts[0]], dtype=np.int32)
-            cv2.fillPoly(overlay, [poly], (0, 200, 80))
-            cv2.addWeighted(overlay, 0.25, debug, 1.0, 0, debug)
+        # Curved lane line
+        pts = self._make_curve_points(self.ema_fit)
+        if pts:
+            arr = np.array(pts, dtype=np.int32).reshape(-1, 1, 2)
+            cv2.polylines(debug, [arr], isClosed=False, color=(0, 255, 80),   thickness=8)
+            cv2.polylines(debug, [arr], isClosed=False, color=(200, 255, 200), thickness=2)
 
-        # ── NEON LANE LINES (green glow + white core) ────────────────
-        def draw_neon_line(img, p1, p2, glow_color):
-            if p1 and p2:
-                cv2.line(img, p1, p2, glow_color, 10)
-                cv2.line(img, p1, p2, (200, 255, 200), 2)
+        # Frame center (gold) and line position (red)
+        cx = w // 2
+        cv2.line(debug, (cx,     h - 120), (cx,     h), (255, 150, 0), 2)
+        cv2.line(debug, (line_x, h - 120), (line_x, h), (0, 0, 255),   3)
 
-        draw_neon_line(debug,
-                       left_pts[0] if left_pts else None,
-                       left_pts[1] if left_pts else None,
-                       (0, 255, 100))
-        draw_neon_line(debug,
-                       right_pts[0] if right_pts else None,
-                       right_pts[1] if right_pts else None,
-                       (0, 255, 100))
+        # Error bar
+        cv2.line(debug,   (cx, h - 60), (line_x, h - 60), (0, 0, 255), 2)
+        cv2.circle(debug, (line_x, h - 60), 6, (0, 0, 255), 2)
+        cv2.circle(debug, (cx,     h - 60), 6, (255, 150, 0), 2)
 
-        # ── CENTER LINES (frame center = blue, lane center = red) ────
-        frame_center = w // 2
-        cv2.line(debug, (frame_center, h - 100),
-                 (frame_center, h), (255, 150, 0), 2)
-        if lane_center is not None:
-            cv2.line(debug, (lane_center, h - 100),
-                     (lane_center, h), (0, 0, 255), 3)
-            # Horizontal error line
-            cv2.line(debug, (frame_center, h - 50),
-                     (lane_center, h - 50), (0, 0, 255), 2)
-            # Target crosshair
-            cv2.circle(debug, (lane_center, h - 50), 6, (0, 0, 255), 2)
-            cv2.circle(debug, (frame_center, h - 50), 6, (255, 150, 0), 2)
-
-        # ── DIRECTION INDICATOR (top area with arrow) ────────────────
+        # Direction banner
         direction, dir_color = self._get_direction(error)
-        abs_err = abs(error)
         arrow = "<--" if direction == "LEFT" else "-->" if direction == "RIGHT" else "| |"
-
-        # Dark banner behind direction text
-        cv2.rectangle(debug, (135, 8), (420, 40), (0, 0, 0), -1)
-        cv2.rectangle(debug, (135, 8), (420, 40), dir_color, 1)
-        cv2.putText(debug, f"{abs_err}px {arrow} {direction}",
+        cv2.rectangle(debug, (135, 8), (420, 40), (0, 0, 0),     -1)
+        cv2.rectangle(debug, (135, 8), (420, 40), dir_color,      1)
+        cv2.putText(debug, f"{abs(error)}px {arrow} {direction}",
                     (145, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.65, dir_color, 2)
 
-        # Lane center value
-        if lane_center is not None:
-            cv2.putText(debug, f"Lane: {lane_center}px",
-                        (145, 58), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 180, 255), 1)
-
-        # ── EDGE MINIMAP (top-left) ──────────────────────────────────
-        edges_colored = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
-        edges_small = cv2.resize(edges_colored, (120, 90))
-        debug[10:100, 10:130] = edges_small
+        # Binary mask minimap (top-left)
+        mini = cv2.resize(cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR), (120, 90))
+        debug[10:100, 10:130] = mini
         cv2.rectangle(debug, (10, 10), (130, 100), (100, 100, 100), 1)
-        cv2.putText(debug, "Edge View", (12, 112),
+        cv2.putText(debug, "Mask", (12, 112),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.35, (120, 120, 120), 1)
 
-        # ── CONFIDENCE BARS (right side) ─────────────────────────────
-        self._draw_confidence_bars(debug)
+        # Confidence bar (top-right)
+        self._draw_confidence_bar(debug)
 
         return debug
 
-    def _draw_confidence_bars(self, frame):
-        disp_left = self.smooth_left_conf.update(self.left_confidence)
-        disp_right = self.smooth_right_conf.update(self.right_confidence)
+    def _draw_confidence_bar(self, frame):
+        h, w  = frame.shape[:2]
+        conf  = self.smooth_conf_disp.update(self.confidence)
+        bx    = w - 38
+        by    = 115
+        bar_h = 70
+        color = (0, 230, 100) if conf > 0.5 else (0, 180, 255) if conf > 0.25 else (0, 0, 255)
+        cv2.rectangle(frame, (bx, by - bar_h), (bx + 22, by), (30, 30, 30), -1)
+        fill = int(bar_h * conf)
+        if fill > 0:
+            cv2.rectangle(frame, (bx, by - fill), (bx + 22, by), color, -1)
+        cv2.rectangle(frame, (bx, by - bar_h), (bx + 22, by), (80, 80, 80), 1)
+        cv2.putText(frame, "C", (bx + 6, by - bar_h - 6),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 180), 1)
+        cv2.putText(frame, f"{conf:.2f}", (bx - 2, by + 14),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.35, (150, 150, 150), 1)
 
-        h, w = frame.shape[:2]
-        # Compact bars in top-right corner — away from the 4-motor bars at bottom-right
-        bar_w, bar_h = 22, 70
-        lx = w - 65
-        rx = w - 38
-        by = 115  # top of frame area
-
-        for (bx, conf, label) in [(lx, disp_left, "L"), (rx, disp_right, "R")]:
-            cv2.rectangle(frame, (bx, by - bar_h), (bx + bar_w, by), (30, 30, 30), -1)
-            fill = int(bar_h * conf)
-            if conf > 0.5:
-                color = (0, 230, 100)
-            elif conf > 0.25:
-                color = (0, 180, 255)
-            else:
-                color = (0, 0, 255)
-            if fill > 0:
-                cv2.rectangle(frame, (bx, by - fill), (bx + bar_w, by), color, -1)
-            cv2.rectangle(frame, (bx, by - bar_h), (bx + bar_w, by), (80, 80, 80), 1)
-            cv2.putText(frame, label, (bx + 6, by - bar_h - 6),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 180), 1)
-            cv2.putText(frame, f"{conf:.2f}",
-                        (bx - 2, by + 14),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.35, (150, 150, 150), 1)
+    def _draw_warning_overlay(self, frame, message):
+        debug   = frame.copy()
+        overlay = np.zeros_like(debug, dtype=np.uint8)
+        cv2.rectangle(overlay, (0, 0), (self.width, self.height), (0, 0, 255), -1)
+        cv2.addWeighted(overlay, 0.4, debug, 0.6, 0, debug)
+        cv2.putText(debug, message, (20, self.height // 2),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 3)
+        return debug
 
     def reset_smoothing(self):
+        self.ema_fit    = None
+        self.confidence = 0.0
         self.error_history.clear()
-        self.ema_left_fit = None
-        self.ema_right_fit = None
-        self.left_confidence = 0.0
-        self.right_confidence = 0.0
-        self.smooth_lane_center.set_immediate(self.width // 2)
+        self.smooth_center.set_immediate(self.width // 2)
         self.smooth_error.set_immediate(0.0)
-        self.smooth_left_conf.set_immediate(0.0)
-        self.smooth_right_conf.set_immediate(0.0)
-        self._prev_left_pts = None
-        self._prev_right_pts = None
-        self._prev_left_slope = None
-        self._prev_right_slope = None
+        self.smooth_conf_disp.set_immediate(0.0)
         self._direction_label = "STRAIGHT"
-        self._direction_hold = 0
+        self._direction_hold  = 0
