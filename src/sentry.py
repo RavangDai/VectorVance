@@ -1,12 +1,13 @@
 """
 sentry.py — Stationary Surveillance (SENTRY) Mode
 ──────────────────────────────────────────────────
-No mic.  Parks the car, locks the wheels, and uses the front camera for:
+Parks the car, locks the wheels, and uses the front camera for:
   • Motion detection  — frame differencing + contour area threshold
   • Person/object DNN — SSD MobileNet v2 (shared net from dnn_detector)
+  • Fire detection    — HSV colour thresholding for flame signatures
   • Event log         — timestamped deque, max MAX_EVENTS entries
   • Snapshot saving   — writes JPEGs to /home/pi/sentry_snaps/
-  • Telegram alerts   — optional; set TELEGRAM_TOKEN + TELEGRAM_CHAT_ID env vars
+  • ntfy.sh alerts    — set NTFY_TOPIC env var (optional: NTFY_URL for self-hosted)
 
 Usage from main.py:
     sentry = SentryMonitor(net=shared_net)
@@ -24,7 +25,7 @@ import numpy as np
 from collections import deque
 from datetime import datetime
 
-# ── Classes we alert on ──────────────────────────────────────────────────────
+# ── Classes we alert on (SSD MobileNet v2 COCO) ─────────────────────────────
 _SENTRY_CLASSES = {
     0:  "person",
     1:  "bicycle",
@@ -44,13 +45,19 @@ ALERT_COOLDOWN_S  = 30.0   # seconds between alerts of the same type
 DNN_SKIP          = 8      # run DNN every Nth frame (CPU budget)
 MOTION_AREA_MIN   = 1200   # px² — contours smaller than this are noise
 PERSON_CONF       = 0.50   # minimum DNN confidence
+FIRE_PIXEL_RATIO  = 0.015  # fraction of frame that must be fire-coloured
+
+# ntfy.sh priority + tag per event type
+_NTFY_META = {
+    "fire":   ("5",      "rotating_light,fire",            "FIRE DETECTED"),
+    "person": ("4",      "bust_in_silhouette,warning",     "PERSON DETECTED"),
+    "motion": ("3",      "wave",                           "MOTION DETECTED"),
+}
 
 
 class SentryMonitor:
 
-    def __init__(self, net=None,
-                 telegram_token: str = "",
-                 telegram_chat_id: str = ""):
+    def __init__(self, net=None, ntfy_topic: str = "", ntfy_url: str = ""):
         self._net             = net
         self._armed           = False
         self._prev_gray       = None
@@ -62,9 +69,10 @@ class SentryMonitor:
         self._snap_count      = 0
         self.motion_active    = False
         self.person_active    = False
+        self.fire_active      = False
 
-        self._telegram_token   = telegram_token   or os.environ.get("TELEGRAM_TOKEN",   "")
-        self._telegram_chat_id = telegram_chat_id or os.environ.get("TELEGRAM_CHAT_ID", "")
+        self._ntfy_topic = ntfy_topic or os.environ.get("NTFY_TOPIC", "")
+        self._ntfy_url   = (ntfy_url  or os.environ.get("NTFY_URL",   "https://ntfy.sh")).rstrip("/")
 
         os.makedirs(SNAP_DIR, exist_ok=True)
 
@@ -77,9 +85,10 @@ class SentryMonitor:
         print("[Sentry] ARMED — surveillance active")
 
     def disarm(self):
-        self._armed            = False
-        self.motion_active     = False
-        self.person_active     = False
+        self._armed        = False
+        self.motion_active = False
+        self.person_active = False
+        self.fire_active   = False
         print("[Sentry] Disarmed")
 
     @property
@@ -98,7 +107,7 @@ class SentryMonitor:
     # ── Main per-frame call ───────────────────────────────────────────────────
 
     def process(self, frame) -> np.ndarray:
-        """Run motion + DNN detection. Returns annotated debug frame."""
+        """Run motion + DNN + fire detection. Returns annotated debug frame."""
         self._frame_count += 1
         debug = frame.copy()
 
@@ -107,8 +116,9 @@ class SentryMonitor:
                         (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (80, 80, 80), 2)
             return debug
 
-        motion_contours = self._detect_motion(frame)
+        motion_contours    = self._detect_motion(frame)
         self.motion_active = motion_contours is not None
+        self.fire_active   = self._detect_fire(frame)
 
         if self._frame_count % DNN_SKIP == 0:
             self._last_dnn_dets = self._run_dnn(frame)
@@ -117,10 +127,13 @@ class SentryMonitor:
             label == "person" for label, _, _ in self._last_dnn_dets
         )
 
-        if self.motion_active:
-            self._maybe_log_event("motion", frame)
+        # Fire takes priority; always alert regardless of other states
+        if self.fire_active:
+            self._maybe_log_event("fire", frame)
         if self.person_active:
             self._maybe_log_event("person", frame)
+        if self.motion_active:
+            self._maybe_log_event("motion", frame)
 
         return self._draw_overlay(debug, motion_contours)
 
@@ -143,6 +156,18 @@ class SentryMonitor:
         cnts, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         big = [c for c in cnts if cv2.contourArea(c) > MOTION_AREA_MIN]
         return big if big else None
+
+    def _detect_fire(self, frame) -> bool:
+        """HSV colour threshold for fire signatures (red-orange-yellow, high brightness)."""
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        # Orange/yellow flame core: H=0-40, high saturation, high value
+        mask_low  = cv2.inRange(hsv, np.array([0,  120, 150]), np.array([40, 255, 255]))
+        # Upper-red hue wrap (H=170-180)
+        mask_high = cv2.inRange(hsv, np.array([170, 120, 150]), np.array([180, 255, 255]))
+        combined  = cv2.bitwise_or(mask_low, mask_high)
+        fire_px   = cv2.countNonZero(combined)
+        threshold = int(frame.shape[0] * frame.shape[1] * FIRE_PIXEL_RATIO)
+        return fire_px > threshold
 
     def _run_dnn(self, frame) -> list:
         if self._net is None:
@@ -182,7 +207,7 @@ class SentryMonitor:
             self._events.appendleft(event)
 
         print(f"[Sentry] EVENT: {event_type} @ {ts}  snap={snap_path}")
-        self._send_telegram(event_type, snap_path)
+        self._send_ntfy(event_type, snap_path)
 
     def _save_snapshot(self, frame) -> str:
         self._snap_count += 1
@@ -191,35 +216,30 @@ class SentryMonitor:
         cv2.imwrite(fname, frame)
         return fname
 
-    def _send_telegram(self, event_type: str, snap_path: str):
-        if not self._telegram_token or not self._telegram_chat_id:
+    def _send_ntfy(self, event_type: str, snap_path: str):
+        if not self._ntfy_topic:
             return
+        priority, tags, title = _NTFY_META.get(event_type, ("3", "bell", event_type.upper()))
+        url = f"{self._ntfy_url}/{self._ntfy_topic}"
         try:
             import urllib.request
-            caption  = f"[VectorVance Sentry] {event_type.upper()} detected"
-            url      = f"https://api.telegram.org/bot{self._telegram_token}/sendPhoto"
-            boundary = "VVBoundary"
             with open(snap_path, "rb") as f:
                 img_data = f.read()
-            body = (
-                f"--{boundary}\r\n"
-                f'Content-Disposition: form-data; name="chat_id"\r\n\r\n'
-                f"{self._telegram_chat_id}\r\n"
-                f"--{boundary}\r\n"
-                f'Content-Disposition: form-data; name="caption"\r\n\r\n'
-                f"{caption}\r\n"
-                f"--{boundary}\r\n"
-                f'Content-Disposition: form-data; name="photo"; filename="snap.jpg"\r\n'
-                f"Content-Type: image/jpeg\r\n\r\n"
-            ).encode() + img_data + f"\r\n--{boundary}--\r\n".encode()
-
             req = urllib.request.Request(
-                url, data=body,
-                headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+                url,
+                data=img_data,
+                method="PUT",
+                headers={
+                    "Title":        title,
+                    "Tags":         tags,
+                    "Priority":     priority,
+                    "Filename":     "snap.jpg",
+                    "Content-Type": "image/jpeg",
+                },
             )
             urllib.request.urlopen(req, timeout=10)
         except Exception as e:
-            print(f"[Sentry] Telegram send failed: {e}")
+            print(f"[Sentry] ntfy send failed: {e}")
 
     # ── HUD ───────────────────────────────────────────────────────────────────
 
@@ -238,8 +258,10 @@ class SentryMonitor:
         if motion_contours:
             cv2.drawContours(frame, motion_contours, -1, (0, 255, 180), 1)
 
-        # Top status banner
-        if self.person_active:
+        # Top status banner — fire > person > motion > idle
+        if self.fire_active:
+            banner_bg, banner_txt = (0, 50, 220), "! FIRE DETECTED !"
+        elif self.person_active:
             banner_bg, banner_txt = (0, 0, 180), "PERSON DETECTED"
         elif self.motion_active:
             banner_bg, banner_txt = (0, 100, 200), "MOTION DETECTED"

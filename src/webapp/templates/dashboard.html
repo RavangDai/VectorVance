@@ -638,6 +638,7 @@
     }
     .sentry-ind.active-motion { background: oklch(0.48 0.19 48 / 0.12); border-color: oklch(0.48 0.19 48 / 0.55); color: var(--orange); }
     .sentry-ind.active-person { background: oklch(0.44 0.24 22 / 0.10); border-color: oklch(0.44 0.24 22 / 0.55); color: var(--red); animation: blink 0.5s infinite; }
+    .sentry-ind.active-fire   { background: oklch(0.42 0.22 40 / 0.15); border-color: oklch(0.55 0.22 40 / 0.80); color: #ff6a00; animation: blink 0.35s infinite; }
     .sentry-event-log { max-height: 80px; overflow-y: auto; }
     .sentry-event-log::-webkit-scrollbar { width: 2px; }
     .sentry-event-log::-webkit-scrollbar-thumb { background: var(--border2); }
@@ -645,6 +646,7 @@
     .sentry-evt-time { color: var(--muted); font-size: 9px; }
     .evt-person .sentry-evt-type { color: var(--red); }
     .evt-motion .sentry-evt-type { color: var(--orange); }
+    .evt-fire   .sentry-evt-type { color: #ff6a00; font-weight: 700; }
 
     /* ══════════════════════════════════════════════════════════
        LOG
@@ -1238,6 +1240,7 @@
           <div class="sentry-indicators">
             <div class="sentry-ind" id="sentry-ind-motion">Motion</div>
             <div class="sentry-ind" id="sentry-ind-person">Person</div>
+            <div class="sentry-ind" id="sentry-ind-fire">Fire</div>
           </div>
           <div class="sentry-event-log" id="sentry-event-log">
             <div style="color:var(--dim);font-size:10px;text-align:center;padding:4px 0;">No events yet</div>
@@ -2089,6 +2092,7 @@
     btn.classList.toggle('armed', armed);
     document.getElementById('sentry-ind-motion').className = 'sentry-ind' + (d.sentry_motion ? ' active-motion' : '');
     document.getElementById('sentry-ind-person').className = 'sentry-ind' + (d.sentry_person ? ' active-person' : '');
+    document.getElementById('sentry-ind-fire').className   = 'sentry-ind' + (d.sentry_fire   ? ' active-fire'   : '');
   }
 
   async function toggleSentry() {
@@ -2114,7 +2118,7 @@
       log.innerHTML = '<div style="color:var(--dim);font-size:10px;text-align:center;padding:4px 0;">No events yet</div>'; return;
     }
     log.innerHTML = events.map(ev => {
-      const cls = ev.type === 'person' ? 'evt-person' : 'evt-motion';
+      const cls = ev.type === 'fire' ? 'evt-fire' : ev.type === 'person' ? 'evt-person' : 'evt-motion';
       return `<div class="sentry-evt ${cls}">
         <span class="sentry-evt-time">${ev.time}</span>
         <span class="sentry-evt-type">${ev.type}</span>

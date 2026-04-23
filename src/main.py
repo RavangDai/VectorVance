@@ -725,6 +725,7 @@ class AutonomousVehicle:
             "sentry_armed":          self.sentry.armed,
             "sentry_motion":         self.sentry.motion_active,
             "sentry_person":         self.sentry.person_active,
+            "sentry_fire":           self.sentry.fire_active,
         }
 
     # ── Main perception + decision loop ──────────────────────────────────────
