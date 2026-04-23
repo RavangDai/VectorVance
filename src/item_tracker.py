@@ -86,14 +86,14 @@ class ItemTracker:
                         MobileNet doesn't know (custom toys, coloured balls, etc).
     """
 
-    LOST_TIMEOUT      = 20   # frames of no-detection → declare lost
+    LOST_TIMEOUT      = 45   # frames of no-detection → start 360° search
     CLICK_ROI         = 90   # initial bbox side length (px) around a click
     REINIT_MAX_DIST   = 300  # px — max distance from last position to accept a re-detect
     VERIFY_INTERVAL   = 12   # frames — how often to cross-check tracker with DNN
 
     def __init__(self,
                  model_name: str       = "ssd_mobilenet_v2_coco.pb",
-                 conf_threshold: float = 0.45,
+                 conf_threshold: float = 0.35,
                  frame_width: int      = 640,
                  frame_height: int     = 480,
                  skip_frames: int      = 3,
@@ -338,8 +338,7 @@ class ItemTracker:
         if not self.available:
             return
         if self._frame_counter % self.skip_frames != 0:
-            self.lost_frames += 1
-            return
+            return  # skip frame — don't penalize lost_frames
 
         blob = cv2.dnn.blobFromImage(
             frame,
@@ -404,6 +403,25 @@ class ItemTracker:
         _, _, _, bh = self.last_bbox
         return max(0.0, min(1.0, bh / self.frame_height))
 
+    # ── Shape contour ────────────────────────────────────────────────────────
+
+    def _extract_contour(self, frame: np.ndarray, bbox: tuple):
+        """Return the largest edge contour inside bbox, offset to full-frame coords."""
+        x, y, w, h = bbox
+        if w < 15 or h < 15:
+            return None
+        roi    = frame[y:y + h, x:x + w]
+        gray   = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        blur   = cv2.GaussianBlur(gray, (5, 5), 0)
+        edges  = cv2.Canny(blur, 25, 90)
+        cnts, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not cnts:
+            return None
+        largest = max(cnts, key=cv2.contourArea)
+        if cv2.contourArea(largest) < 40:
+            return None
+        return largest + np.array([[[x, y]]])   # shift to full-frame coords
+
     # ── Lifecycle ────────────────────────────────────────────────────────────
 
     def reset(self):
@@ -429,8 +447,27 @@ class ItemTracker:
 
         if self.target_locked() and self.last_bbox is not None:
             x, y, bw, bh = self.last_bbox
-            cv2.rectangle(frame, (x, y), (x + bw, y + bh), color, 2)
             cx, cy = x + bw // 2, y + bh // 2
+
+            # Draw actual object shape contour
+            contour = self._extract_contour(frame, self.last_bbox)
+            if contour is not None:
+                # Subtle filled highlight
+                overlay = frame.copy()
+                cv2.drawContours(overlay, [contour], -1, color, -1)
+                cv2.addWeighted(overlay, 0.18, frame, 0.82, 0, frame)
+                # Neon outline
+                cv2.drawContours(frame, [contour], -1, color, 2)
+            else:
+                # Fallback: corner-bracket rectangle (less obtrusive than full rect)
+                blen = min(bw, bh) // 4
+                for px, py in [(x, y), (x + bw, y), (x, y + bh), (x + bw, y + bh)]:
+                    dx = blen if px == x else -blen
+                    dy = blen if py == y else -blen
+                    cv2.line(frame, (px, py), (px + dx, py), color, 2)
+                    cv2.line(frame, (px, py), (px, py + dy), color, 2)
+
+            # Line from bottom center to object + center dot
             cv2.line(frame, (w // 2, h - 40), (cx, cy), color, 1)
             cv2.circle(frame, (cx, cy), 5, color, -1)
             cv2.putText(frame, f"{self.last_conf:.0%}",

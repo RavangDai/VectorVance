@@ -328,8 +328,8 @@ class AutonomousVehicle:
         self.front_sensor.start()
 
         # ── Track search state ────────────────────────────────────────
-        self._track_search_dir    = 1   # 1 = pan right, -1 = pan left
-        self._track_search_frames = 0
+        self._track_spin_frames   = 0   # frames elapsed in 360° search spin
+        self._SPIN_TOTAL          = 90  # ~3-4 s at 25 fps ≈ one full rotation
 
         # ── Web / display ─────────────────────────────────────────────
         self.web_enabled  = enable_web
@@ -532,13 +532,11 @@ class AutonomousVehicle:
     # ── TRACK mode frame processing ──────────────────────────────────────────
 
     def process_frame_track(self, frame):
-        """Lock onto the selected COCO class and chase it. Front-ultrasonic safe."""
+        """Lock onto selected COCO class and chase it. 360° spin search when lost."""
         self.frame_count += 1
 
-        # DNN lock + overlay data
         self.track_detector.detect(frame)
 
-        # Ultrasonic safety
         front_dist = self.front_sensor.distance_cm
         self.safety.sensors['front']['distance'] = front_dist
         self.safety._check_obstacles()
@@ -548,34 +546,22 @@ class AutonomousVehicle:
 
         if target is None:
             left, right, status = 0.0, 0.0, "TRACK: pick an item"
-            self._track_search_frames = 0
-        elif front_dist < STOP_DISTANCE:
-            left, right, status = 0.0, 0.0, "TRACK: obstacle -- stopped"
-        elif not locked:
-            lost = self.track_detector.lost_frames
-            if lost < 80:
-                # Slowly pan left/right to scan for the item instead of stopping
-                self._track_search_frames += 1
-                if self._track_search_frames % 28 == 0:
-                    self._track_search_dir *= -1
-                spd = min(0.22, self.current_speed_limit)
-                left  = spd if self._track_search_dir > 0 else 0.0
-                right = 0.0 if self._track_search_dir > 0 else spd
-                status = f"TRACK: seeking {target}..."
-            else:
-                left, right, status = 0.0, 0.0, f"TRACK: lost {target}"
-                self._track_search_frames = 0
-        else:
-            self._track_search_frames = 0
+            self._track_spin_frames = 0
+
+        elif locked:
+            # Re-locked (also cancels any in-progress spin)
+            self._track_spin_frames = 0
             offset   = self.track_detector.get_steering_offset() or 0.0
             distance = self.track_detector.get_distance_proxy()  or 0.0
 
-            # bbox height ≥ 60% of frame → close enough; stop.
             if distance > 0.60:
                 left = right = 0.0
                 status = f"TRACK: arrived at {target}"
+            elif front_dist < STOP_DISTANCE:
+                left = right = 0.0
+                status = "TRACK: obstacle — stopped"
             else:
-                base = max(0.25, 0.70 * (1.0 - distance * 1.2))
+                base  = max(0.25, 0.70 * (1.0 - distance * 1.2))
                 if front_dist < SLOW_DISTANCE:
                     base *= 0.6
                 base  = min(base, self.current_speed_limit)
@@ -584,6 +570,19 @@ class AutonomousVehicle:
                 right = max(0.0, min(1.0, base - steer))
                 side  = "center" if abs(offset) < 0.12 else ("left" if offset < 0 else "right")
                 status = f"TRACK: chasing {target} ({side})"
+
+        elif self._track_spin_frames < self._SPIN_TOTAL:
+            # 360° spin-in-place search — needs _drive_manual (supports negative)
+            self._track_spin_frames += 1
+            spd   = min(0.30, self.current_speed_limit)
+            left  =  spd   # left side forward
+            right = -spd   # right side backward → spins clockwise
+            pct   = int(100 * self._track_spin_frames / self._SPIN_TOTAL)
+            status = f"TRACK: searching {target}... {pct}%"
+
+        else:
+            # Full rotation done, still nothing → give up
+            left, right, status = 0.0, 0.0, f"TRACK: lost {target}"
 
         self.smooth_left.update(left)
         self.smooth_right.update(right)
@@ -963,6 +962,7 @@ class AutonomousVehicle:
         self.detector.reset()
         self.free_roam.reset()
         self.track_detector.reset()
+        self._track_spin_frames = 0
         self.sentry.disarm()
         self.car_state           = State.LANE_FOLLOW
         self.drive_mode          = "LANE"
@@ -1046,7 +1046,7 @@ class AutonomousVehicle:
             if self.drive_mode == "FSD":
                 self._drive_manual(left, right)
             elif self.drive_mode == "TRACK":
-                self._drive(left, right)
+                self._drive_manual(left, right)  # supports negative for spin-in-place
             elif self.drive_mode == "SENTRY":
                 self._stop_motors()
             elif self.drive_mode == "LANE":
