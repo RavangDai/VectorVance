@@ -23,6 +23,7 @@ Install Flask on Pi:
 """
 
 import os
+import re
 import cv2
 import time
 import threading
@@ -198,47 +199,8 @@ _SYNONYMS: dict[str, str] = {
 
 
 def _resolve_track_target(text: str) -> str | None:
-    """
-    Map a free-text command to a COCO class name.
-    Tries Claude API first (if anthropic + ANTHROPIC_API_KEY available),
-    then falls back to keyword/synonym matching.
-    Returns None if nothing matches.
-    """
-    matched = _resolve_via_gemini(text)
-    if matched:
-        return matched
+    """Map a free-text command to a COCO class name via keyword/synonym matching."""
     return _resolve_via_keywords(text)
-
-
-def _resolve_via_gemini(text: str) -> str | None:
-    """Call Gemini Flash to extract the target object. Returns None on any failure."""
-    api_key = os.environ.get("GEMINI_API_KEY", "")
-    if not api_key:
-        return None
-    try:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        classes_str = ", ".join(_TRACK_CLASSES)
-        prompt = (
-            f"Map this command to a COCO object class name for an autonomous car tracker.\n"
-            f"Valid classes: {classes_str}\n"
-            f"Reply with ONLY the exact class name from the list, or 'none' if nothing matches.\n"
-            f"Examples:\n"
-            f"  'go get that ball' → sports ball\n"
-            f"  'follow the dog' → dog\n"
-            f"  'chase the flying bird' → bird\n"
-            f"  'track the red car' → car\n"
-            f"  'go to the fridge' → none\n\n"
-            f"Command: {text}"
-        )
-        model  = genai.GenerativeModel("gemini-2.5-flash")
-        result = model.generate_content(prompt).text.strip().lower()
-        if result in _TRACK_CLASSES:
-            return result
-        return None
-    except Exception as e:
-        print(f"[AI Track] Gemini API error: {e}")
-        return None
 
 
 def _resolve_via_keywords(text: str) -> str | None:
@@ -256,106 +218,8 @@ def _resolve_via_keywords(text: str) -> str | None:
 # ── AI drive command resolver ─────────────────────────────────────────────────
 
 def _resolve_drive_command(text: str, frame=None) -> dict:
-    """
-    Map a natural-language drive command to keys + duration.
-    Returns {"w","a","s","d": bool, "duration": float, "action": str, "scene": str}.
-    Passes camera frame to Gemini when available for vision-aware decisions.
-    """
-    result = _resolve_drive_via_gemini(text, frame=frame)
-    if result:
-        return result
+    """Map a natural-language drive command to keys + duration via keyword matching."""
     return _resolve_drive_via_keywords(text)
-
-
-def _resolve_drive_via_gemini(text: str, frame=None) -> dict | None:
-    api_key = os.environ.get("GEMINI_API_KEY", "")
-    if not api_key:
-        return None
-    try:
-        import google.generativeai as genai
-        import json as _json
-        import base64
-        genai.configure(api_key=api_key)
-
-        schema = (
-            'Schema: {"w":bool,"a":bool,"s":bool,"d":bool,'
-            '"duration":float,"action":string,"scene":string}\n'
-            '"scene": one short phrase — what you see relevant to the command '
-            '(e.g. "clear path", "person on right", "obstacle ahead").\n'
-        )
-
-        if frame is not None:
-            _, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
-            img_b64 = base64.b64encode(buf.tobytes()).decode()
-            prompt = (
-                "You control a 4-wheel RC car. "
-                "The attached image is the car's LIVE camera view RIGHT NOW.\n"
-                "Use what you SEE to decide the best action for the command.\n"
-                "• Objects on the LEFT of the image → car's LEFT\n"
-                "• Objects on the RIGHT → car's RIGHT\n"
-                "• Large objects are CLOSE. Small objects are FAR.\n\n"
-                "Keys: w=forward, s=backward, a=spin-left, d=spin-right. "
-                "Combinations allowed.\n"
-                "Duration in seconds (0.3–5.0). Use 0.0 for stop.\n"
-                "Reply ONLY with valid JSON, no markdown.\n"
-                + schema +
-                "Examples:\n"
-                "  'go forward' + clear path  → "
-                '{"w":true,"a":false,"s":false,"d":false,"duration":1.5,'
-                '"action":"moving forward","scene":"clear path ahead"}\n'
-                "  'go to the bottle' + bottle on left → "
-                '{"w":true,"a":true,"s":false,"d":false,"duration":1.0,'
-                '"action":"forward-left toward bottle","scene":"bottle on left"}\n'
-                "  'turn toward the person' + person on right → "
-                '{"w":false,"a":false,"s":false,"d":true,"duration":0.8,'
-                '"action":"turning right toward person","scene":"person on right"}\n'
-                "  'avoid the obstacle' + obstacle ahead → "
-                '{"w":false,"a":true,"s":false,"d":false,"duration":0.6,'
-                '"action":"spinning left to avoid","scene":"obstacle straight ahead"}\n\n'
-                f"Command: {text}"
-            )
-            contents = [prompt, {"mime_type": "image/jpeg", "data": img_b64}]
-        else:
-            prompt = (
-                "You control a 4-wheel RC car. Parse the driving command.\n"
-                "Keys: w=forward, s=backward, a=spin-left, d=spin-right. "
-                "Combinations allowed.\n"
-                "Duration in seconds (0.3–5.0). Use 0.0 for stop.\n"
-                "Reply ONLY with valid JSON, no markdown.\n"
-                + schema +
-                "Examples:\n"
-                "  'move forward'     → "
-                '{"w":true,"a":false,"s":false,"d":false,"duration":1.5,'
-                '"action":"moving forward","scene":""}\n'
-                "  'turn left'        → "
-                '{"w":false,"a":true,"s":false,"d":false,"duration":1.0,'
-                '"action":"turning left","scene":""}\n'
-                "  'stop'             → "
-                '{"w":false,"a":false,"s":false,"d":false,"duration":0.0,'
-                '"action":"stopping","scene":""}\n\n'
-                f"Command: {text}"
-            )
-            contents = [prompt]
-
-        model = genai.GenerativeModel("gemini-2.5-flash")
-        raw   = model.generate_content(contents).text.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        data = _json.loads(raw.strip())
-        return {
-            "w":        bool(data.get("w",       False)),
-            "a":        bool(data.get("a",       False)),
-            "s":        bool(data.get("s",       False)),
-            "d":        bool(data.get("d",       False)),
-            "duration": max(0.0, min(5.0, float(data.get("duration", 1.5)))),
-            "action":   str(data.get("action",   "executing command")),
-            "scene":    str(data.get("scene",    "")),
-        }
-    except Exception as e:
-        print(f"[AI Drive] Gemini error: {e}")
-        return None
 
 
 def _resolve_drive_via_keywords(text: str) -> dict:
@@ -381,7 +245,6 @@ def _resolve_drive_via_keywords(text: str) -> dict:
         duration = 1.5
 
     # Parse explicit seconds: "3 seconds", "2s", "for 4 sec"
-    import re
     m = re.search(r'(\d+(?:\.\d+)?)\s*(?:sec|s\b)', lower)
     if m:
         duration = max(0.3, min(5.0, float(m.group(1))))
@@ -393,7 +256,7 @@ def _resolve_drive_via_keywords(text: str) -> dict:
     if d: directions.append("right")
     action = " + ".join(directions) if directions else "stopping"
 
-    return {"w": w, "a": a, "s": s, "d": d, "duration": duration, "action": action}
+    return {"w": w, "a": a, "s": s, "d": d, "duration": duration, "action": action, "scene": ""}
 
 
 # ── Flask server ──────────────────────────────────────────────────────────────
@@ -512,37 +375,6 @@ def start_server(port: int = 5000) -> bool:
         with _sentry_events_lock:
             events = list(_sentry_events)
         return jsonify(events)
-
-    @app.route('/api/speech', methods=['POST'])
-    def api_speech():
-        audio_data = request.data
-        if not audio_data:
-            return jsonify({"error": "No audio data"}), 400
-        mime = request.content_type or 'audio/webm'
-        # Strip charset or boundary params — Gemini needs clean MIME
-        mime = mime.split(';')[0].strip()
-        api_key = os.environ.get("GEMINI_API_KEY", "")
-        if not api_key:
-            return jsonify({"error": "GEMINI_API_KEY not set"}), 503
-        try:
-            import google.generativeai as genai
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("gemini-2.5-flash")
-            response = model.generate_content([
-                "Transcribe this voice command. Reply with ONLY the spoken words, all lowercase.",
-                {"mime_type": mime, "data": audio_data},
-            ])
-            if not response.candidates:
-                return jsonify({"error": "Gemini returned no candidates (audio too short or blocked)"}), 502
-            text = response.candidates[0].content.parts[0].text.strip().lower()
-            print(f"[Speech] Transcribed: '{text}'")
-            return jsonify({"text": text})
-        except ImportError:
-            print("[Speech] google-generativeai not installed — run: pip install google-generativeai")
-            return jsonify({"error": "google-generativeai package not installed"}), 503
-        except Exception as e:
-            print(f"[Speech] Gemini transcription error: {e}")
-            return jsonify({"error": str(e)}), 500
 
     @app.route('/api/ping')
     def api_ping():

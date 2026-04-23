@@ -146,10 +146,10 @@ TRIG=4,    ECHO=17
   - `GET /api/status` — telemetry JSON
   - `POST /api/command` — control commands
   - `GET /api/sentry_events` — sentry event log JSON
-  - `POST /api/speech` — audio → Gemini 2.5 Flash transcription (raw bytes body, MIME type in Content-Type header)
 - Valid commands: `toggle_auto`, `emergency_stop`, `reset`, `set_speed`, `set_target_color`, `arm_sentry`, `disarm_sentry`, `clear_sentry_events`
 - Thread-safe shared state via `threading.Lock`
-- Speech endpoint: sends raw audio bytes directly to Gemini inline_data (do **not** base64-encode before passing to SDK — the SDK dict shorthand `{"mime_type": ..., "data": bytes}` expects raw bytes, not base64)
+- AI Drive command parsing: keyword/synonym matching only — no external API (`_resolve_drive_via_keywords`)
+- AI Track target resolution: keyword/synonym matching only — no external API (`_resolve_via_keywords`)
 
 ---
 
@@ -157,7 +157,6 @@ TRIG=4,    ECHO=17
 
 | Variable | Purpose |
 |----------|---------|
-| `GEMINI_API_KEY` | Gemini API key — used for voice command transcription (`/api/speech`) |
 | `NTFY_TOPIC` | ntfy.sh topic for sentry alerts (e.g. `vectorvance-sentry`) |
 | `NTFY_URL` | ntfy server base URL (default: `https://ntfy.sh`; override for self-hosted) |
 
@@ -200,7 +199,6 @@ gpiozero         # Motor control
 opencv-python    # cv2 (includes cv2.dnn — no extra install needed)
 numpy
 flask            # web dashboard (pip install flask --break-system-packages)
-google-generativeai  # Gemini voice transcription (pip install google-generativeai)
 ```
 
 Model files: `ssd_mobilenet_v2_coco.pb` + `ssd_mobilenet_v2_coco.pbtxt` must be present in `src/`.
@@ -239,7 +237,7 @@ Key fields pushed to the dashboard every frame:
 - Camera auto-detects at `/dev/video0` through `/dev/video3`. Override with `--cam-index N` if needed.
 - `safety.py` `simulate_sensors()` method is for development only (derives fake distances from frame brightness). Production uses actual HC-SR04 readings set directly on `self.safety.sensors['front']['distance']`.
 - `use_tracking` parameter retained in `DNNDetector` for API compatibility but is unused (SSD is single-shot, no tracking).
-- Voice command mic is blocked by browsers on plain HTTP from a remote device. Access dashboard at `http://localhost:5000` on the Pi itself, or enable Chrome's "Insecure origins treated as secure" flag for the Pi's IP.
+- Voice commands use the browser's Web Speech API (Chrome/Edge only) — no server round-trip, no API key needed. On plain HTTP from a remote device, mic may be blocked; enable Chrome's "Insecure origins treated as secure" flag for the Pi's IP if needed.
 
 ---
 

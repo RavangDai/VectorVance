@@ -1987,64 +1987,51 @@
   }
 
   /* ═══════════════════════════════════════════════════════════════
-     SPEECH
+     SPEECH  — Web Speech API (Chrome/Edge, no server round-trip)
   ═══════════════════════════════════════════════════════════════ */
-  let _mediaRecorder = null, _audioChunks = [], _micRecording = false;
+  let _recognition = null, _micRecording = false;
 
-  function initSpeech() { /* button always enabled; unsupported browser handled in _startMic */ }
-
-  function toggleMic() { _micRecording ? _stopMic() : _startMic(); }
-
-  async function _startMic() {
-    const btn = document.getElementById('mic-btn');
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      // Browsers block mic on plain HTTP (non-localhost). Fix options:
-      // 1. Chrome: go to chrome://flags/#unsafely-treat-insecure-origin-as-secure
-      //            add http://<pi-ip>:5000 and relaunch
-      // 2. Access the dashboard from the Pi itself at http://localhost:5000
+  function initSpeech() {
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRec) return;
+    _recognition = new SpeechRec();
+    _recognition.lang = 'en-US';
+    _recognition.interimResults = false;
+    _recognition.maxAlternatives = 1;
+    _recognition.onresult = e => {
+      const text = e.results[0][0].transcript.toLowerCase();
+      document.getElementById('ai-drive-input').value = text;
+      setAiDriveStatus('', `Heard: "${text}"`);
+      aiDrive();
+    };
+    _recognition.onerror = e => {
       const isHttp = location.protocol === 'http:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1';
-      const msg = isHttp
+      const msg = e.error === 'not-allowed' && isHttp
         ? 'Mic blocked on HTTP — open chrome://flags, enable "Insecure origins treated as secure", add ' + location.origin
-        : 'Mic not available in this browser';
+        : 'Mic error: ' + e.error;
       setAiDriveStatus('fail', msg);
-      document.getElementById('voice-hint').textContent = isHttp ? '⚠ HTTP blocks mic — see console for fix' : 'Mic unavailable';
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      _audioChunks = []; _micRecording = true;
-      btn.classList.add('recording'); setAiDriveStatus('', 'Listening…');
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus') ? 'audio/ogg;codecs=opus' : 'audio/webm';
-      _mediaRecorder = new MediaRecorder(stream, { mimeType });
-      _mediaRecorder.ondataavailable = e => { if (e.data.size > 0) _audioChunks.push(e.data); };
-      _mediaRecorder.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop());
-        const blob = new Blob(_audioChunks, { type: mimeType });
-        _micRecording = false; btn.classList.remove('recording');
-        setAiDriveStatus('', 'Transcribing…');
-        try {
-          const res  = await fetch('/api/speech', {
-            method:'POST', headers:{'Content-Type': mimeType}, body: blob,
-            signal: AbortSignal.timeout(12000),
-          });
-          const data = await res.json();
-          if (data.text) {
-            document.getElementById('ai-drive-input').value = data.text;
-            setAiDriveStatus('', `Heard: "${data.text}"`); aiDrive();
-          } else { setAiDriveStatus('fail', data.error || 'Could not transcribe'); }
-        } catch (err) { setAiDriveStatus('fail', 'Transcription failed: ' + err.message); }
-      };
-      _mediaRecorder.start();
-    } catch (err) {
-      setAiDriveStatus('fail', 'Mic access denied: ' + err.message);
-      btn.classList.remove('recording'); _micRecording = false;
-    }
+      document.getElementById('mic-btn').classList.remove('recording');
+      _micRecording = false;
+    };
+    _recognition.onend = () => {
+      document.getElementById('mic-btn').classList.remove('recording');
+      _micRecording = false;
+    };
   }
 
-  function _stopMic() {
-    if (_mediaRecorder && _mediaRecorder.state !== 'inactive') _mediaRecorder.stop();
+  function toggleMic() {
+    if (!_recognition) {
+      setAiDriveStatus('fail', 'Speech recognition not supported — use Chrome or Edge');
+      return;
+    }
+    if (_micRecording) {
+      _recognition.stop();
+    } else {
+      _micRecording = true;
+      document.getElementById('mic-btn').classList.add('recording');
+      setAiDriveStatus('', 'Listening…');
+      _recognition.start();
+    }
   }
 
   /* ═══════════════════════════════════════════════════════════════
