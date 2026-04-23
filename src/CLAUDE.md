@@ -20,6 +20,7 @@ main.py  (AutonomousVehicle + run loop)
 ├── speed_controller.py  — adaptive speed based on steering error
 ├── safety.py            — DNN-fed obstacle detector + HUD overlay (no front ultrasonic)
 ├── dnn_detector.py      — SSD MobileNet v2 sign/obstacle detection (cv2.dnn, COCO)
+├── sentry.py            — stationary surveillance mode (motion/person/fire + ntfy.sh alerts)
 ├── color_sign_detector.py — colour tape detection (GREEN/BLUE forks, RED destination)
 ├── intersection_detector.py — fork/intersection detection from vision data
 └── pi_server.py         — Flask web dashboard (background thread)
@@ -57,6 +58,7 @@ TRIG=4,    ECHO=17
 | `FORK_WAITING` | Fork detected — car stopped, waiting for user to pick GREEN or BLUE via dashboard |
 | `COLOR_FOLLOWING` | Steering toward the chosen colour tape |
 | `ARRIVED` | RED destination tape confirmed (4 consecutive frames) — car stops |
+| `SENTRY` | Car parked, wheels locked, front camera used for surveillance |
 
 ---
 
@@ -103,6 +105,22 @@ TRIG=4,    ECHO=17
 - `skip_frames=5` on Pi (every 5th frame to manage CPU; cached results returned on skipped frames)
 - Expected Pi 3 performance: ~3–6 FPS inference; ~15–25 FPS effective with `skip_frames=5`
 
+### `sentry.py` — `SentryMonitor`
+- Activated in `SENTRY` state — motors set to 0.0, front camera used for surveillance
+- **Detection pipeline** (per frame):
+  - Motion: frame differencing + Gaussian blur (21×21) + contour area threshold (≥1200 px²)
+  - Person/object: SSD MobileNet v2 shared net, every 8th frame (`DNN_SKIP=8`), confidence ≥50%
+  - Fire: HSV colour threshold — red/orange/yellow at high saturation+brightness; triggers if ≥1.5% of frame pixels match (`FIRE_PIXEL_RATIO=0.015`)
+- **State flags** on the instance: `motion_active`, `person_active`, `fire_active`
+- Alert priority (HUD banner + ntfy): fire > person > motion
+- Alert cooldown: 30 s per event type to avoid notification spam
+- Snapshots saved to `/home/pi/sentry_snaps/sentry_YYYYMMDD_HHMMSS_####.jpg`
+- **Notifications: ntfy.sh** — set `NTFY_TOPIC` env var; optionally `NTFY_URL` for self-hosted server
+  - Sends snapshot as image attachment via `PUT {url}/{topic}` with `Title`, `Tags`, `Priority` headers
+  - Priority: fire=5 (max), person=4 (high), motion=3 (default)
+- Constructor: `SentryMonitor(net=shared_net)` — reads `NTFY_TOPIC`/`NTFY_URL` from env
+- `arm()` / `disarm()` reset state; `process(frame)` returns annotated debug frame
+
 ### `color_sign_detector.py` — `ColorSignDetector`
 - Detects GREEN/BLUE (fork path) and RED (destination) tape via HSV ranges
 - ROI: bottom 55% of frame (tape is on the ground)
@@ -122,9 +140,28 @@ TRIG=4,    ECHO=17
 
 ### `pi_server.py` — Flask Web Dashboard
 - Runs in daemon thread on port 5000
-- Routes: `GET /`, `GET /video_feed` (MJPEG), `GET /api/status`, `POST /api/command`
-- Valid commands: `toggle_auto`, `emergency_stop`, `reset`, `set_speed`, `set_target_color`
+- Routes:
+  - `GET /` — dashboard HTML
+  - `GET /video_feed` — MJPEG stream
+  - `GET /api/status` — telemetry JSON
+  - `POST /api/command` — control commands
+  - `GET /api/sentry_events` — sentry event log JSON
+  - `POST /api/speech` — audio → Gemini 2.5 Flash transcription (raw bytes body, MIME type in Content-Type header)
+- Valid commands: `toggle_auto`, `emergency_stop`, `reset`, `set_speed`, `set_target_color`, `arm_sentry`, `disarm_sentry`, `clear_sentry_events`
 - Thread-safe shared state via `threading.Lock`
+- Speech endpoint: sends raw audio bytes directly to Gemini inline_data (do **not** base64-encode before passing to SDK — the SDK dict shorthand `{"mime_type": ..., "data": bytes}` expects raw bytes, not base64)
+
+---
+
+## Environment Variables (`.env`)
+
+| Variable | Purpose |
+|----------|---------|
+| `GEMINI_API_KEY` | Gemini API key — used for voice command transcription (`/api/speech`) |
+| `NTFY_TOPIC` | ntfy.sh topic for sentry alerts (e.g. `vectorvance-sentry`) |
+| `NTFY_URL` | ntfy server base URL (default: `https://ntfy.sh`; override for self-hosted) |
+
+> **Note:** `rear_monitor.py` uses its own Telegram/SMS/email config — separate from sentry alerts.
 
 ---
 
@@ -163,6 +200,7 @@ gpiozero         # Motor control
 opencv-python    # cv2 (includes cv2.dnn — no extra install needed)
 numpy
 flask            # web dashboard (pip install flask --break-system-packages)
+google-generativeai  # Gemini voice transcription (pip install google-generativeai)
 ```
 
 Model files: `ssd_mobilenet_v2_coco.pb` + `ssd_mobilenet_v2_coco.pbtxt` must be present in `src/`.
@@ -185,6 +223,10 @@ Key fields pushed to the dashboard every frame:
 - `dnn_detections` — list of `{label, conf}`
 - `color_target` — selected path colour
 - `color_target_visible` — bool
+- `sentry_armed` — bool
+- `sentry_motion` — bool, motion detected this frame
+- `sentry_person` — bool, person detected this frame
+- `sentry_fire` — bool, fire detected this frame
 
 ---
 
@@ -197,6 +239,7 @@ Key fields pushed to the dashboard every frame:
 - Camera auto-detects at `/dev/video0` through `/dev/video3`. Override with `--cam-index N` if needed.
 - `safety.py` `simulate_sensors()` method is for development only (derives fake distances from frame brightness). Production uses actual HC-SR04 readings set directly on `self.safety.sensors['front']['distance']`.
 - `use_tracking` parameter retained in `DNNDetector` for API compatibility but is unused (SSD is single-shot, no tracking).
+- Voice command mic is blocked by browsers on plain HTTP from a remote device. Access dashboard at `http://localhost:5000` on the Pi itself, or enable Chrome's "Insecure origins treated as secure" flag for the Pi's IP.
 
 ---
 
