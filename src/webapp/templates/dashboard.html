@@ -539,14 +539,6 @@
     }
 
     /* ══════════════════════════════════════════════════════════
-       RADAR
-    ══════════════════════════════════════════════════════════ */
-    .radar-body { display: flex; flex-direction: column; align-items: center; padding: 8px 8px 4px; }
-    .radar-sweep { transform-origin: 60px 60px; animation: radarSpin 3s linear infinite; }
-    @keyframes radarSpin { to { transform: rotate(360deg); } }
-    .radar-dist-lbl { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--cyan); text-align: center; margin-top: 4px; }
-
-    /* ══════════════════════════════════════════════════════════
        DNN DETECTIONS
     ══════════════════════════════════════════════════════════ */
     .det-list { display: flex; flex-direction: column; gap: 3px; }
@@ -742,15 +734,6 @@
 
     /* body::before already removed — no grid overlay */
 
-    /* ── Radar blip pulse when object detected ── */
-    #radar-blip[opacity="0.85"] {
-      animation: blipPulse 0.9s ease-in-out infinite;
-    }
-    @keyframes blipPulse {
-      0%, 100% { r: 4; }
-      50%       { r: 6; }
-    }
-
     .video-panel { transition: border-color 0.4s; }
 
     /* ── Prefers-reduced-motion ── */
@@ -760,7 +743,6 @@
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
       }
-      .radar-sweep { animation: none !important; }
     }
 
     /* ══════════════════════════════════════════════════════════
@@ -1267,7 +1249,7 @@
 
       <div class="video-title">
         <div class="rec-dot" id="rec-dot"></div>
-        <span>Innomaker 130&deg; — Rear Camera</span>
+        <span>Innomaker 130&deg; — Camera</span>
         <span style="margin-left:auto;font-size:7px;letter-spacing:1px;" id="vid-fps-label"></span>
       </div>
       <div class="vid-banners">
@@ -1287,44 +1269,6 @@
 
     <!-- ══ RIGHT PANEL ══ -->
     <div class="panel">
-
-      <!-- Radar / Distance -->
-      <div class="card">
-        <div class="card-head">Rear Sensor<span class="card-head-muted" id="dist-badge" style="font-size:11px;color:var(--cyan);"></span></div>
-        <div class="radar-body">
-          <svg viewBox="0 0 120 120" width="120" height="120">
-            <defs>
-              <radialGradient id="sweepGrad" cx="60" cy="60" r="55" gradientUnits="userSpaceOnUse">
-                <stop offset="0%" stop-color="rgba(0,232,122,0.6)"/>
-                <stop offset="100%" stop-color="rgba(0,232,122,0)"/>
-              </radialGradient>
-            </defs>
-            <!-- Grid rings -->
-            <circle cx="60" cy="60" r="18" fill="none" stroke="rgba(0,212,255,0.12)" stroke-width="0.8"/>
-            <circle cx="60" cy="60" r="35" fill="none" stroke="rgba(0,212,255,0.10)" stroke-width="0.8"/>
-            <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(0,212,255,0.08)" stroke-width="0.8"/>
-            <!-- Crosshairs -->
-            <line x1="60" y1="8" x2="60" y2="112" stroke="rgba(0,212,255,0.06)" stroke-width="0.5"/>
-            <line x1="8"  y1="60" x2="112" y2="60" stroke="rgba(0,212,255,0.06)" stroke-width="0.5"/>
-            <!-- Ring labels -->
-            <text x="78" y="62" font-family="Orbitron,monospace" font-size="5" fill="rgba(0,212,255,0.4)">20</text>
-            <text x="95" y="62" font-family="Orbitron,monospace" font-size="5" fill="rgba(0,212,255,0.3)">50</text>
-            <!-- Sweep line group -->
-            <g class="radar-sweep" id="radar-sweep">
-              <path d="M60,60 L60,8" stroke="url(#sweepGrad)" stroke-width="1.2" opacity="0.7"/>
-              <path d="M60,60 L60,8" stroke="rgba(0,232,122,0.3)" stroke-width="1.5"
-                    transform="rotate(-8,60,60)" opacity="0.4"/>
-              <path d="M60,60 L60,8" stroke="rgba(0,232,122,0.15)" stroke-width="2"
-                    transform="rotate(-18,60,60)" opacity="0.25"/>
-            </g>
-            <!-- Center dot -->
-            <circle cx="60" cy="60" r="3" fill="var(--green)" opacity="0.8"/>
-            <!-- Distance blip (moved by JS) -->
-            <circle id="radar-blip" cx="60" cy="60" r="4" fill="var(--red)" opacity="0" filter="url(#gf1)"/>
-          </svg>
-          <div class="radar-dist-lbl" id="val-dist">— cm</div>
-        </div>
-      </div>
 
       <!-- Sign Detections -->
       <div class="card">
@@ -1641,24 +1585,6 @@
     setMotorGauge('gauge-fr', d.speed_fr ?? d.speed_right ?? 0);
     setMotorGauge('gauge-rr', d.speed_rr ?? d.speed_right ?? 0);
 
-    // Distance + radar
-    const dist = d.front_distance_cm;
-    const distEl = document.getElementById('val-dist');
-    const distBadge = document.getElementById('dist-badge');
-    if (dist == null || dist >= 299) {
-      distEl.textContent = '— cm';
-      distEl.style.color = 'var(--cyan)';
-      if (distBadge) distBadge.textContent = '';
-    } else {
-      distEl.textContent = dist + ' cm';
-      const distColor = dist < 20 ? 'var(--red)' : dist < 50 ? 'var(--orange)' : 'var(--green)';
-      distEl.style.color = distColor;
-      if (distBadge) { distBadge.textContent = dist + ' cm'; distBadge.style.color = distColor; }
-      const distZone = dist < 20 ? 'danger' : dist < 50 ? 'warn' : 'clear';
-      flashIfChanged(distEl, 'dist_zone', distZone);
-    }
-    updateRadar(dist);
-
     // Obstacle banner
     const modifier = d.obstacle_modifier ?? 1;
     const ob = document.getElementById('obstacle-banner');
@@ -1707,23 +1633,6 @@
     arcEl.style.stroke = f < 0.5 ? 'var(--cyan)' : f < 0.8 ? 'var(--orange)' : 'var(--red)';
     valEl.textContent  = Math.round(f * 100) + '%';
   }
-
-  /* ── Radar ── */
-  function updateRadar(dist) {
-    const blip = document.getElementById('radar-blip');
-    if (!blip) return;
-    if (dist == null || dist >= 299) {
-      blip.setAttribute('opacity', '0'); return;
-    }
-    // Map dist 0–200 cm to radius 0–52 px (radar max ring radius)
-    const r = Math.min(52, (dist / 200) * 52);
-    const cx = 60, cy = 60 - r;
-    blip.setAttribute('cx', cx);
-    blip.setAttribute('cy', cy);
-    blip.setAttribute('opacity', '0.85');
-    blip.setAttribute('fill', dist < 20 ? 'var(--red)' : dist < 50 ? 'var(--orange)' : 'var(--green)');
-  }
-
 
   /* ═══════════════════════════════════════════════════════════════
      TRACK MODE
