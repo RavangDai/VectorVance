@@ -526,16 +526,15 @@ def start_server(port: int = 5000) -> bool:
             return jsonify({"error": "GEMINI_API_KEY not set"}), 503
         try:
             import google.generativeai as genai
-            import base64
             genai.configure(api_key=api_key)
             model = genai.GenerativeModel("gemini-2.5-flash")
-            audio_b64 = base64.b64encode(audio_data).decode()
-            # Correct inline-data format for google-generativeai SDK
             response = model.generate_content([
                 "Transcribe this voice command. Reply with ONLY the spoken words, all lowercase.",
-                {"mime_type": mime, "data": audio_b64},
+                {"mime_type": mime, "data": audio_data},
             ])
-            text = response.text.strip().lower()
+            if not response.candidates:
+                return jsonify({"error": "Gemini returned no candidates (audio too short or blocked)"}), 502
+            text = response.candidates[0].content.parts[0].text.strip().lower()
             print(f"[Speech] Transcribed: '{text}'")
             return jsonify({"text": text})
         except ImportError:
