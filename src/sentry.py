@@ -223,6 +223,7 @@ class SentryMonitor:
         url = f"{self._ntfy_url}/{self._ntfy_topic}"
         try:
             import urllib.request
+            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             with open(snap_path, "rb") as f:
                 img_data = f.read()
             req = urllib.request.Request(
@@ -231,6 +232,7 @@ class SentryMonitor:
                 method="PUT",
                 headers={
                     "Title":        title,
+                    "Message":      f"VectorVance sentry alert at {ts}",
                     "Tags":         tags,
                     "Priority":     priority,
                     "Filename":     "snap.jpg",
