@@ -157,7 +157,7 @@ TRIG=4,    ECHO=17
 
 | Variable | Purpose |
 |----------|---------|
-| `NTFY_TOPIC` | ntfy.sh topic for sentry alerts (e.g. `vectorvance-sentry`) |
+| `NTFY_TOPIC` | ntfy.sh topic for sentry alerts (default: `VectorVance`) |
 | `NTFY_URL` | ntfy server base URL (default: `https://ntfy.sh`; override for self-hosted) |
 
 > **Note:** `rear_monitor.py` uses its own Telegram/SMS/email config — separate from sentry alerts.

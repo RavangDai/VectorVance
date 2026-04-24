@@ -7,7 +7,7 @@ Parks the car, locks the wheels, and uses the front camera for:
   • Fire detection    — HSV colour thresholding for flame signatures
   • Event log         — timestamped deque, max MAX_EVENTS entries
   • Snapshot saving   — writes JPEGs to /home/pi/sentry_snaps/
-  • ntfy.sh alerts    — set NTFY_TOPIC env var (optional: NTFY_URL for self-hosted)
+  • ntfy.sh alerts    — default topic: VectorVance (override via NTFY_TOPIC env var; NTFY_URL for self-hosted)
 
 Usage from main.py:
     sentry = SentryMonitor(net=shared_net)
@@ -71,7 +71,7 @@ class SentryMonitor:
         self.person_active    = False
         self.fire_active      = False
 
-        self._ntfy_topic = ntfy_topic or os.environ.get("NTFY_TOPIC", "")
+        self._ntfy_topic = ntfy_topic or os.environ.get("NTFY_TOPIC", "VectorVance")
         self._ntfy_url   = (ntfy_url  or os.environ.get("NTFY_URL",   "https://ntfy.sh")).rstrip("/")
 
         os.makedirs(SNAP_DIR, exist_ok=True)
