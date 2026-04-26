@@ -774,10 +774,12 @@
       font-family: 'Barlow Condensed', sans-serif; font-size: 8px; letter-spacing: 0.12em; text-transform: uppercase;
       background: rgba(0,0,0,0.22); border: 1px solid rgba(255,255,255,0.09); color: var(--muted);
     }
-    .sentry-ind.active-motion { background: rgba(255,90,95,0.10);  color: #ff5a5f; animation: blink 0.7s infinite; }
-    .sentry-ind.active-person { background: rgba(200,29,37,0.12);  color: #c81d25; animation: blink 0.5s infinite; }
-    .sentry-ind.active-fire   { background: rgba(255,106,0,0.15);  color: #ff6a00; animation: blink 0.35s infinite; }
-    .sentry-ind.active-smoke  { background: rgba(180,180,220,0.14); color: #c8c8ff; animation: blink 0.55s infinite; }
+    .sentry-ind.active-motion  { background: rgba(255,90,95,0.10);   color: #ff5a5f; animation: blink 0.70s infinite; }
+    .sentry-ind.active-person  { background: rgba(200,29,37,0.12);   color: #c81d25; animation: blink 0.50s infinite; }
+    .sentry-ind.active-fire    { background: rgba(255,106,0,0.15);   color: #ff6a00; animation: blink 0.35s infinite; }
+    .sentry-ind.active-smoke   { background: rgba(180,180,220,0.14); color: #c8c8ff; animation: blink 0.55s infinite; }
+    .sentry-ind.active-leak    { background: rgba(0,160,255,0.14);   color: #40aaff; animation: blink 0.65s infinite; }
+    .sentry-ind.active-weapon  { background: rgba(255,180,0,0.16);   color: #ffb800; animation: blink 0.30s infinite; }
     .sentry-event-log { max-height: 80px; overflow-y: auto; }
     .sentry-event-log::-webkit-scrollbar { width: 2px; }
     .sentry-event-log::-webkit-scrollbar-thumb { background: var(--border2); }
@@ -786,6 +788,8 @@
     .evt-person .sentry-evt-type { color: var(--red); }
     .evt-motion .sentry-evt-type { color: var(--orange); }
     .evt-smoke  .sentry-evt-type { color: #c8c8ff; font-weight: 700; }
+    .evt-leak   .sentry-evt-type { color: #40aaff; font-weight: 700; }
+    .evt-weapon .sentry-evt-type { color: #ffb800; font-weight: 700; }
     .evt-fire   .sentry-evt-type { color: #ff6a00; font-weight: 700; }
 
     /* ══════════════════════════════════════════════════════════
@@ -1282,6 +1286,8 @@
             <div class="sentry-ind" id="sentry-ind-motion">Motion</div>
             <div class="sentry-ind" id="sentry-ind-person">Person</div>
             <div class="sentry-ind" id="sentry-ind-smoke">Smoke</div>
+            <div class="sentry-ind" id="sentry-ind-leak">Leak</div>
+            <div class="sentry-ind" id="sentry-ind-weapon">Weapon</div>
             <div class="sentry-ind" id="sentry-ind-fire">Fire</div>
           </div>
           <div class="sentry-event-log" id="sentry-event-log">
@@ -2054,10 +2060,12 @@
     const armBtn   = document.getElementById('sentry-arm-btn');
     armBtn.textContent = armed ? 'DISARM SENTRY' : 'ARM SENTRY';
     armBtn.classList.toggle('armed', armed);
-    document.getElementById('sentry-ind-motion').className = 'sentry-ind' + (d.sentry_motion ? ' active-motion' : '');
-    document.getElementById('sentry-ind-person').className = 'sentry-ind' + (d.sentry_person ? ' active-person' : '');
-    document.getElementById('sentry-ind-smoke').className  = 'sentry-ind' + (d.sentry_smoke  ? ' active-smoke'  : '');
-    document.getElementById('sentry-ind-fire').className   = 'sentry-ind' + (d.sentry_fire   ? ' active-fire'   : '');
+    document.getElementById('sentry-ind-motion').className  = 'sentry-ind' + (d.sentry_motion  ? ' active-motion'  : '');
+    document.getElementById('sentry-ind-person').className  = 'sentry-ind' + (d.sentry_person  ? ' active-person'  : '');
+    document.getElementById('sentry-ind-smoke').className   = 'sentry-ind' + (d.sentry_smoke   ? ' active-smoke'   : '');
+    document.getElementById('sentry-ind-leak').className    = 'sentry-ind' + (d.sentry_leak    ? ' active-leak'    : '');
+    document.getElementById('sentry-ind-weapon').className  = 'sentry-ind' + (d.sentry_weapon  ? ' active-weapon'  : '');
+    document.getElementById('sentry-ind-fire').className    = 'sentry-ind' + (d.sentry_fire    ? ' active-fire'    : '');
 
     const patrolBtn = document.getElementById('sentry-patrol-btn');
     const patrolSec = document.getElementById('sentry-patrol-sector');
@@ -2102,7 +2110,11 @@
       log.innerHTML = '<div style="color:var(--dim);font-size:10px;text-align:center;padding:4px 0;">No events yet</div>'; return;
     }
     log.innerHTML = events.map(ev => {
-      const cls = ev.type === 'fire' ? 'evt-fire' : ev.type === 'smoke' ? 'evt-smoke' : ev.type === 'person' ? 'evt-person' : 'evt-motion';
+      const cls = ev.type === 'fire'   ? 'evt-fire'   :
+                  ev.type === 'weapon' ? 'evt-weapon' :
+                  ev.type === 'smoke'  ? 'evt-smoke'  :
+                  ev.type === 'leak'   ? 'evt-leak'   :
+                  ev.type === 'person' ? 'evt-person' : 'evt-motion';
       return `<div class="sentry-evt ${cls}">
         <span class="sentry-evt-time">${ev.time}</span>
         <span class="sentry-evt-type">${ev.type}</span>

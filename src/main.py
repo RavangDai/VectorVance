@@ -776,6 +776,8 @@ class AutonomousVehicle:
             "sentry_person":         self.sentry.person_active,
             "sentry_fire":           self.sentry.fire_active,
             "sentry_smoke":          self.sentry.smoke_active,
+            "sentry_leak":           self.sentry.leak_active,
+            "sentry_weapon":         self.sentry.weapon_active,
             "patrol_active":         self._patrol_active,
             "patrol_sector":         self._patrol_sector,
         }

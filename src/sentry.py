@@ -2,13 +2,15 @@
 sentry.py — Stationary Surveillance (SENTRY) Mode
 ──────────────────────────────────────────────────
 Parks the car, locks the wheels, and uses the front camera for:
-  • Motion detection  — frame differencing + contour area threshold
-  • Person/object DNN — SSD MobileNet v2 (shared net from dnn_detector)
-  • Fire detection    — HSV colour thresholding for flame signatures
-  • Smoke detection   — gray/white haze mask + per-blob variance check
-  • Event log         — timestamped deque, max MAX_EVENTS entries
-  • Snapshot saving   — writes JPEGs to /home/pi/sentry_snaps/
-  • ntfy.sh alerts    — default topic: VectorVance (override via NTFY_TOPIC env var; NTFY_URL for self-hosted)
+  • Motion detection       — frame differencing + contour area threshold
+  • Person/object DNN      — SSD MobileNet v2 (shared net from dnn_detector)
+  • Fire detection         — HSV colour thresholding for flame signatures
+  • Smoke detection        — gray/white haze mask + per-blob variance check
+  • Water leak detection   — low-sat reflective floor blob with area growth tracking
+  • Weapon shape detection — elongated rigid contours near a detected person
+  • Comparison snapshots   — side-by-side BEFORE/AFTER JPEG with diff highlight
+  • Event log              — timestamped deque, max MAX_EVENTS entries
+  • ntfy.sh alerts         — default topic: VectorVance (NTFY_TOPIC / NTFY_URL env vars)
 
 Usage from main.py:
     sentry = SentryMonitor(net=shared_net)
@@ -50,12 +52,41 @@ FIRE_PIXEL_RATIO  = 0.015  # fraction of frame that must be fire-coloured
 SMOKE_PIXEL_RATIO = 0.010  # min fraction of frame a single smoke blob must cover
 SMOKE_STDDEV_MIN  = 20.0   # min gray stddev inside a blob (flat walls score ~5-10)
 
+# Background comparison snapshot
+SNAP_BG_UPDATE_FRAMES = 30     # update clean background every N quiet frames
+
+# Water leak detection
+LEAK_ROI_FRAC        = 0.50    # bottom fraction of frame to analyse for puddles
+LEAK_SAT_MAX         = 45      # puddles: very low saturation (neutral/gray)
+LEAK_VAL_MIN         = 60      # minimum brightness — reflective surface
+LEAK_AREA_MIN_FRAC   = 0.015   # min blob area as fraction of the floor ROI
+LEAK_HISTORY_FRAMES  = 45      # rolling area window (~1.8 s at 25 fps)
+LEAK_GROWTH_RATIO    = 1.40    # blob must grow 40 % within the window to alert
+
+# Weapon shape detection
+WEAPON_ASPECT_MIN    = 4.0     # elongation gate: longer / shorter side of min-area rect
+WEAPON_AREA_MIN      = 600     # minimum contour area (px²)
+WEAPON_SOLIDITY_MIN  = 0.60    # rigid objects are convex (solidity = area / hull area)
+WEAPON_PERSON_MARGIN = 0.60    # arm-length expansion beyond each edge of person bbox
+
 # ntfy.sh priority + tag per event type
 _NTFY_META = {
-    "fire":   ("5",      "rotating_light,fire",            "FIRE DETECTED"),
-    "smoke":  ("4",      "cloud,rotating_light",           "SMOKE DETECTED"),
-    "person": ("4",      "bust_in_silhouette,warning",     "PERSON DETECTED"),
-    "motion": ("3",      "wave",                           "MOTION DETECTED"),
+    "fire":   ("5", "rotating_light,fire",            "FIRE DETECTED"),
+    "weapon": ("5", "rotating_light,no_entry",        "WEAPON DETECTED"),
+    "smoke":  ("4", "cloud,rotating_light",           "SMOKE DETECTED"),
+    "leak":   ("4", "droplet,warning",                "WATER LEAK DETECTED"),
+    "person": ("4", "bust_in_silhouette,warning",     "PERSON DETECTED"),
+    "motion": ("3", "wave",                           "MOTION DETECTED"),
+}
+
+# Label colours used in the BEFORE/AFTER comparison snapshot (BGR)
+_SNAP_LABEL_COLORS = {
+    "fire":   (0,   80,  255),
+    "weapon": (0,  200,  255),
+    "smoke":  (200, 200, 255),
+    "leak":   (255, 160,   0),
+    "person": (80,  80,  255),
+    "motion": (255, 200,   0),
 }
 
 
@@ -70,11 +101,16 @@ class SentryMonitor:
         self._events          = deque(maxlen=MAX_EVENTS)
         self._events_lock     = threading.Lock()
         self._alert_times     = {}   # event_type → last alert timestamp
-        self._snap_count      = 0
-        self.motion_active    = False
-        self.person_active    = False
-        self.fire_active      = False
-        self.smoke_active     = False
+        self._snap_count         = 0
+        self.motion_active       = False
+        self.person_active       = False
+        self.fire_active         = False
+        self.smoke_active        = False
+        self.leak_active         = False
+        self.weapon_active       = False
+        self._bg_frame           = None   # last quiet frame — used for BEFORE half of comparison snap
+        self._bg_quiet_frames    = 0
+        self._leak_area_history  = deque(maxlen=LEAK_HISTORY_FRAMES)
 
         self._ntfy_topic = ntfy_topic or os.environ.get("NTFY_TOPIC", "VectorVance")
         self._ntfy_url   = (ntfy_url  or os.environ.get("NTFY_URL",   "https://ntfy.sh")).rstrip("/")
@@ -84,17 +120,25 @@ class SentryMonitor:
     # ── Public API ────────────────────────────────────────────────────────────
 
     def arm(self):
-        self._armed       = True
-        self._prev_gray   = None
-        self._frame_count = 0
+        self._armed              = True
+        self._prev_gray          = None
+        self._frame_count        = 0
+        self._bg_frame           = None
+        self._bg_quiet_frames    = 0
+        self._leak_area_history.clear()
         print("[Sentry] ARMED — surveillance active")
 
     def disarm(self):
-        self._armed        = False
-        self.motion_active = False
-        self.person_active = False
-        self.fire_active   = False
-        self.smoke_active  = False
+        self._armed              = False
+        self.motion_active       = False
+        self.person_active       = False
+        self.fire_active         = False
+        self.smoke_active        = False
+        self.leak_active         = False
+        self.weapon_active       = False
+        self._bg_frame           = None
+        self._bg_quiet_frames    = 0
+        self._leak_area_history.clear()
         print("[Sentry] Disarmed")
 
     @property
@@ -113,7 +157,7 @@ class SentryMonitor:
     # ── Main per-frame call ───────────────────────────────────────────────────
 
     def process(self, frame) -> np.ndarray:
-        """Run motion + DNN + fire + smoke detection. Returns annotated debug frame."""
+        """Run all detectors and return annotated debug frame."""
         self._frame_count += 1
         debug = frame.copy()
 
@@ -124,8 +168,10 @@ class SentryMonitor:
 
         motion_contours    = self._detect_motion(frame)
         smoke_blobs        = self._detect_smoke(frame)
+        leak_blobs         = self._detect_leak(frame)
         self.motion_active = motion_contours is not None
-        self.smoke_active  = smoke_blobs is not None
+        self.smoke_active  = smoke_blobs  is not None
+        self.leak_active   = leak_blobs   is not None
         self.fire_active   = self._detect_fire(frame)
 
         if self._frame_count % DNN_SKIP == 0:
@@ -134,18 +180,36 @@ class SentryMonitor:
         self.person_active = any(
             label == "person" for label, _, _ in self._last_dnn_dets
         )
+        weapon_contours    = self._detect_weapon(frame)
+        self.weapon_active = weapon_contours is not None
 
-        # Alert priority: fire > smoke > person > motion
+        # ── Background update (quiet frames only) ────────────────────
+        any_active = (self.fire_active or self.weapon_active or self.smoke_active
+                      or self.person_active or self.motion_active or self.leak_active)
+        if any_active:
+            self._bg_quiet_frames = 0
+        else:
+            self._bg_quiet_frames += 1
+            if self._bg_quiet_frames >= SNAP_BG_UPDATE_FRAMES:
+                self._bg_frame        = frame.copy()
+                self._bg_quiet_frames = 0
+
+        # ── Alerts  (fire > weapon > smoke > person > motion > leak) ─
         if self.fire_active:
-            self._maybe_log_event("fire", frame)
+            self._maybe_log_event("fire",   frame)
+        if self.weapon_active:
+            self._maybe_log_event("weapon", frame)
         if self.smoke_active:
-            self._maybe_log_event("smoke", frame)
+            self._maybe_log_event("smoke",  frame)
         if self.person_active:
             self._maybe_log_event("person", frame)
         if self.motion_active:
             self._maybe_log_event("motion", frame)
+        if self.leak_active:
+            self._maybe_log_event("leak",   frame)
 
-        return self._draw_overlay(debug, motion_contours, smoke_blobs)
+        return self._draw_overlay(debug, motion_contours, smoke_blobs,
+                                  leak_blobs, weapon_contours)
 
     # ── Detection helpers ─────────────────────────────────────────────────────
 
@@ -226,6 +290,123 @@ class SentryMonitor:
 
         return smoke_blobs if smoke_blobs else None
 
+    def _detect_leak(self, frame):
+        """
+        Puddle / water leak detector.
+
+        Works in the bottom LEAK_ROI_FRAC of the frame (floor zone).
+        A puddle is low-saturation and reflective (bright), so the HSV mask
+        selects S < LEAK_SAT_MAX and V > LEAK_VAL_MIN.
+
+        False-positive guard — area growth tracking:
+          The blob area is stored in a rolling deque. A leak is confirmed only
+          when the 5-frame average at the end of the window is >= LEAK_GROWTH_RATIO
+          times the 5-frame average at the start. Static bright floor patches
+          keep a flat area and never trigger; a spreading puddle grows.
+
+        Returns list of contours in full-frame coordinates, or None.
+        """
+        h, w   = frame.shape[:2]
+        roi_y  = int(h * (1.0 - LEAK_ROI_FRAC))
+        roi    = frame[roi_y:, :]
+
+        hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+        mask    = cv2.inRange(hsv_roi,
+                              np.array([0,   0,           LEAK_VAL_MIN]),
+                              np.array([180, LEAK_SAT_MAX, 255        ]))
+
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
+        mask   = cv2.morphologyEx(mask, cv2.MORPH_OPEN,  kernel)
+        mask   = cv2.dilate(mask, kernel, iterations=1)
+
+        cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        roi_area = roi.shape[0] * roi.shape[1]
+        big      = [c for c in cnts if cv2.contourArea(c) > roi_area * LEAK_AREA_MIN_FRAC]
+
+        total_area = sum(cv2.contourArea(c) for c in big)
+        self._leak_area_history.append(total_area)
+
+        if len(self._leak_area_history) < LEAK_HISTORY_FRAMES:
+            return None
+
+        hist    = list(self._leak_area_history)
+        old_avg = sum(hist[:5]) / 5
+        new_avg = sum(hist[-5:]) / 5
+
+        if old_avg < 500 or (new_avg / max(old_avg, 1)) < LEAK_GROWTH_RATIO:
+            return None
+
+        # Offset contour Y-coordinates to full-frame space
+        full_cnts = [c + np.array([[[0, roi_y]]]) for c in big]
+        return full_cnts if full_cnts else None
+
+    def _detect_weapon(self, frame):
+        """
+        Elongated-rigid-object detector for potential weapons.
+
+        Requires at least one person to be detected (cached DNN result) —
+        the object must be near them at arm's length, reducing false positives
+        from furniture, door frames, etc.
+
+        Shape filter per contour (on Canny edges):
+          • area         >= WEAPON_AREA_MIN
+          • aspect ratio >= WEAPON_ASPECT_MIN  (via minAreaRect)
+          • solidity     >= WEAPON_SOLIDITY_MIN (area / convex-hull area)
+
+        Person-proximity gate:
+          The contour centroid must fall inside the person bounding box
+          expanded by WEAPON_PERSON_MARGIN on every side.
+
+        Works well for a phone-screen weapon image: the DNN spots the person
+        holding the phone; Canny picks up the weapon outline on the screen.
+
+        Returns list of suspect contours, or None.
+        """
+        person_boxes = [
+            (x1, y1, x2, y2)
+            for label, _, (x1, y1, x2, y2) in self._last_dnn_dets
+            if label == "person"
+        ]
+        if not person_boxes:
+            return None
+
+        gray    = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        edges   = cv2.Canny(blurred, 30, 90)
+        edges   = cv2.dilate(edges, None, iterations=1)
+
+        cnts, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        suspects = []
+        for c in cnts:
+            if cv2.contourArea(c) < WEAPON_AREA_MIN:
+                continue
+
+            # Elongation via minimum-area bounding rectangle
+            (_, _), (bw, bh), _ = cv2.minAreaRect(c)
+            if bw < 1 or bh < 1:
+                continue
+            if max(bw, bh) / min(bw, bh) < WEAPON_ASPECT_MIN:
+                continue
+
+            # Solidity — rigid straight objects are close to convex
+            hull      = cv2.convexHull(c)
+            hull_area = cv2.contourArea(hull)
+            if hull_area < 1 or cv2.contourArea(c) / hull_area < WEAPON_SOLIDITY_MIN:
+                continue
+
+            # Proximity gate — centroid inside expanded person bbox
+            cx = float(np.mean(c[:, 0, 0]))
+            cy = float(np.mean(c[:, 0, 1]))
+            for (px1, py1, px2, py2) in person_boxes:
+                pw, ph   = px2 - px1, py2 - py1
+                mx, my   = pw * WEAPON_PERSON_MARGIN, ph * WEAPON_PERSON_MARGIN
+                if (px1 - mx) <= cx <= (px2 + mx) and (py1 - my) <= cy <= (py2 + my):
+                    suspects.append(c)
+                    break
+
+        return suspects if suspects else None
+
     def _run_dnn(self, frame) -> list:
         if self._net is None:
             return []
@@ -257,7 +438,7 @@ class SentryMonitor:
             return
         self._alert_times[event_type] = now
 
-        snap_path = self._save_snapshot(frame)
+        snap_path = self._save_comparison_snapshot(frame, event_type)
         ts        = datetime.now().strftime("%H:%M:%S")
         event     = {"time": ts, "type": event_type, "snap": snap_path}
         with self._events_lock:
@@ -266,11 +447,45 @@ class SentryMonitor:
         print(f"[Sentry] EVENT: {event_type} @ {ts}  snap={snap_path}")
         self._send_ntfy(event_type, snap_path)
 
-    def _save_snapshot(self, frame) -> str:
+    def _save_comparison_snapshot(self, trigger_frame, event_type: str) -> str:
+        """
+        Save a side-by-side BEFORE/AFTER JPEG.
+
+        Left panel  — last quiet background frame (what the scene looked like).
+        Right panel — current trigger frame with changed pixels tinted red.
+        A thin diff pass (absdiff > 30) produces the change mask so the viewer
+        immediately sees exactly what moved / appeared / disappeared.
+        """
+        h, w = trigger_frame.shape[:2]
+        bg   = (self._bg_frame if self._bg_frame is not None
+                else np.zeros((h, w, 3), dtype=np.uint8))
+        bg   = cv2.resize(bg, (w, h))
+
+        # Changed-pixel mask
+        diff_gray = cv2.cvtColor(cv2.absdiff(bg, trigger_frame), cv2.COLOR_BGR2GRAY)
+        _, change_mask = cv2.threshold(diff_gray, 30, 255, cv2.THRESH_BINARY)
+        change_mask    = cv2.dilate(change_mask, None, iterations=2)
+
+        # Red tint on changed pixels of the trigger frame
+        trigger_hl = trigger_frame.copy()
+        red_layer  = np.zeros_like(trigger_hl)
+        red_layer[change_mask > 0] = (0, 0, 220)
+        trigger_hl = cv2.addWeighted(trigger_hl, 0.72, red_layer, 0.28, 0)
+
+        # Header bars with event-type label colour
+        lc = _SNAP_LABEL_COLORS.get(event_type, (200, 200, 200))
+        for panel, txt in ((bg, "BEFORE"), (trigger_hl, f"AFTER — {event_type.upper()}")):
+            cv2.rectangle(panel, (0, 0), (w, 26), (25, 25, 25), -1)
+            cv2.putText(panel, txt, (8, 18),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.58,
+                        (160, 160, 160) if txt == "BEFORE" else lc, 1)
+
+        composite = np.hstack([bg, np.full((h, 3, 3), 55, dtype=np.uint8), trigger_hl])
+
         self._snap_count += 1
         ts    = datetime.now().strftime("%Y%m%d_%H%M%S")
         fname = os.path.join(SNAP_DIR, f"sentry_{ts}_{self._snap_count:04d}.jpg")
-        cv2.imwrite(fname, frame)
+        cv2.imwrite(fname, composite)
         return fname
 
     def _send_ntfy(self, event_type: str, snap_path: str):
@@ -302,7 +517,8 @@ class SentryMonitor:
 
     # ── HUD ───────────────────────────────────────────────────────────────────
 
-    def _draw_overlay(self, frame, motion_contours, smoke_blobs) -> np.ndarray:
+    def _draw_overlay(self, frame, motion_contours, smoke_blobs,
+                       leak_blobs, weapon_contours) -> np.ndarray:
         h, w = frame.shape[:2]
 
         # DNN bounding boxes
@@ -313,31 +529,45 @@ class SentryMonitor:
                         (x1, max(y1 - 6, 14)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
 
-        # Smoke blob outlines (dashed-look via thin white contour)
+        # Weapon contours — draw rotated bounding rect in amber
+        if weapon_contours:
+            for c in weapon_contours:
+                box = np.intp(cv2.boxPoints(cv2.minAreaRect(c)))
+                cv2.drawContours(frame, [box], 0, (0, 200, 255), 2)
+
+        # Smoke blob outlines — thin light-gray
         if smoke_blobs:
             cv2.drawContours(frame, smoke_blobs, -1, (200, 200, 200), 1)
 
-        # Motion contour outlines
+        # Leak puddle outlines — blue
+        if leak_blobs:
+            cv2.drawContours(frame, leak_blobs, -1, (200, 110, 0), 2)
+
+        # Motion contour outlines — cyan-green
         if motion_contours:
             cv2.drawContours(frame, motion_contours, -1, (0, 255, 180), 1)
 
-        # Top status banner — fire > smoke > person > motion > idle
+        # Top status banner  fire > weapon > smoke > person > motion > leak > idle
         if self.fire_active:
-            banner_bg, banner_txt = (0, 50, 220),  "! FIRE DETECTED !"
+            banner_bg, banner_txt = (0,  50, 220),  "! FIRE DETECTED !"
+        elif self.weapon_active:
+            banner_bg, banner_txt = (0, 130, 200),  "! WEAPON DETECTED !"
         elif self.smoke_active:
-            banner_bg, banner_txt = (60, 60, 160), "! SMOKE DETECTED !"
+            banner_bg, banner_txt = (60, 60, 160),  "! SMOKE DETECTED !"
         elif self.person_active:
-            banner_bg, banner_txt = (0, 0, 180),   "PERSON DETECTED"
+            banner_bg, banner_txt = (0,   0, 180),  "PERSON DETECTED"
         elif self.motion_active:
-            banner_bg, banner_txt = (0, 100, 200), "MOTION DETECTED"
+            banner_bg, banner_txt = (0, 100, 200),  "MOTION DETECTED"
+        elif self.leak_active:
+            banner_bg, banner_txt = (130, 60,  0),  "! WATER LEAK !"
         else:
-            banner_bg, banner_txt = (0, 50, 0),    "SENTRY: watching"
+            banner_bg, banner_txt = (0,  50,   0),  "SENTRY: watching"
 
         cv2.rectangle(frame, (0, 0), (w, 34), banner_bg, -1)
         cv2.putText(frame, banner_txt,
                     (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255, 255, 255), 2)
 
-        # Event count (top-right corner)
+        # Event count (top-right)
         with self._events_lock:
             n_events = len(self._events)
         cv2.putText(frame, f"Events: {n_events}",
