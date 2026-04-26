@@ -395,13 +395,47 @@
     .b-danger { background: rgba(200,29,37,0.12);  color: #c81d25;  border-color: rgba(200,29,37,0.45); animation: dangerPulse 0.9s ease-in-out infinite; }
 
     /* ══════════════════════════════════════════════════════════
-       STEERING WHEEL
+       STEERING PANEL (replaces steering wheel)
     ══════════════════════════════════════════════════════════ */
-    .steering-card-body {
-      display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 10px 10px;
+    .steer-panel { padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 12px; }
+
+    .steer-bar-row { display: flex; align-items: center; gap: 10px; }
+    .steer-bar-side {
+      font-family: 'Barlow Condensed', sans-serif; font-size: 10px; font-weight: 700;
+      letter-spacing: 0.14em; color: var(--muted); flex-shrink: 0; width: 14px; text-align: center;
     }
-    .steering-container { width: 160px; height: 160px; }
-    #steering-svg { transition: transform 0.12s cubic-bezier(0.25,1,0.5,1); }
+    .steer-bar-track {
+      flex: 1; height: 4px; border-radius: 2px;
+      background: rgba(255,255,255,0.09); position: relative;
+    }
+    .steer-bar-track::before {
+      content: ''; position: absolute; left: 50%; top: -5px;
+      width: 1px; height: 14px;
+      background: rgba(255,255,255,0.20); transform: translateX(-50%);
+    }
+    .steer-bar-fill {
+      position: absolute; top: 0; height: 100%; border-radius: 2px;
+      background: var(--cyan);
+      transition: left 0.12s cubic-bezier(0.25,1,0.5,1), width 0.12s cubic-bezier(0.25,1,0.5,1);
+    }
+    .steer-needle {
+      position: absolute; top: 50%; left: 50%;
+      width: 14px; height: 14px; border-radius: 50%;
+      background: var(--cyan);
+      box-shadow: 0 0 10px rgba(78,205,196,0.70), 0 0 3px rgba(78,205,196,1);
+      transform: translate(-50%, -50%);
+      transition: left 0.12s cubic-bezier(0.25,1,0.5,1);
+    }
+    .steer-angle-wrap { text-align: center; line-height: 1; }
+    .steer-angle-num {
+      font-family: 'JetBrains Mono', monospace; font-size: 34px; font-weight: 600;
+      color: var(--cyan); letter-spacing: -0.02em;
+    }
+    .steer-angle-unit {
+      font-family: 'Barlow Condensed', sans-serif; font-size: 9px; font-weight: 700;
+      letter-spacing: 0.22em; text-transform: uppercase; color: var(--muted);
+      display: block; margin-top: 4px;
+    }
     .steering-data { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; width: 100%; }
     .sd-item { display: flex; flex-direction: column; gap: 1px; }
     .sd-lbl { font-family: 'Barlow Condensed', sans-serif; font-size: 9px; color: var(--muted); letter-spacing: 0.18em; text-transform: uppercase; }
@@ -409,6 +443,43 @@
     .sd-val.good   { color: var(--green); }
     .sd-val.warn   { color: var(--orange); }
     .sd-val.danger { color: var(--red); }
+
+    /* ══════════════════════════════════════════════════════════
+       HEADER BRAND + STATE PILL
+    ══════════════════════════════════════════════════════════ */
+    .brand-wrap { display: flex; align-items: center; gap: 10px; }
+    .brand-icon {
+      width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+      background: linear-gradient(135deg, rgba(78,205,196,0.20) 0%, rgba(8,126,139,0.16) 100%);
+      border: 1px solid rgba(78,205,196,0.32);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 0 20px rgba(78,205,196,0.14);
+    }
+    .brand-v-letter {
+      font-family: 'Playfair Display', serif; font-style: italic;
+      font-size: 21px; font-weight: 700; color: var(--cyan); line-height: 1;
+      text-shadow: 0 0 12px rgba(78,205,196,0.55);
+    }
+    .brand-text { display: flex; flex-direction: column; gap: 2px; }
+    .brand-title {
+      font-family: 'Barlow Condensed', sans-serif; font-size: 16px; font-weight: 700;
+      letter-spacing: 0.10em; color: var(--text); line-height: 1;
+    }
+    .brand-title .gold { color: var(--gold); }
+    .brand-sub {
+      font-family: 'Barlow Condensed', sans-serif; font-size: 8px;
+      letter-spacing: 0.24em; text-transform: uppercase; color: var(--muted); line-height: 1;
+    }
+    /* Header state pill */
+    .hdr-state {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 12px; border-radius: 20px;
+      background: rgba(78,205,196,0.10); border: 1px solid rgba(78,205,196,0.25);
+      font-family: 'Barlow Condensed', sans-serif; font-size: 10px; font-weight: 700;
+      letter-spacing: 0.14em; text-transform: uppercase; color: var(--cyan);
+      transition: background 0.35s, border-color 0.35s, color 0.35s;
+    }
+    .hdr-state-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; animation: livePulse 2.4s ease-in-out infinite; }
 
     /* ══════════════════════════════════════════════════════════
        ARC GAUGE (motor speed)  — 4 motors in 2×2 grid
@@ -959,40 +1030,15 @@
   <!-- HEADER -->
   <header>
     <div class="hdr-left">
-      <!-- VectorVance logo (compact) -->
-      <svg viewBox="0 0 195 42" width="195" height="42">
-        <defs>
-          <linearGradient id="sg2" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#3a7ab8"/><stop offset="100%" stop-color="#1d4a70"/>
-          </linearGradient>
-          <linearGradient id="gg2" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stop-color="#e8a030"/><stop offset="100%" stop-color="#a86010"/>
-          </linearGradient>
-        </defs>
-        <!-- Shield -->
-        <path d="M12,3 L38,3 Q43,3 43,8 L43,25 Q43,35 25,41 Q7,35 7,25 L7,8 Q7,3 12,3 Z"
-              fill="url(#sg2)" opacity="0.85"/>
-        <path d="M12,3 L38,3 Q43,3 43,8 L43,25 Q43,35 25,41 Q7,35 7,25 L7,8 Q7,3 12,3 Z"
-              fill="none" stroke="#3a7ab8" stroke-width="1.5" opacity="0.9"/>
-        <!-- Left wing -->
-        <path d="M13,18 C9,15 1,13 0,17 C3,21 9,22 14,23 L25,38 Z"
-              fill="url(#gg2)" opacity="0.9"/>
-        <!-- Right wing -->
-        <path d="M37,18 C41,15 49,13 50,17 C47,21 41,22 36,23 L25,38 Z"
-              fill="url(#gg2)" opacity="0.9"/>
-        <!-- V -->
-        <path d="M17,7 L25,30 L33,7" fill="none" stroke="#C8861A" stroke-width="2.5"
-              stroke-linejoin="round" stroke-linecap="round"/>
-        <!-- Star -->
-        <g transform="translate(25,26)">
-          <polygon points="0,-6 1.8,-1.5 0,6 -1.8,-1.5" fill="#e8a030"/>
-          <polygon points="-6,0 -1.5,1.8 6,0 -1.5,-1.8" fill="#e8a030" opacity="0.75"/>
-          <circle cx="0" cy="0" r="2" fill="#C8861A"/>
-        </g>
-        <!-- Text -->
-        <text x="60" y="20" font-family="Barlow Condensed,sans-serif" font-size="12" font-weight="700"
-              letter-spacing="1.5" fill="#2B5F8E">VECTOR<tspan fill="#C8861A">VANCE</tspan></text>
-      </svg>
+      <div class="brand-wrap">
+        <div class="brand-icon">
+          <span class="brand-v-letter">V</span>
+        </div>
+        <div class="brand-text">
+          <span class="brand-title">VECTOR<span class="gold">VANCE</span></span>
+          <span class="brand-sub">Autonomous System</span>
+        </div>
+      </div>
     </div>
 
     <div class="hdr-mid">
@@ -1023,6 +1069,10 @@
     </div>
 
     <div class="hdr-right">
+      <div class="hdr-state" id="hdr-state-pill">
+        <span class="hdr-state-dot"></span>
+        <span id="hdr-state-label">—</span>
+      </div>
       <div class="conn-wrap">
         <div class="conn-dot" id="conn-dot"></div>
         <span id="conn-label">Connecting&hellip;</span>
@@ -1037,12 +1087,48 @@
     <!-- ══ LEFT PANEL ══ -->
     <div class="panel">
 
-      <!-- Steering Wheel -->
+      <!-- Steering Panel -->
       <div class="card">
-        <div class="card-head">Steering</div>
-        <div class="steering-card-body">
-          <div class="steering-container">
-            <svg id="steering-svg" viewBox="0 0 120 120" width="160" height="160">
+        <div class="card-head">Steering
+          <span class="card-head-muted" id="steer-dir-label">—</span>
+        </div>
+        <div class="steer-panel">
+          <!-- Deflection bar -->
+          <div class="steer-bar-row">
+            <span class="steer-bar-side">L</span>
+            <div class="steer-bar-track">
+              <div class="steer-bar-fill" id="steer-bar-fill"></div>
+              <div class="steer-needle" id="steer-needle"></div>
+            </div>
+            <span class="steer-bar-side">R</span>
+          </div>
+          <!-- Angle readout -->
+          <div class="steer-angle-wrap">
+            <span class="steer-angle-num" id="steer-angle-num">0.0°</span>
+            <span class="steer-angle-unit">steering angle</span>
+          </div>
+          <!-- Data grid -->
+          <div class="steering-data">
+            <div class="sd-item">
+              <span class="sd-lbl">Error</span>
+              <span class="sd-val" id="val-err">— px</span>
+            </div>
+            <div class="sd-item">
+              <span class="sd-lbl">PID Out</span>
+              <span class="sd-val" id="val-pid">—</span>
+            </div>
+            <div class="sd-item">
+              <span class="sd-lbl">FPS</span>
+              <span class="sd-val" id="val-fps">—</span>
+            </div>
+            <div class="sd-item">
+              <span class="sd-lbl">Speed Lim</span>
+              <span class="sd-val" id="val-speed-limit">—</span>
+            </div>
+          </div>
+        </div><!-- /steer-panel; old SVG block intentionally removed -->
+        <div style="display:none"><!-- old SVG removed -->
+            <svg style="display:none">
               <defs>
                 <!-- Chrome gradient vertical -->
                 <linearGradient id="sg-chrome" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -1157,25 +1243,6 @@
               <rect x="58.5" y="5.5" width="3" height="1.8" rx="0.9" fill="#E4E8F0" opacity="0.7"/>
             </svg>
           </div>
-          <div class="steering-data">
-            <div class="sd-item">
-              <span class="sd-lbl">Error</span>
-              <span class="sd-val" id="val-err">— px</span>
-            </div>
-            <div class="sd-item">
-              <span class="sd-lbl">PID Out</span>
-              <span class="sd-val" id="val-pid">—</span>
-            </div>
-            <div class="sd-item">
-              <span class="sd-lbl">FPS</span>
-              <span class="sd-val" id="val-fps">—</span>
-            </div>
-            <div class="sd-item">
-              <span class="sd-lbl">Speed Lim</span>
-              <span class="sd-val" id="val-speed-limit">—</span>
-            </div>
-          </div>
-        </div>
       </div>
 
       <!-- Motor Gauges (4 motors, 2×2 grid) -->
@@ -1593,23 +1660,53 @@
     const statusEl = document.getElementById('status-text');
     if (statusEl) statusEl.textContent = d.status || '—';
 
-    // Car state badges
+    // Car state badges + header pill
     const stateLabels = { LANE_FOLLOW:'Lane Follow', FREE_ROAM:'Free Roam', TRACKING:'Tracking', SENTRY:'Sentry', FORK_WAITING:'Fork Wait', COLOR_FOLLOWING:'Color Follow', ARRIVED:'Arrived' };
+    const stateColors = { LANE_FOLLOW:'#4ecdc4', FREE_ROAM:'#4ecdc4', TRACKING:'#d4a020', SENTRY:'#ff5a5f', FORK_WAITING:'#e0c040', COLOR_FOLLOWING:'#6ee7b7', ARRIVED:'#6ee7b7' };
     const carState = d.car_state || '';
+    const stateText = stateLabels[carState] || carState || '—';
+    const stateColor = stateColors[carState] || 'var(--muted)';
     ['state-badge','vid-state-badge'].forEach(id => {
       const el = document.getElementById(id);
-      if (el) el.textContent = stateLabels[carState] || carState || '—';
+      if (el) el.textContent = stateText;
     });
+    const hdrPill = document.getElementById('hdr-state-pill');
+    if (hdrPill) {
+      document.getElementById('hdr-state-label').textContent = stateText;
+      hdrPill.style.color = stateColor;
+      hdrPill.style.borderColor = stateColor + '88';
+      hdrPill.style.background = stateColor + '18';
+    }
 
     // Danger badge
     const db = document.getElementById('danger-badge');
     if (d.stop_sign_active) { db.style.display = 'inline-block'; db.textContent = 'Stop Sign'; }
     else db.style.display = 'none';
 
-    // Steering wheel rotation
+    // Steering bar
     const err = d.steering_error ?? 0;
-    const angle = Math.max(-45, Math.min(45, err * 0.3));
-    document.getElementById('steering-svg').style.transform = `rotate(${angle}deg)`;
+    (function updateSteerBar(errorPx) {
+      const MAX = 180;
+      const ratio = Math.max(-1, Math.min(1, errorPx / MAX));  // -1=full left, +1=full right
+      const pct = (ratio / 2 + 0.5) * 100;                     // 0–100
+      const needle = document.getElementById('steer-needle');
+      const fill   = document.getElementById('steer-bar-fill');
+      const numEl  = document.getElementById('steer-angle-num');
+      const dirEl  = document.getElementById('steer-dir-label');
+      if (needle) needle.style.left = pct.toFixed(1) + '%';
+      if (fill) {
+        const half = 50;
+        if (pct >= half) { fill.style.left = half + '%'; fill.style.width = (pct - half).toFixed(1) + '%'; }
+        else             { fill.style.left = pct.toFixed(1) + '%'; fill.style.width = (half - pct).toFixed(1) + '%'; }
+      }
+      const deg = (ratio * 30).toFixed(1);
+      if (numEl) numEl.textContent = (ratio >= 0 ? '+' : '') + deg + '°';
+      if (dirEl) dirEl.textContent = Math.abs(ratio) < 0.05 ? 'STRAIGHT' : ratio < 0 ? 'LEFT' : 'RIGHT';
+      if (needle) needle.style.boxShadow = Math.abs(ratio) > 0.6
+        ? '0 0 14px rgba(255,90,95,0.80), 0 0 4px rgba(255,90,95,1)'
+        : '0 0 10px rgba(78,205,196,0.70), 0 0 3px rgba(78,205,196,1)';
+      if (numEl) numEl.style.color = Math.abs(ratio) > 0.6 ? 'var(--red)' : Math.abs(ratio) > 0.3 ? 'var(--orange)' : 'var(--cyan)';
+    })(err);
 
     // Steering/PID display
     const errEl = document.getElementById('val-err');
