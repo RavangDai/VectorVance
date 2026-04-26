@@ -245,17 +245,18 @@ Key fields pushed to the dashboard every frame:
 
 Single-file HTML/CSS/JS dashboard served by Flask on port 5000. No build step, no framework — vanilla JS only.
 
-**Design approach**: dark industrial HUD aesthetic, gold (#C8861A) as dominant brand color, cyan for live data values only.
+**Design approach**: clean modern card aesthetic — light gray background (`#EAEAF2`), white cards with soft box-shadow (no borders), 10px border-radius, pill-shaped badges/buttons. Gold (`oklch(0.54 0.12 62)`) remains the brand accent; cyan for live telemetry values. Obstacle/stop-sign overlay banners have been removed.
 
 **Animation patterns in use**:
 - Card entrance: cards start `opacity: 0` until `#app.app-entered` is set by `dismiss()` (splash exit), then stagger in with `cardRise` keyframe and `cubic-bezier(0.25, 1, 0.5, 1)` easing
-- Value flash: `flashIfChanged(el, key, newVal)` — flashes gold on the element when a telemetry value's zone category changes (e.g. dist zone `clear→warn→danger`)
+- Value flash: `flashIfChanged(el, key, newVal)` — flashes gold on the element when a telemetry value's zone category changes
 - Button micro-interactions: CSS `:active` `transform: scale(0.92–0.95)` on all interactive controls
 - Detection items: auto-animate via CSS `detSlideIn` each time `innerHTML` is rebuilt
 - `prefers-reduced-motion` media query disables all animations/transitions
 
-**Banned patterns** (per impeccable skill):
-- No `border-left`/`border-right` > 1px as colored stripe on cards
+**Banned patterns**:
+- No border-only colored stripes on cards
 - No gradient text (`background-clip: text`)
 - No glassmorphism
 - No bounce/elastic easing — use `cubic-bezier(0.25,1,0.5,1)` (ease-out-quart) instead
+- No hard 1px borders on cards — use box-shadow instead
