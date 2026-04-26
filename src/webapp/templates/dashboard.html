@@ -267,10 +267,33 @@
       border: var(--glass-border);
       border-radius: var(--r);
       flex-shrink: 0; overflow: hidden;
+      position: relative;
       box-shadow: var(--glass-shadow);
       backdrop-filter: var(--glass-blur);
       -webkit-backdrop-filter: var(--glass-blur);
-      transition: box-shadow 0.2s, background 0.2s;
+      transition: box-shadow 0.25s, background 0.2s, border-color 0.2s;
+    }
+    /* Shine sweep — slides diagonally across on hover, clipped by overflow:hidden */
+    .card:not(.ai-card)::after {
+      content: '';
+      position: absolute; top: -50%; left: -80%;
+      width: 50%; height: 200%;
+      background: linear-gradient(to right, transparent, rgba(255,255,255,0.055) 50%, transparent);
+      transform: skewX(-15deg);
+      transition: left 0s;
+      pointer-events: none; z-index: 10;
+    }
+    .card:not(.ai-card):hover::after {
+      left: 130%;
+      transition: left 0.65s cubic-bezier(0.25,1,0.5,1);
+    }
+    .card:hover {
+      box-shadow: 0 16px 48px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.18);
+      border-color: rgba(255,255,255,0.22);
+    }
+    /* Smooth return to neutral after tilt (added/removed by JS) */
+    .card.tilt-returning {
+      transition: transform 0.4s cubic-bezier(0.25,1,0.5,1), box-shadow 0.25s, border-color 0.2s;
     }
     .card-head {
       height: 30px; padding: 0 12px;
@@ -329,6 +352,18 @@
                  aiGlowPulse 3s linear 0.55s infinite;
     }
     .ai-card:hover::before { opacity: 1; }
+    /* Interior dual-radial glow that blooms in on hover */
+    .ai-card::after {
+      content: '';
+      position: absolute; inset: 3px;
+      border-radius: calc(var(--r) - 2px);
+      background:
+        radial-gradient(ellipse at 28% 0%,   rgba(78,205,196,0.13) 0%, transparent 54%),
+        radial-gradient(ellipse at 72% 100%, rgba(200,29,37,0.10)  0%, transparent 54%);
+      opacity: 0; pointer-events: none; z-index: 1;
+      transition: opacity 0.45s cubic-bezier(0.25,1,0.5,1);
+    }
+    .ai-card:hover::after { opacity: 1; }
 
     .ai-ring-svg { display: none; }
     .ai-ring-head, .ai-ring-trail { fill: none; stroke-linecap: round; }
@@ -446,6 +481,7 @@
       border-radius: 8px; color: var(--text); font-family: 'Barlow', sans-serif; font-size: 12px; outline: none;
     }
     .ai-drive-input::placeholder { color: var(--dim); }
+    .ai-drive-input:hover { border-color: rgba(255,255,255,0.22); }
     .ai-drive-input:focus { border-color: rgba(78,205,196,0.55); box-shadow: 0 0 0 2px rgba(78,205,196,0.12); }
 
     .ai-go-wrap {
@@ -458,7 +494,10 @@
       border-radius: 8px; color: var(--gold); cursor: pointer; transition: all 0.15s;
       font-family: 'Barlow Condensed', sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
     }
-    .ai-drive-send:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.22); }
+    .ai-drive-send:hover {
+      background: rgba(78,205,196,0.16); border-color: rgba(78,205,196,0.52);
+      color: var(--cyan); box-shadow: 0 0 16px rgba(78,205,196,0.24);
+    }
 
     /* Voice button */
     .voice-section {
@@ -2336,6 +2375,33 @@
     });
   }
   initAiRing();
+
+  /* ── Card 3-D tilt on hover ── */
+  function initCardTilt() {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    document.querySelectorAll('.card').forEach(card => {
+      const maxDeg = card.classList.contains('ai-card') ? 8 : 5;
+      const scaleUp = card.classList.contains('ai-card') ? ' scale(1.015)' : '';
+
+      card.addEventListener('mouseenter', () => {
+        card.style.transition = 'transform 0.12s cubic-bezier(0.25,1,0.5,1)';
+      });
+      card.addEventListener('mousemove', e => {
+        const r = card.getBoundingClientRect();
+        const x = (e.clientX - r.left  - r.width  / 2) / (r.width  / 2);
+        const y = (e.clientY - r.top   - r.height / 2) / (r.height / 2);
+        card.style.transform =
+          `perspective(700px) rotateX(${(-y * maxDeg).toFixed(2)}deg) rotateY(${(x * maxDeg).toFixed(2)}deg) translateY(-2px)${scaleUp}`;
+      });
+      card.addEventListener('mouseleave', () => {
+        card.classList.add('tilt-returning');
+        card.style.transform = '';
+        card.style.transition = '';
+        setTimeout(() => card.classList.remove('tilt-returning'), 420);
+      });
+    });
+  }
+  initCardTilt();
 
   /* ── Boot ── */
   initSpeech();
