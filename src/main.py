@@ -331,6 +331,15 @@ class AutonomousVehicle:
         self._track_spin_frames   = 0   # frames elapsed in 360° search spin
         self._SPIN_TOTAL          = 90  # ~3-4 s at 25 fps ≈ one full rotation
 
+        # ── Sentry patrol sweep state ──────────────────────────────
+        self._patrol_active        = False
+        self._patrol_phase         = "pause"   # "rotate" | "pause"
+        self._patrol_sector        = 0         # 0-7 (8 sectors of 45° each)
+        self._patrol_phase_frames  = 0
+        self._PATROL_ROTATE_FRAMES = 11        # frames to sweep 45°  (90/8 ≈ 11)
+        self._PATROL_PAUSE_FRAMES  = 25        # frames to dwell + analyse per sector
+        self._PATROL_SPEED         = 0.25      # clockwise spin fraction
+
         # ── Web / display ─────────────────────────────────────────────
         self.web_enabled  = enable_web
         self.web_port     = web_port
@@ -384,6 +393,7 @@ class AutonomousVehicle:
         # Disarm sentry when leaving SENTRY
         if prev == "SENTRY" and mode != "SENTRY":
             self.sentry.disarm()
+            self._patrol_active = False
 
         self.drive_mode = mode
 
@@ -606,20 +616,49 @@ class AutonomousVehicle:
     # ── SENTRY mode frame processing ─────────────────────────────────────────
 
     def process_frame_sentry(self, frame):
-        """Stationary surveillance — motors off, camera watches for motion/people."""
+        """Surveillance with optional 360° patrol sweep."""
         self.frame_count += 1
-        debug  = self.sentry.process(frame)
+        debug = self.sentry.process(frame)
+
+        left = right = 0.0
+        if self._patrol_active:
+            left, right = self._patrol_step()
+            deg         = self._patrol_sector * 45
+            label       = f"ROTATE → {(self._patrol_sector + 1) % 8 * 45}°" \
+                          if self._patrol_phase == "rotate" else f"SCAN  {deg}°"
+            cv2.putText(debug, f"PATROL  {label}  [{self._patrol_sector + 1}/8]",
+                        (10, debug.shape[0] - 12),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.46, (0, 220, 255), 1)
+
         status = (
             "SENTRY: person detected" if self.sentry.person_active else
             "SENTRY: motion detected" if self.sentry.motion_active else
+            f"SENTRY: patrol {self._patrol_sector * 45}°" if self._patrol_active else
             "SENTRY: watching"
         )
-        self.smooth_left.update(0.0)
-        self.smooth_right.update(0.0)
         self.smooth_base_speed.update(0.0)
         self.smooth_pid.update(0.0)
         self._last_steering_error = 0.0
-        return debug, (0.0, 0.0, status)
+        if not self._patrol_active:
+            self.smooth_left.update(0.0)
+            self.smooth_right.update(0.0)
+        return debug, (left, right, status)
+
+    def _patrol_step(self) -> tuple:
+        """Advance the patrol state machine; return (left, right) motor speeds."""
+        self._patrol_phase_frames += 1
+        if self._patrol_phase == "rotate":
+            if self._patrol_phase_frames >= self._PATROL_ROTATE_FRAMES:
+                self._patrol_sector       = (self._patrol_sector + 1) % 8
+                self._patrol_phase        = "pause"
+                self._patrol_phase_frames = 0
+                self.sentry._prev_gray    = None   # reset motion bg for fresh sector
+            return self._PATROL_SPEED, -self._PATROL_SPEED   # CW tank spin
+        else:  # pause / analyse
+            if self._patrol_phase_frames >= self._PATROL_PAUSE_FRAMES:
+                self._patrol_phase        = "rotate"
+                self._patrol_phase_frames = 0
+            return 0.0, 0.0
 
     # ── Web command handler ───────────────────────────────────────────────────
 
@@ -677,6 +716,16 @@ class AutonomousVehicle:
             self.sentry.clear_events()
             pi_server.clear_sentry_events()
 
+        elif action == "toggle_patrol":
+            if self.drive_mode == "SENTRY":
+                self._patrol_active       = not self._patrol_active
+                self._patrol_phase        = "pause"
+                self._patrol_sector       = 0
+                self._patrol_phase_frames = 0
+                if not self._patrol_active:
+                    self._stop_motors()
+                print(f"[Sentry] Patrol {'ON' if self._patrol_active else 'OFF'}")
+
         pi_server.clear_command()
 
     # ── Telemetry ─────────────────────────────────────────────────────────────
@@ -726,6 +775,9 @@ class AutonomousVehicle:
             "sentry_motion":         self.sentry.motion_active,
             "sentry_person":         self.sentry.person_active,
             "sentry_fire":           self.sentry.fire_active,
+            "sentry_smoke":          self.sentry.smoke_active,
+            "patrol_active":         self._patrol_active,
+            "patrol_sector":         self._patrol_sector,
         }
 
     # ── Main perception + decision loop ──────────────────────────────────────
@@ -1049,7 +1101,7 @@ class AutonomousVehicle:
             elif self.drive_mode == "TRACK":
                 self._drive_manual(left, right)  # supports negative for spin-in-place
             elif self.drive_mode == "SENTRY":
-                self._stop_motors()
+                self._drive_manual(left, right)   # (0,0) when patrol off
             elif self.drive_mode == "LANE":
                 self._drive(left, right)
             else:  # MANUAL

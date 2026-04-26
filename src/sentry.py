@@ -5,6 +5,7 @@ Parks the car, locks the wheels, and uses the front camera for:
   • Motion detection  — frame differencing + contour area threshold
   • Person/object DNN — SSD MobileNet v2 (shared net from dnn_detector)
   • Fire detection    — HSV colour thresholding for flame signatures
+  • Smoke detection   — gray/white haze mask + per-blob variance check
   • Event log         — timestamped deque, max MAX_EVENTS entries
   • Snapshot saving   — writes JPEGs to /home/pi/sentry_snaps/
   • ntfy.sh alerts    — default topic: VectorVance (override via NTFY_TOPIC env var; NTFY_URL for self-hosted)
@@ -46,10 +47,13 @@ DNN_SKIP          = 8      # run DNN every Nth frame (CPU budget)
 MOTION_AREA_MIN   = 1200   # px² — contours smaller than this are noise
 PERSON_CONF       = 0.50   # minimum DNN confidence
 FIRE_PIXEL_RATIO  = 0.015  # fraction of frame that must be fire-coloured
+SMOKE_PIXEL_RATIO = 0.010  # min fraction of frame a single smoke blob must cover
+SMOKE_STDDEV_MIN  = 20.0   # min gray stddev inside a blob (flat walls score ~5-10)
 
 # ntfy.sh priority + tag per event type
 _NTFY_META = {
     "fire":   ("5",      "rotating_light,fire",            "FIRE DETECTED"),
+    "smoke":  ("4",      "cloud,rotating_light",           "SMOKE DETECTED"),
     "person": ("4",      "bust_in_silhouette,warning",     "PERSON DETECTED"),
     "motion": ("3",      "wave",                           "MOTION DETECTED"),
 }
@@ -70,6 +74,7 @@ class SentryMonitor:
         self.motion_active    = False
         self.person_active    = False
         self.fire_active      = False
+        self.smoke_active     = False
 
         self._ntfy_topic = ntfy_topic or os.environ.get("NTFY_TOPIC", "VectorVance")
         self._ntfy_url   = (ntfy_url  or os.environ.get("NTFY_URL",   "https://ntfy.sh")).rstrip("/")
@@ -89,6 +94,7 @@ class SentryMonitor:
         self.motion_active = False
         self.person_active = False
         self.fire_active   = False
+        self.smoke_active  = False
         print("[Sentry] Disarmed")
 
     @property
@@ -107,7 +113,7 @@ class SentryMonitor:
     # ── Main per-frame call ───────────────────────────────────────────────────
 
     def process(self, frame) -> np.ndarray:
-        """Run motion + DNN + fire detection. Returns annotated debug frame."""
+        """Run motion + DNN + fire + smoke detection. Returns annotated debug frame."""
         self._frame_count += 1
         debug = frame.copy()
 
@@ -117,7 +123,9 @@ class SentryMonitor:
             return debug
 
         motion_contours    = self._detect_motion(frame)
+        smoke_blobs        = self._detect_smoke(frame)
         self.motion_active = motion_contours is not None
+        self.smoke_active  = smoke_blobs is not None
         self.fire_active   = self._detect_fire(frame)
 
         if self._frame_count % DNN_SKIP == 0:
@@ -127,15 +135,17 @@ class SentryMonitor:
             label == "person" for label, _, _ in self._last_dnn_dets
         )
 
-        # Fire takes priority; always alert regardless of other states
+        # Alert priority: fire > smoke > person > motion
         if self.fire_active:
             self._maybe_log_event("fire", frame)
+        if self.smoke_active:
+            self._maybe_log_event("smoke", frame)
         if self.person_active:
             self._maybe_log_event("person", frame)
         if self.motion_active:
             self._maybe_log_event("motion", frame)
 
-        return self._draw_overlay(debug, motion_contours)
+        return self._draw_overlay(debug, motion_contours, smoke_blobs)
 
     # ── Detection helpers ─────────────────────────────────────────────────────
 
@@ -168,6 +178,53 @@ class SentryMonitor:
         fire_px   = cv2.countNonZero(combined)
         threshold = int(frame.shape[0] * frame.shape[1] * FIRE_PIXEL_RATIO)
         return fire_px > threshold
+
+    def _detect_smoke(self, frame):
+        """
+        Gray/white haze mask + per-blob variance gate.
+
+        Strategy:
+          1. HSV mask: low saturation (0-50) + high brightness (120-255) isolates
+             gray/white haze. Fire pixels are subtracted so flames don't trigger this.
+          2. Morphological open removes salt-and-pepper noise; dilate merges nearby wisps.
+          3. Each surviving contour must cover >= SMOKE_PIXEL_RATIO of the frame AND
+             have an internal gray stddev >= SMOKE_STDDEV_MIN.
+             - Flat surfaces (white walls, sky): stddev ~5-10 → filtered out.
+             - Diffuse smoke haze: non-uniform density → stddev 20+.
+
+        Returns a list of passing contours, or None if no smoke is detected.
+        """
+        hsv  = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        # Low-saturation, high-brightness haze
+        mask = cv2.inRange(hsv, np.array([0,   0, 120]), np.array([180, 50, 255]))
+
+        # Subtract fire-coloured pixels so a flame doesn't double-trigger as smoke
+        fire_low  = cv2.inRange(hsv, np.array([0,   120, 150]), np.array([40,  255, 255]))
+        fire_high = cv2.inRange(hsv, np.array([170, 120, 150]), np.array([180, 255, 255]))
+        mask = cv2.bitwise_and(mask, cv2.bitwise_not(cv2.bitwise_or(fire_low, fire_high)))
+
+        # Morphological cleanup: open removes specks, dilate merges neighbouring wisps
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+        mask   = cv2.morphologyEx(mask, cv2.MORPH_OPEN,  kernel)
+        mask   = cv2.dilate(mask, kernel, iterations=1)
+
+        cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        min_blob_px = frame.shape[0] * frame.shape[1] * SMOKE_PIXEL_RATIO
+        smoke_blobs = []
+        for c in cnts:
+            if cv2.contourArea(c) < min_blob_px:
+                continue
+            # Variance check — draw the contour fill onto a blank mask and sample
+            blob_mask = np.zeros(gray.shape, dtype=np.uint8)
+            cv2.drawContours(blob_mask, [c], -1, 255, cv2.FILLED)
+            pixels = gray[blob_mask > 0]
+            if len(pixels) >= 200 and float(np.std(pixels)) >= SMOKE_STDDEV_MIN:
+                smoke_blobs.append(c)
+
+        return smoke_blobs if smoke_blobs else None
 
     def _run_dnn(self, frame) -> list:
         if self._net is None:
@@ -245,7 +302,7 @@ class SentryMonitor:
 
     # ── HUD ───────────────────────────────────────────────────────────────────
 
-    def _draw_overlay(self, frame, motion_contours) -> np.ndarray:
+    def _draw_overlay(self, frame, motion_contours, smoke_blobs) -> np.ndarray:
         h, w = frame.shape[:2]
 
         # DNN bounding boxes
@@ -256,19 +313,25 @@ class SentryMonitor:
                         (x1, max(y1 - 6, 14)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
 
+        # Smoke blob outlines (dashed-look via thin white contour)
+        if smoke_blobs:
+            cv2.drawContours(frame, smoke_blobs, -1, (200, 200, 200), 1)
+
         # Motion contour outlines
         if motion_contours:
             cv2.drawContours(frame, motion_contours, -1, (0, 255, 180), 1)
 
-        # Top status banner — fire > person > motion > idle
+        # Top status banner — fire > smoke > person > motion > idle
         if self.fire_active:
-            banner_bg, banner_txt = (0, 50, 220), "! FIRE DETECTED !"
+            banner_bg, banner_txt = (0, 50, 220),  "! FIRE DETECTED !"
+        elif self.smoke_active:
+            banner_bg, banner_txt = (60, 60, 160), "! SMOKE DETECTED !"
         elif self.person_active:
-            banner_bg, banner_txt = (0, 0, 180), "PERSON DETECTED"
+            banner_bg, banner_txt = (0, 0, 180),   "PERSON DETECTED"
         elif self.motion_active:
             banner_bg, banner_txt = (0, 100, 200), "MOTION DETECTED"
         else:
-            banner_bg, banner_txt = (0, 50, 0), "SENTRY: watching"
+            banner_bg, banner_txt = (0, 50, 0),    "SENTRY: watching"
 
         cv2.rectangle(frame, (0, 0), (w, 34), banner_bg, -1)
         cv2.putText(frame, banner_txt,

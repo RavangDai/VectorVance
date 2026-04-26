@@ -195,7 +195,7 @@
     .hdr-mid   { display: flex; align-items: center; gap: 6px; flex: 1; justify-content: center; }
     .hdr-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 
-    /* Mode tabs (legacy — radial picker is primary) */
+    /* Mode tabs */
     .mode-tabs { display: flex; gap: 2px; background: rgba(0,0,0,0.20); padding: 3px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.09); }
     .mode-tab {
       padding: 4px 12px; border: 1px solid transparent; border-radius: 20px;
@@ -755,6 +755,19 @@
       letter-spacing: 0.20em; text-transform: uppercase; margin-bottom: 6px;
     }
     .sentry-arm-btn.armed { background: rgba(255,90,95,0.22); border-color: rgba(255,90,95,0.55); animation: blink 1.5s infinite; }
+    .sentry-patrol-btn {
+      width: 100%; padding: 6px; background: rgba(0,200,255,0.07); border: 1px solid rgba(0,200,255,0.22);
+      border-radius: 8px; color: #00c8ff; cursor: pointer; transition: all 0.2s;
+      font-family: 'Barlow Condensed', sans-serif; font-size: 9px; font-weight: 700;
+      letter-spacing: 0.18em; text-transform: uppercase; margin-bottom: 5px;
+    }
+    .sentry-patrol-btn.active { background: rgba(0,200,255,0.18); border-color: rgba(0,200,255,0.50); }
+    .sentry-patrol-btn:disabled { opacity: 0.35; cursor: default; }
+    .sentry-patrol-btn:not(:disabled):active { transform: scale(0.97); }
+    .sentry-patrol-sector {
+      font-size: 9px; color: var(--muted); text-align: center; margin-bottom: 5px;
+      font-family: 'JetBrains Mono', monospace; letter-spacing: 0.05em;
+    }
     .sentry-indicators { display: flex; gap: 4px; margin-bottom: 5px; }
     .sentry-ind {
       flex: 1; padding: 4px 4px; text-align: center; border-radius: 8px;
@@ -764,6 +777,7 @@
     .sentry-ind.active-motion { background: rgba(255,90,95,0.10);  color: #ff5a5f; animation: blink 0.7s infinite; }
     .sentry-ind.active-person { background: rgba(200,29,37,0.12);  color: #c81d25; animation: blink 0.5s infinite; }
     .sentry-ind.active-fire   { background: rgba(255,106,0,0.15);  color: #ff6a00; animation: blink 0.35s infinite; }
+    .sentry-ind.active-smoke  { background: rgba(180,180,220,0.14); color: #c8c8ff; animation: blink 0.55s infinite; }
     .sentry-event-log { max-height: 80px; overflow-y: auto; }
     .sentry-event-log::-webkit-scrollbar { width: 2px; }
     .sentry-event-log::-webkit-scrollbar-thumb { background: var(--border2); }
@@ -771,6 +785,7 @@
     .sentry-evt-time { color: var(--muted); font-size: 9px; }
     .evt-person .sentry-evt-type { color: var(--red); }
     .evt-motion .sentry-evt-type { color: var(--orange); }
+    .evt-smoke  .sentry-evt-type { color: #c8c8ff; font-weight: 700; }
     .evt-fire   .sentry-evt-type { color: #ff6a00; font-weight: 700; }
 
     /* ══════════════════════════════════════════════════════════
@@ -870,79 +885,6 @@
       }
     }
 
-    /* ══════════════════════════════════════════════════════════
-       RADIAL MODE DIAL  (replaces flat mode-tabs)
-    ══════════════════════════════════════════════════════════ */
-    .radial-mode { position: relative; display: flex; align-items: center; }
-
-    .radial-trigger {
-      display: flex; align-items: center; gap: 7px;
-      padding: 5px 12px 5px 10px;
-      background: rgba(0,0,0,0.22); border: 1px solid rgba(255,255,255,0.10);
-      border-radius: 20px; cursor: pointer; outline: none;
-      font-family: 'Barlow Condensed', sans-serif; font-size: 11px;
-      font-weight: 700; letter-spacing: 0.15em; color: var(--green);
-      transition: color 0.2s, transform 0.1s, background 0.2s;
-      user-select: none; position: relative; text-transform: uppercase;
-    }
-    .radial-trigger:disabled { cursor: not-allowed; opacity: 0.28; color: var(--muted) !important; }
-    .radial-trigger:not(:disabled):hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.20); }
-    .radial-trigger:not(:disabled):active { transform: scale(0.96); }
-    .radial-trigger::after { display: none; }
-
-    /* Burst ring on mode change */
-    @keyframes triggerBurst {
-      0%   { transform: scale(1);   opacity: 0.8; }
-      100% { transform: scale(1.6); opacity: 0; }
-    }
-    .radial-trigger.bursting::before {
-      content: ''; position: absolute; inset: -3px; border-radius: 10px;
-      border: 1px solid currentColor; pointer-events: none;
-      animation: triggerBurst 0.55s cubic-bezier(0.25,1,0.5,1) forwards;
-    }
-
-    .rtrig-icon { flex-shrink: 0; transition: transform 0.55s cubic-bezier(0.34,1.56,0.64,1); }
-    .radial-mode.open .rtrig-icon { transform: rotate(36deg); }
-
-    .rtrig-label { min-width: 52px; text-align: left; letter-spacing: 2px; }
-    .rtrig-caret { opacity: 0.4; flex-shrink: 0; transition: transform 0.3s cubic-bezier(0.25,1,0.5,1); }
-    .radial-mode.open .rtrig-caret { transform: rotate(180deg); }
-
-    /* Picker overlay */
-    .radial-overlay {
-      position: fixed; inset: 0; z-index: 200;
-      pointer-events: none; display: flex;
-    }
-    .radial-overlay.open { pointer-events: all; }
-
-    .radial-picker-wrap {
-      position: absolute; width: 220px; height: 220px;
-      pointer-events: all; transform-origin: center top;
-      display: none; border-radius: 50%;
-      box-shadow: 0 24px 64px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.14);
-      backdrop-filter: blur(20px) saturate(180%);
-      -webkit-backdrop-filter: blur(20px) saturate(180%);
-    }
-    .radial-picker-wrap.open { display: block; }
-    .radial-picker-svg { display: block; overflow: visible; }
-
-    @keyframes rDialOpen {
-      0%   { opacity: 0; transform: scale(0.2) translateY(-24px); }
-      62%  { opacity: 1; transform: scale(1.07) translateY(3px); }
-      82%  { transform: scale(0.97) translateY(-1px); }
-      100% { opacity: 1; transform: scale(1) translateY(0); }
-    }
-    @keyframes rDialClose {
-      from { opacity: 1; transform: scale(1) translateY(0); }
-      to   { opacity: 0; transform: scale(0.2) translateY(-12px); }
-    }
-    .radial-picker-wrap.anim-open  { animation: rDialOpen  0.52s cubic-bezier(0.34,1.56,0.64,1) forwards; }
-    .radial-picker-wrap.anim-close { animation: rDialClose 0.26s cubic-bezier(0.4,0,1,1) forwards; }
-
-    .rpick-g { cursor: pointer; }
-    .rpick-g .rpick-wedge-path,
-    .rpick-g .rpick-outer-path { transition: all 0.14s ease; }
-    .rpick-g .rpick-label-text  { transition: opacity 0.14s, fill 0.14s; }
 
     /* ══ LAYOUT: Breathing room ══ */
     .cockpit { gap: 8px; padding: 8px; }
@@ -1042,23 +984,12 @@
     </div>
 
     <div class="hdr-mid">
-      <div class="radial-mode" id="radial-mode">
-        <button class="radial-trigger" id="radial-trigger" onclick="toggleRadialPicker()" disabled aria-label="Mode selector">
-          <!-- Mini 5-segment dial icon (arcs pre-computed at r=7.5, 64° each, 8° gaps) -->
-          <svg class="rtrig-icon" id="rtrig-icon" viewBox="-10 -10 20 20" width="20" height="20" aria-hidden="true">
-            <path d="M -3.97 -6.36 A 7.5 7.5 0 0 1 3.97 -6.36"  fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" opacity="0.18"/>
-            <path d="M 4.82 -5.75 A 7.5 7.5 0 0 1 7.28 1.81"    fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" opacity="0.18"/>
-            <path d="M 6.95 2.81 A 7.5 7.5 0 0 1 0.52 7.48"     fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" opacity="0.18"/>
-            <path d="M -0.52 7.48 A 7.5 7.5 0 0 1 -6.95 2.81"   fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" opacity="0.18"/>
-            <path d="M -7.28 1.81 A 7.5 7.5 0 0 1 -4.82 -5.75"  fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" opacity="0.18"/>
-            <path id="rtrig-active-arc" d="M -3.97 -6.36 A 7.5 7.5 0 0 1 3.97 -6.36" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/>
-            <circle cx="0" cy="0" r="2" fill="currentColor" opacity="0.7"/>
-          </svg>
-          <span id="rtrig-label" class="rtrig-label">LANE</span>
-          <svg class="rtrig-caret" viewBox="0 0 8 5" width="8" height="5" aria-hidden="true">
-            <path d="M0.5 0.5L4 4L7.5 0.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
+      <div class="mode-tabs" id="mode-tabs">
+        <button class="mode-tab" data-mode="FSD"    onclick="setMode('FSD')"    disabled>FSD</button>
+        <button class="mode-tab" data-mode="LANE"   onclick="setMode('LANE')"   disabled>LANE</button>
+        <button class="mode-tab" data-mode="TRACK"  onclick="setMode('TRACK')"  disabled>TRACK</button>
+        <button class="mode-tab" data-mode="MANUAL" onclick="setMode('MANUAL')" disabled>MANUAL</button>
+        <button class="mode-tab" data-mode="SENTRY" onclick="setMode('SENTRY')" disabled>SENTRY</button>
       </div>
       <div class="speed-wrap">
         <span class="speed-lbl">SPD</span>
@@ -1345,9 +1276,12 @@
         <div class="card-head">Sentry Monitor<span id="sentry-event-count" style="color:var(--red);font-size:9px;font-weight:700;font-family:'JetBrains Mono',monospace;"></span></div>
         <div class="card-body">
           <button class="sentry-arm-btn" id="sentry-arm-btn" onclick="toggleSentry()">ARM SENTRY</button>
+          <button class="sentry-patrol-btn" id="sentry-patrol-btn" onclick="togglePatrol()" disabled>360° PATROL</button>
+          <div class="sentry-patrol-sector" id="sentry-patrol-sector" style="display:none;"></div>
           <div class="sentry-indicators">
             <div class="sentry-ind" id="sentry-ind-motion">Motion</div>
             <div class="sentry-ind" id="sentry-ind-person">Person</div>
+            <div class="sentry-ind" id="sentry-ind-smoke">Smoke</div>
             <div class="sentry-ind" id="sentry-ind-fire">Fire</div>
           </div>
           <div class="sentry-event-log" id="sentry-event-log">
@@ -1481,14 +1415,6 @@
 
 </div><!-- /#app -->
 
-<!-- ══════════════════════════════════════════════════════════
-     RADIAL MODE PICKER OVERLAY
-══════════════════════════════════════════════════════════ -->
-<div id="radial-overlay" class="radial-overlay" onclick="closeRadialPicker()">
-  <div id="radial-picker-wrap" class="radial-picker-wrap" onclick="event.stopPropagation()">
-    <svg id="radial-svg" class="radial-picker-svg" viewBox="-110 -110 220 220" width="220" height="220"></svg>
-  </div>
-</div>
 
 <script>
   /* ═══════════════════════════════════════════════════════════════
@@ -1579,8 +1505,7 @@
     try {
       const res = await fetch('/api/ping', { signal: AbortSignal.timeout(2000) });
       if (res.ok) {
-        const rt = document.getElementById('radial-trigger');
-        if (rt) rt.disabled = false;
+        document.querySelectorAll('#mode-tabs .mode-tab').forEach(b => b.disabled = false);
         setInterval(fetchTelemetry, 400);
         fetchTelemetry();
         addLog('Connected to Pi');
@@ -1624,8 +1549,9 @@
 
   function applyModeUI(mode) {
     currentMode = mode;
-    updateTriggerDial(mode);
-    if (document.getElementById('radial-picker-wrap')?.classList.contains('open')) updateRadialActive(mode);
+    document.querySelectorAll('#mode-tabs .mode-tab').forEach(b => {
+      b.classList.toggle('active', b.dataset.mode === mode);
+    });
     const cls = mode === 'FSD'    ? 'b-fsd'    :
                 mode === 'LANE'   ? 'b-lane'   :
                 mode === 'MANUAL' ? 'b-manual' :
@@ -2124,19 +2050,39 @@
   ═══════════════════════════════════════════════════════════════ */
   function updateSentryUI(d) {
     if (currentMode !== 'SENTRY') return;
-    const btn   = document.getElementById('sentry-arm-btn');
-    const armed = d.sentry_armed;
-    btn.textContent = armed ? 'DISARM SENTRY' : 'ARM SENTRY';
-    btn.classList.toggle('armed', armed);
+    const armed    = d.sentry_armed;
+    const armBtn   = document.getElementById('sentry-arm-btn');
+    armBtn.textContent = armed ? 'DISARM SENTRY' : 'ARM SENTRY';
+    armBtn.classList.toggle('armed', armed);
     document.getElementById('sentry-ind-motion').className = 'sentry-ind' + (d.sentry_motion ? ' active-motion' : '');
     document.getElementById('sentry-ind-person').className = 'sentry-ind' + (d.sentry_person ? ' active-person' : '');
+    document.getElementById('sentry-ind-smoke').className  = 'sentry-ind' + (d.sentry_smoke  ? ' active-smoke'  : '');
     document.getElementById('sentry-ind-fire').className   = 'sentry-ind' + (d.sentry_fire   ? ' active-fire'   : '');
+
+    const patrolBtn = document.getElementById('sentry-patrol-btn');
+    const patrolSec = document.getElementById('sentry-patrol-sector');
+    const patrolOn  = !!d.patrol_active;
+    patrolBtn.disabled = !armed;
+    patrolBtn.classList.toggle('active', patrolOn);
+    patrolBtn.textContent = patrolOn ? 'STOP PATROL' : '360° PATROL';
+    if (patrolOn) {
+      const sector = d.patrol_sector || 0;
+      patrolSec.textContent = `Sector ${sector + 1} / 8  —  ${sector * 45}°`;
+      patrolSec.style.display = 'block';
+    } else {
+      patrolSec.style.display = 'none';
+    }
   }
 
   async function toggleSentry() {
     if (!connected) return;
     const btn = document.getElementById('sentry-arm-btn');
     await sendCmd(btn.classList.contains('armed') ? 'disarm_sentry' : 'arm_sentry');
+  }
+
+  async function togglePatrol() {
+    if (!connected) return;
+    await sendCmd('toggle_patrol');
   }
 
   setInterval(async () => {
@@ -2156,7 +2102,7 @@
       log.innerHTML = '<div style="color:var(--dim);font-size:10px;text-align:center;padding:4px 0;">No events yet</div>'; return;
     }
     log.innerHTML = events.map(ev => {
-      const cls = ev.type === 'fire' ? 'evt-fire' : ev.type === 'person' ? 'evt-person' : 'evt-motion';
+      const cls = ev.type === 'fire' ? 'evt-fire' : ev.type === 'smoke' ? 'evt-smoke' : ev.type === 'person' ? 'evt-person' : 'evt-motion';
       return `<div class="sentry-evt ${cls}">
         <span class="sentry-evt-time">${ev.time}</span>
         <span class="sentry-evt-type">${ev.type}</span>
@@ -2178,253 +2124,6 @@
     });
   }
 
-  /* ═══════════════════════════════════════════════════════════════
-     RADIAL MODE DIAL
-  ═══════════════════════════════════════════════════════════════ */
-  const RADIAL_MODES = [
-    { id: 'FSD',    label: 'FSD',    sub: 'Auto',   color: '#00d4ff', idx: 0 },
-    { id: 'LANE',   label: 'LANE',   sub: 'Follow', color: '#00e87a', idx: 1 },
-    { id: 'TRACK',  label: 'TRACK',  sub: 'Object', color: '#C8861A', idx: 2 },
-    { id: 'MANUAL', label: 'MANUAL', sub: 'Drive',  color: '#ff9040', idx: 3 },
-    { id: 'SENTRY', label: 'SENTRY', sub: 'Guard',  color: '#ff3344', idx: 4 },
-  ];
-
-  /* Mini trigger icon — pre-computed arcs (r=7.5, 64° each, 8° gaps, centered) */
-  const RTRIG_ARCS = [
-    "M -3.97 -6.36 A 7.5 7.5 0 0 1 3.97 -6.36",   // FSD   (top, -90°)
-    "M 4.82 -5.75 A 7.5 7.5 0 0 1 7.28 1.81",      // LANE  (-18°)
-    "M 6.95 2.81 A 7.5 7.5 0 0 1 0.52 7.48",       // TRACK (54°)
-    "M -0.52 7.48 A 7.5 7.5 0 0 1 -6.95 2.81",     // MANUAL(126°)
-    "M -7.28 1.81 A 7.5 7.5 0 0 1 -4.82 -5.75",    // SENTRY(198°)
-  ];
-
-  const MODE_COLORS = { FSD:'#00d4ff', LANE:'#00e87a', TRACK:'#C8861A', MANUAL:'#ff9040', SENTRY:'#ff3344' };
-
-  let _rdOpen = false;
-
-  /* SVG helpers */
-  function _svgEl(tag, attrs) {
-    const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
-    for (const [k,v] of Object.entries(attrs)) el.setAttribute(k, String(v));
-    return el;
-  }
-  function _hexA(hex, a) {
-    const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
-    return `rgba(${r},${g},${b},${a})`;
-  }
-  function _deg2rad(d) { return d * Math.PI / 180; }
-  function _polar(r, deg) {
-    const rad = _deg2rad(deg);
-    return { x: +(Math.cos(rad) * r).toFixed(4), y: +(Math.sin(rad) * r).toFixed(4) };
-  }
-  function _slicePath(index, total, outerR, innerR) {
-    const FULL = 360, START = -90, span = FULL / total;
-    const mid = START + span * index, s = mid - span/2, e = mid + span/2;
-    const oS = _polar(outerR,s), oE = _polar(outerR,e);
-    const iS = _polar(innerR,s), iE = _polar(innerR,e);
-    const laf = span > 180 ? 1 : 0;
-    return `M${oS.x} ${oS.y}A${outerR} ${outerR} 0 ${laf} 1 ${oE.x} ${oE.y}L${iE.x} ${iE.y}A${innerR} ${innerR} 0 ${laf} 0 ${iS.x} ${iS.y}Z`;
-  }
-
-  function buildRadialSVG() {
-    /* dial geometry */
-    const OR1=105, IR1=93, OR2=83, IR2=37, ICR=60, CR=29, N=RADIAL_MODES.length;
-    const svg = document.getElementById('radial-svg');
-    svg.innerHTML = '';
-
-    /* base plate */
-    svg.appendChild(_svgEl('circle',{cx:0,cy:0,r:107,fill:'var(--card)',stroke:'var(--border)','stroke-width':1}));
-    /* inner guide ring */
-    svg.appendChild(_svgEl('circle',{cx:0,cy:0,r:IR1+1,fill:'none',stroke:'rgba(0,0,0,0.08)','stroke-width':0.6}));
-    /* outer guide ring */
-    svg.appendChild(_svgEl('circle',{cx:0,cy:0,r:OR1,fill:'none',stroke:'rgba(0,0,0,0.08)','stroke-width':0.6}));
-
-    RADIAL_MODES.forEach((m, i) => {
-      const hex = m.color;
-      const span = 360/N, mid = -90 + span*i;
-      const {x:lx, y:ly} = _polar(ICR, mid);
-      const isActive = m.id === currentMode;
-
-      const g = _svgEl('g', {class:'rpick-g','data-mode':m.id});
-      g.addEventListener('mouseenter', () => _rdHover(i, true));
-      g.addEventListener('mouseleave', () => _rdHover(i, false));
-      g.addEventListener('click', () => radialSelect(m.id));
-
-      /* outer ring band */
-      g.appendChild(_svgEl('path',{
-        d: _slicePath(i,N,OR1,IR1),
-        fill: _hexA(hex, isActive ? 0.18 : 0.09),
-        stroke: _hexA(hex, isActive ? 0.45 : 0.2), 'stroke-width':0.6,
-        id:`rp-or-${i}`, class:'rpick-outer-path'
-      }));
-
-      /* main wedge band */
-      g.appendChild(_svgEl('path',{
-        d: _slicePath(i,N,OR2,IR2),
-        fill: _hexA(hex, isActive ? 0.25 : 0.07),
-        stroke: _hexA(hex, isActive ? 0.55 : 0.22), 'stroke-width': isActive ? 1.2 : 0.8,
-        id:`rp-wp-${i}`, class:'rpick-wedge-path'
-      }));
-
-      /* active glow overlay */
-      if (isActive) {
-        const glowPath = _svgEl('path',{
-          d: _slicePath(i,N,OR2,IR2),
-          fill: _hexA(hex, 0.08), stroke:'none',
-          filter: `drop-shadow(0 0 6px ${hex})`,
-          id:`rp-gp-${i}`
-        });
-        g.appendChild(glowPath);
-      }
-
-      /* mode label */
-      const lt = _svgEl('text',{
-        x:lx, y:ly-5, 'text-anchor':'middle', 'dominant-baseline':'middle',
-        'font-family':'Orbitron,monospace', 'font-size':8, 'font-weight':700,
-        'letter-spacing':0.8, fill: hex, opacity: isActive ? 1 : 0.72,
-        class:'rpick-label-text', id:`rp-lt-${i}`
-      });
-      lt.textContent = m.label;
-
-      /* sub-label */
-      const st = _svgEl('text',{
-        x:lx, y:ly+8, 'text-anchor':'middle', 'dominant-baseline':'middle',
-        'font-family':'Rajdhani,sans-serif', 'font-size':7.5,
-        fill: isActive ? _hexA(hex,0.5) : 'rgba(0,0,0,0.30)',
-        class:'rpick-sub-text', id:`rp-st-${i}`
-      });
-      st.textContent = m.sub;
-
-      g.appendChild(lt);
-      g.appendChild(st);
-      svg.appendChild(g);
-    });
-
-    /* center disc */
-    svg.appendChild(_svgEl('circle',{cx:0,cy:0,r:CR,fill:'var(--surface)',stroke:'var(--border2)','stroke-width':1}));
-    svg.appendChild(_svgEl('circle',{cx:0,cy:0,r:CR-5,fill:'none',stroke:'rgba(0,0,0,0.08)','stroke-width':0.5}));
-
-    const cm = RADIAL_MODES.find(m=>m.id===currentMode);
-    const centerMode = _svgEl('text',{
-      x:0, y:-4, 'text-anchor':'middle', 'dominant-baseline':'middle',
-      'font-family':'Orbitron,monospace', 'font-size':7, 'font-weight':900,
-      'letter-spacing':1.5, fill: cm ? cm.color : 'var(--gold)', id:'rp-center-mode'
-    });
-    centerMode.textContent = currentMode;
-
-    const centerSub = _svgEl('text',{
-      x:0, y:7, 'text-anchor':'middle', 'dominant-baseline':'middle',
-      'font-family':'Rajdhani,sans-serif', 'font-size':8,
-      fill:'var(--muted)', id:'rp-center-sub'
-    });
-    centerSub.textContent = cm ? cm.sub : '';
-
-    svg.appendChild(_svgEl('circle',{cx:0,cy:0,r:3,fill:cm?cm.color:'var(--gold)',opacity:0.6}));
-    svg.appendChild(centerMode);
-    svg.appendChild(centerSub);
-  }
-
-  function _rdHover(idx, on) {
-    const m = RADIAL_MODES[idx];
-    if (!m) return;
-    const wp = document.getElementById(`rp-wp-${idx}`);
-    const op = document.getElementById(`rp-or-${idx}`);
-    const lt = document.getElementById(`rp-lt-${idx}`);
-    const st = document.getElementById(`rp-st-${idx}`);
-    const isActive = m.id === currentMode;
-    if (on) {
-      if (wp) { wp.setAttribute('fill', _hexA(m.color, 0.3)); wp.setAttribute('stroke', _hexA(m.color, 0.65)); wp.setAttribute('stroke-width','1.4'); }
-      if (op) { op.setAttribute('fill', _hexA(m.color, 0.22)); }
-      if (lt) { lt.setAttribute('opacity','1'); }
-      if (st) { st.setAttribute('fill', _hexA(m.color, 0.55)); }
-    } else {
-      if (wp) { wp.setAttribute('fill', _hexA(m.color, isActive?0.25:0.07)); wp.setAttribute('stroke', _hexA(m.color, isActive?0.55:0.22)); wp.setAttribute('stroke-width', isActive?'1.2':'0.8'); }
-      if (op) { op.setAttribute('fill', _hexA(m.color, isActive?0.18:0.09)); }
-      if (lt) { lt.setAttribute('opacity', isActive?'1':'0.72'); }
-      if (st) { st.setAttribute('fill', isActive?_hexA(m.color,0.5):'rgba(0,0,0,0.30)'); }
-    }
-  }
-
-  function updateRadialActive(mode) {
-    RADIAL_MODES.forEach((m, i) => _rdHover(i, false));
-    const m = RADIAL_MODES.find(m=>m.id===mode);
-    const cm = document.getElementById('rp-center-mode');
-    const cs = document.getElementById('rp-center-sub');
-    if (cm) { cm.textContent = mode; cm.setAttribute('fill', m ? m.color : 'var(--gold)'); }
-    if (cs && m) cs.textContent = m.sub;
-  }
-
-  function updateTriggerDial(mode) {
-    const m = RADIAL_MODES.find(m=>m.id===mode);
-    if (!m) return;
-    const label  = document.getElementById('rtrig-label');
-    const arc    = document.getElementById('rtrig-active-arc');
-    const trigger= document.getElementById('radial-trigger');
-    if (label)  label.textContent = mode;
-    if (arc)    arc.setAttribute('d', RTRIG_ARCS[m.idx]);
-    if (trigger) {
-      trigger.style.color       = m.color;
-      trigger.style.borderColor = _hexA(m.color, 0.35);
-      /* burst ring */
-      trigger.classList.remove('bursting');
-      void trigger.offsetWidth;
-      trigger.classList.add('bursting');
-      trigger.addEventListener('animationend', () => trigger.classList.remove('bursting'), { once:true });
-    }
-  }
-
-  function toggleRadialPicker() {
-    const rt = document.getElementById('radial-trigger');
-    if (!rt || rt.disabled) return;
-    _rdOpen ? closeRadialPicker() : openRadialPicker();
-  }
-
-  function openRadialPicker() {
-    _rdOpen = true;
-    const trigger = document.getElementById('radial-trigger');
-    const overlay = document.getElementById('radial-overlay');
-    const wrap    = document.getElementById('radial-picker-wrap');
-    if (!overlay || !wrap) return;
-
-    /* Position centered below the trigger */
-    const rect = trigger.getBoundingClientRect();
-    const cx   = rect.left + rect.width  / 2;
-    const cy   = rect.bottom + 12;
-    wrap.style.left = (cx - 110) + 'px';
-    wrap.style.top  = cy + 'px';
-
-    document.getElementById('radial-mode')?.classList.add('open');
-    overlay.classList.add('open');
-    wrap.classList.add('open');
-    wrap.classList.remove('anim-close');
-    wrap.classList.add('anim-open');
-    buildRadialSVG();
-  }
-
-  function closeRadialPicker() {
-    if (!_rdOpen) return;
-    _rdOpen = false;
-    const overlay = document.getElementById('radial-overlay');
-    const wrap    = document.getElementById('radial-picker-wrap');
-    if (!overlay || !wrap) return;
-    document.getElementById('radial-mode')?.classList.remove('open');
-    wrap.classList.remove('anim-open');
-    wrap.classList.add('anim-close');
-    setTimeout(() => {
-      overlay.classList.remove('open');
-      wrap.classList.remove('open','anim-close');
-    }, 280);
-  }
-
-  function radialSelect(mode) {
-    closeRadialPicker();
-    setMode(mode);
-  }
-
-  /* Close on Escape */
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && _rdOpen) closeRadialPicker();
-  });
 
   /* ── AI Drive comet ring ── */
   function initAiRing() {
