@@ -469,15 +469,15 @@ class AutonomousVehicle:
         spd = 1.0
         w, a, s, d = keys.get("w"), keys.get("a"), keys.get("s"), keys.get("d")
         if w:
-            if a:   l, r = 0.0,  spd       # forward-left  (pivot on left wheel)
-            elif d: l, r = spd,  0.0        # forward-right (pivot on right wheel)
-            else:   l, r = spd,  spd        # straight forward
+            if a:   l, r = 0.45, spd        # forward-left  (differential, inner at 45%)
+            elif d: l, r = spd,  0.45       # forward-right (differential, inner at 45%)
+            else:   l, r = spd,  spd        # straight forward — full blast
         elif s:
-            if a:   l, r = 0.0,  -spd      # reverse-left
-            elif d: l, r = -spd, 0.0       # reverse-right
-            else:   l, r = -spd, -spd      # straight reverse
-        elif a:     l, r = -spd * 0.9,  spd * 0.9  # spin left
-        elif d:     l, r =  spd * 0.9, -spd * 0.9  # spin right
+            if a:   l, r = 0.45, -spd      # reverse-left
+            elif d: l, r = -spd, 0.45      # reverse-right
+            else:   l, r = -spd, -spd      # straight reverse — full blast
+        elif a:     l, r = -spd,  spd      # spin left  — full speed
+        elif d:     l, r =  spd, -spd      # spin right — full speed
         else:       l, r = 0.0, 0.0
         self._drive_manual(l, r)
         # Update smooth values so motor bars on the dashboard reflect actual commands
