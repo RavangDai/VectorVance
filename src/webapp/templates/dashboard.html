@@ -744,6 +744,23 @@
     .ai-track-result { font-size: 11px; margin-top: 3px; }
     .ai-track-result.ok   { color: var(--green); }
     .ai-track-result.fail { color: var(--red); }
+    .ball-row { flex-wrap: wrap; gap: 3px; align-items: center; }
+    .ball-row-label { font-size: 9px; color: var(--dim); width: 100%; margin-bottom: 1px; letter-spacing: 0.06em; text-transform: uppercase; }
+    .ball-color-btn {
+      padding: 4px 8px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(0,0,0,0.22); color: var(--muted); font-family: 'Barlow Condensed', sans-serif;
+      font-size: 9px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;
+      transition: all 0.15s;
+    }
+    .ball-color-btn:hover   { border-color: rgba(255,255,255,0.30); color: var(--text); }
+    .ball-color-btn.active  { background: rgba(255,255,255,0.18); color: #fff; border-color: rgba(255,255,255,0.45); }
+    .ball-color-btn[data-color="green"].active  { background: rgba(30,168,106,0.28); border-color: rgba(30,168,106,0.60); color: #6ee7b7; }
+    .ball-color-btn[data-color="yellow"].active { background: rgba(212,160,32,0.28); border-color: rgba(212,160,32,0.60); color: #fcd34d; }
+    .ball-color-btn[data-color="orange"].active { background: rgba(251,146,60,0.28); border-color: rgba(251,146,60,0.60); color: #fb923c; }
+    .ball-color-btn[data-color="blue"].active   { background: rgba(59,130,246,0.28); border-color: rgba(59,130,246,0.60); color: #60a5fa; }
+    .ball-color-btn[data-color="red"].active    { background: rgba(255,90,95,0.28);  border-color: rgba(255,90,95,0.60);  color: #ff7b7e; }
+    .ball-color-btn[data-color="pink"].active   { background: rgba(236,72,153,0.28); border-color: rgba(236,72,153,0.60); color: #f9a8d4; }
+    .ball-color-btn[data-color="white"].active  { background: rgba(255,255,255,0.16); border-color: rgba(255,255,255,0.55); color: #fff; }
 
     /* ══════════════════════════════════════════════════════════
        SENTRY
@@ -1257,6 +1274,16 @@
           <div class="track-row">
             <button id="track-click-btn" class="track-click-btn" onclick="toggleClickAim()" style="flex:1;">Click to Pick</button>
           </div>
+          <div class="track-row ball-row" id="ball-row">
+            <span class="ball-row-label">Ball Color</span>
+            <button class="ball-color-btn" data-color="green"  onclick="setBallTarget('green')">Green</button>
+            <button class="ball-color-btn" data-color="yellow" onclick="setBallTarget('yellow')">Yellow</button>
+            <button class="ball-color-btn" data-color="orange" onclick="setBallTarget('orange')">Orange</button>
+            <button class="ball-color-btn" data-color="blue"   onclick="setBallTarget('blue')">Blue</button>
+            <button class="ball-color-btn" data-color="red"    onclick="setBallTarget('red')">Red</button>
+            <button class="ball-color-btn" data-color="pink"   onclick="setBallTarget('pink')">Pink</button>
+            <button class="ball-color-btn" data-color="white"  onclick="setBallTarget('white')">White</button>
+          </div>
           <div class="track-lock-row">
             <div class="track-lock-dot" id="track-lock-dot"></div>
             <span id="val-track-lock">No target</span>
@@ -1737,7 +1764,13 @@
     if (d.track_click_available === false) {
       clickBtn.disabled = true; clickBtn.textContent = 'Click (unavailable)'; clickBtn.style.opacity = '0.4';
     }
-    const label = mode === 'CLICK' ? 'ROI' : target;
+    // Highlight active ball colour button
+    const ballColor = mode === 'BALL' ? target.replace('ball:', '') : '';
+    document.querySelectorAll('.ball-color-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.color === ballColor);
+    });
+    const label = mode === 'BALL' ? ballColor.toUpperCase() + ' BALL'
+                : mode === 'CLICK' ? 'ROI' : target;
     let state, cls;
     if (!d.track_available && mode === 'CLASS') { state = 'Detector unavailable'; cls = ''; }
     else if (!target)                           { state = 'No target';            cls = ''; }
@@ -1750,6 +1783,14 @@
   }
 
   function onTrackChange(value) { sendCmd('set_track_target', value); addLog(value ? 'Track → ' + value : 'Track cleared'); }
+
+  function setBallTarget(color) {
+    sendCmd('set_ball_target', color);
+    addLog('Ball track → ' + color);
+    // Clear CLASS dropdown selection
+    const sel = document.getElementById('track-select');
+    if (sel) sel.value = '';
+  }
 
   /* ── Click-to-track ── */
   const FRAME_W = 640, FRAME_H = 480;

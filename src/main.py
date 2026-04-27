@@ -705,6 +705,10 @@ class AutonomousVehicle:
             else:
                 print(f"[Web] Invalid track_click coords ({x}, {y})")
 
+        elif action == "set_ball_target":
+            val = cmd.get("value")
+            self.track_detector.set_ball_target(val if val else None)
+
         elif action == "arm_sentry":
             self._set_drive_mode("SENTRY")
 

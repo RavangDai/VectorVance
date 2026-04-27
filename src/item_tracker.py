@@ -20,6 +20,7 @@ which is what you want for a remote-controlled pet-mode car.
 import os
 import cv2
 import numpy as np
+from collections import deque
 
 _INPUT_SIZE = (300, 300)
 
@@ -53,6 +54,19 @@ TRACK_TARGETS: dict[str, int] = {
     "teddy bear":   88,
 }
 
+BALL_TRAIL_LEN = 48
+
+# HSV colour presets for ball tracking.  Red wraps around 180°, so two ranges.
+BALL_COLORS: dict[str, list] = {
+    "green":  [((29,  86,   6), (64,  255, 255))],
+    "yellow": [((20, 100, 100), (35,  255, 255))],
+    "orange": [((5,  150, 100), (20,  255, 255))],
+    "blue":   [((94,  80,   2), (126, 255, 255))],
+    "red":    [((0,  120,  70), (10,  255, 255)), ((170, 120, 70), (180, 255, 255))],
+    "pink":   [((140,  60, 100), (175, 255, 255))],
+    "white":  [((0,    0, 180), (180,  30, 255))],
+}
+
 
 def _create_tracker(prefer: str = "KCF"):
     """
@@ -78,12 +92,14 @@ def _create_tracker(prefer: str = "KCF"):
 
 class ItemTracker:
     """
-    Two tracking modes, sharing the same steering/distance API:
+    Three tracking modes, sharing the same steering/distance API:
 
       mode = "CLASS"  → SSD MobileNet v2 picks the largest bbox of a COCO class
       mode = "CLICK"  → cv2.TrackerCSRT follows an arbitrary ROI the user picked
                         by clicking on the live video. Works on anything that
                         MobileNet doesn't know (custom toys, coloured balls, etc).
+      mode = "BALL"   → HSV colour-range mask + minEnclosingCircle (PyImageSearch
+                        style). Draws a fading 48-point contrail. No DNN required.
     """
 
     LOST_TIMEOUT      = 45   # frames of no-detection → start 360° search
@@ -128,6 +144,12 @@ class ItemTracker:
         else:
             print(f"[Tracker] Click-mode backend: {self.click_tracker_name}")
 
+        # Ball tracker state
+        self._ball_color:  str | None   = None
+        self._ball_radius: int          = 0
+        self._ball_center: tuple | None = None
+        self._ball_trail:  deque        = deque(maxlen=BALL_TRAIL_LEN)
+
         # DNN net — share across the project when possible
         if net is not None:
             self._net      = net
@@ -156,6 +178,10 @@ class ItemTracker:
         self._click_init_bbox     = None
         self._click_last_center   = None
         self._click_verify_ctr    = 0
+        self._ball_color          = None
+        self._ball_radius         = 0
+        self._ball_center         = None
+        self._ball_trail.clear()
 
     def set_target(self, name: str | None):
         """Switch to CLASS mode (COCO class lookup) or clear."""
@@ -199,6 +225,24 @@ class ItemTracker:
         print(f"[Tracker] Click target → bbox {self._click_init_bbox} "
               f"({self.click_tracker_name})")
 
+    def set_ball_target(self, color: str | None):
+        """Switch to BALL mode — HSV colour range detection + fading contrail."""
+        if color is None or color == "":
+            if self.target_class is not None:
+                print("[Tracker] Ball target cleared")
+            self._reset_state()
+            self.mode = "CLASS"
+            return
+        key = color.lower().strip()
+        if key not in BALL_COLORS:
+            print(f"[Tracker] Unknown ball colour '{color}' — ignored")
+            return
+        self._reset_state()
+        self.mode         = "BALL"
+        self.target_class = f"ball:{key}"
+        self._ball_color  = key
+        print(f"[Tracker] Ball target → {key} (BALL)")
+
     # ── Detection ────────────────────────────────────────────────────────────
 
     def _nearest_dnn_detection(self, frame: np.ndarray,
@@ -240,9 +284,61 @@ class ItemTracker:
                 best_bbox = (x1, y1, x2 - x1, y2 - y1)
         return best_bbox
 
+    def _detect_ball(self, frame: np.ndarray):
+        """HSV colour mask → minEnclosingCircle → centroid. Updates trail deque."""
+        ranges = BALL_COLORS.get(self._ball_color)
+        if ranges is None:
+            self.lost_frames += 1
+            return
+
+        blurred = cv2.GaussianBlur(frame, (11, 11), 0)
+        hsv     = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+
+        mask = cv2.inRange(hsv, np.array(ranges[0][0]), np.array(ranges[0][1]))
+        for lo, hi in ranges[1:]:
+            mask = cv2.bitwise_or(mask, cv2.inRange(hsv, np.array(lo), np.array(hi)))
+
+        mask = cv2.erode(mask, None, iterations=2)
+        mask = cv2.dilate(mask, None, iterations=2)
+
+        cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not cnts:
+            self._ball_center = None
+            self.last_bbox    = None
+            self.lost_frames += 1
+            return
+
+        c = max(cnts, key=cv2.contourArea)
+        (bx, by), radius = cv2.minEnclosingCircle(c)
+        if radius < 8:
+            self._ball_center = None
+            self.last_bbox    = None
+            self.lost_frames += 1
+            return
+
+        M = cv2.moments(c)
+        if M["m00"] == 0:
+            self.lost_frames += 1
+            return
+
+        cx                = int(M["m10"] / M["m00"])
+        cy                = int(M["m01"] / M["m00"])
+        r                 = int(radius)
+        self._ball_center = (cx, cy)
+        self._ball_radius = r
+        self._ball_trail.appendleft((cx, cy))
+        self.last_bbox    = (max(0, cx - r), max(0, cy - r), r * 2, r * 2)
+        self.last_conf    = 1.0
+        self.lost_frames  = 0
+
     def detect(self, frame: np.ndarray):
         self._frame_counter += 1
         if self.target_class is None:
+            return
+
+        # ── BALL mode — HSV colour mask, no DNN, runs every frame ──
+        if self.mode == "BALL":
+            self._detect_ball(frame)
             return
 
         # ── CLICK mode — CV tracker every frame (needs continuous updates) ──
@@ -440,7 +536,9 @@ class ItemTracker:
         else:
             status, color = "LOST", (120, 120, 120)
 
-        label = "CLICK" if self.mode == "CLICK" else self.target_class.upper()
+        label = ("BALL:" + (self._ball_color or "").upper() if self.mode == "BALL"
+                 else "CLICK" if self.mode == "CLICK"
+                 else self.target_class.upper())
         cv2.putText(frame,
                     f"TRACK: {label}  [{status}]",
                     (10, 205), cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2)
@@ -449,23 +547,31 @@ class ItemTracker:
             x, y, bw, bh = self.last_bbox
             cx, cy = x + bw // 2, y + bh // 2
 
-            # Draw actual object shape contour
-            contour = self._extract_contour(frame, self.last_bbox)
-            if contour is not None:
-                # Subtle filled highlight
-                overlay = frame.copy()
-                cv2.drawContours(overlay, [contour], -1, color, -1)
-                cv2.addWeighted(overlay, 0.18, frame, 0.82, 0, frame)
-                # Neon outline
-                cv2.drawContours(frame, [contour], -1, color, 2)
+            if self.mode == "BALL":
+                # Fading contrail — thickest near ball, thinnest at tail
+                for i in range(1, len(self._ball_trail)):
+                    if self._ball_trail[i - 1] is None or self._ball_trail[i] is None:
+                        continue
+                    thickness = max(1, int(np.sqrt(BALL_TRAIL_LEN / float(i + 1)) * 2.5))
+                    cv2.line(frame, self._ball_trail[i - 1], self._ball_trail[i],
+                             (0, 0, 255), thickness)
+                if self._ball_center and self._ball_radius > 0:
+                    cv2.circle(frame, self._ball_center, self._ball_radius, color, 2)
             else:
-                # Fallback: corner-bracket rectangle (less obtrusive than full rect)
-                blen = min(bw, bh) // 4
-                for px, py in [(x, y), (x + bw, y), (x, y + bh), (x + bw, y + bh)]:
-                    dx = blen if px == x else -blen
-                    dy = blen if py == y else -blen
-                    cv2.line(frame, (px, py), (px + dx, py), color, 2)
-                    cv2.line(frame, (px, py), (px, py + dy), color, 2)
+                # Draw actual object shape contour
+                contour = self._extract_contour(frame, self.last_bbox)
+                if contour is not None:
+                    overlay = frame.copy()
+                    cv2.drawContours(overlay, [contour], -1, color, -1)
+                    cv2.addWeighted(overlay, 0.18, frame, 0.82, 0, frame)
+                    cv2.drawContours(frame, [contour], -1, color, 2)
+                else:
+                    blen = min(bw, bh) // 4
+                    for px, py in [(x, y), (x + bw, y), (x, y + bh), (x + bw, y + bh)]:
+                        dx = blen if px == x else -blen
+                        dy = blen if py == y else -blen
+                        cv2.line(frame, (px, py), (px + dx, py), color, 2)
+                        cv2.line(frame, (px, py), (px, py + dy), color, 2)
 
             # Line from bottom center to object + center dot
             cv2.line(frame, (w // 2, h - 40), (cx, cy), color, 1)
