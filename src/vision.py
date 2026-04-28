@@ -232,7 +232,7 @@ Examples:
     p.add_argument("--source", default="0",
                    help="0 for webcam, or path to a video file (default: 0)")
     p.add_argument("--model",
-                   default="yolov8m",
+                   default="yolov8s",
                    choices=["yolov8n", "yolov8s", "yolov8m", "yolov8l", "yolov8x"],
                    help="YOLOv8 model size: n=nano (fastest) … x=xlarge (most accurate)")
     p.add_argument("--conf", type=float, default=0.35,
