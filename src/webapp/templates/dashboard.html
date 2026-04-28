@@ -366,21 +366,18 @@
                     linear-gradient(#fff 0 0);
       -webkit-mask-composite: xor;
       mask-composite: exclude;
-      /* spin always so there's no restart stutter on hover */
       animation: aiSpin 3s linear infinite;
-      opacity: 0;
-      transition: opacity 0.55s cubic-bezier(0.25,1,0.5,1);
+      opacity: 1;
       pointer-events: none;
       z-index: 2;
     }
 
-    /* fade ring in, then switch to pulsing glow cycle */
+    /* hover adds box-shadow glow pulse */
     .ai-card:hover {
       border-color: transparent;
       animation: aiGlowIn 0.55s cubic-bezier(0.25,1,0.5,1) forwards,
                  aiGlowPulse 3s linear 0.55s infinite;
     }
-    .ai-card:hover::before { opacity: 1; }
     /* Interior dual-radial glow that blooms in on hover */
     .ai-card::after {
       content: '';
