@@ -48,9 +48,9 @@
       --header-h: 52px;
       --side-w:   272px;
       --r:        12px;
-      --glass-blur: blur(20px) saturate(160%);
-      --glass-border: 1px solid rgba(255,255,255,0.11);
-      --glass-shadow: 0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.10);
+      --glass-blur: blur(28px) saturate(180%);
+      --glass-border: 1px solid rgba(255,255,255,0.07);
+      --glass-shadow: 0 2px 4px rgba(0,0,0,0.20), 0 10px 36px rgba(0,0,0,0.45), 0 28px 64px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.08);
     }
     .playfair-display { font-family: "Playfair Display", serif; font-optical-sizing: auto; }
 
@@ -317,8 +317,8 @@
       transition: left 0.65s cubic-bezier(0.25,1,0.5,1);
     }
     .card:hover {
-      box-shadow: 0 16px 48px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.18);
-      border-color: rgba(255,255,255,0.22);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.22), 0 18px 52px rgba(0,0,0,0.60), 0 36px 80px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.13);
+      border-color: rgba(255,255,255,0.12);
     }
     /* Smooth return to neutral after tilt (added/removed by JS) */
     .card.tilt-returning {
@@ -933,6 +933,17 @@
 
     .video-panel { transition: border-color 0.4s; }
 
+    /* ── Camera glow ── */
+    .video-wrapper { transition: box-shadow 0.6s ease; }
+    .video-wrapper.glow-caution{ box-shadow: 0 0 0 1px rgba(224,192,64,0.45), 0 0 28px rgba(224,192,64,0.30), inset 0 0 18px rgba(224,192,64,0.08); }
+    .video-wrapper.glow-danger { box-shadow: 0 0 0 1px rgba(255,139,100,0.55), 0 0 36px rgba(255,139,100,0.38), inset 0 0 22px rgba(255,139,100,0.10); }
+    .video-wrapper.glow-stop   { box-shadow: 0 0 0 2px rgba(255,90,95,0.70),  0 0 52px rgba(255,90,95,0.55),  inset 0 0 28px rgba(255,90,95,0.14); }
+    .video-wrapper.glow-sentry { box-shadow: 0 0 0 1px rgba(255,90,95,0.60),  0 0 44px rgba(255,90,95,0.42),  inset 0 0 24px rgba(255,90,95,0.12); }
+    .video-wrapper.glow-motion { box-shadow: 0 0 0 1px rgba(224,192,64,0.50), 0 0 32px rgba(224,192,64,0.32), inset 0 0 18px rgba(224,192,64,0.09); }
+
+    /* ── Parallax background ── */
+    #neat-gradient { will-change: transform; transition: transform 0.18s linear; }
+
     /* ── Prefers-reduced-motion ── */
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after {
@@ -946,6 +957,49 @@
     /* ══ LAYOUT: Breathing room ══ */
     .cockpit { gap: 8px; padding: 8px; }
     .card-body { padding: 11px 13px; }
+
+    /* ══════════════════════════════════════════════════════════
+       PATH PREVIEW / MINI MAP
+    ══════════════════════════════════════════════════════════ */
+    .path-map-wrap  { padding: 10px 12px 0; }
+    .path-map-svg   { width: 100%; display: block; border-radius: 8px 8px 0 0;
+                      background: rgba(4,12,22,0.82); overflow: hidden; }
+    .path-grid-line { stroke: rgba(78,205,196,0.055); stroke-width: 1; }
+
+    /* Lane dashes scroll toward car — simulates forward motion */
+    @keyframes laneFlow { to { stroke-dashoffset: -48; } }
+    .path-lane    { fill: none; stroke: rgba(255,255,255,0.40); stroke-width: 1.2;
+                    stroke-dasharray: 7 5; animation: laneFlow 0.75s linear infinite; }
+    .path-center  { fill: none; stroke: rgba(255,255,255,0.15); stroke-width: 1; stroke-dasharray: 2 9; }
+    .path-horizon { stroke: rgba(78,205,196,0.18); stroke-width: 1; stroke-dasharray: 2 6; fill: none; }
+
+    /* Smooth SVG path morphing */
+    #path-pred, #path-lane-l, #path-lane-r, #path-center-l {
+      transition: d 0.28s cubic-bezier(0.25,1,0.5,1);
+    }
+    .path-pred {
+      fill: none; stroke: var(--cyan); stroke-width: 2.8; stroke-linecap: round;
+      filter: drop-shadow(0 0 5px rgba(78,205,196,0.60));
+      transition: d 0.28s cubic-bezier(0.25,1,0.5,1), stroke 0.35s, filter 0.35s;
+    }
+
+    /* Horizontal scan line sweeping top→bottom */
+    @keyframes pathScan {
+      0%   { transform: translateY(0);     opacity: 0.55; }
+      88%  { opacity: 0.40; }
+      100% { transform: translateY(162px); opacity: 0; }
+    }
+    .path-scan { stroke: rgba(78,205,196,0.50); stroke-width: 1; fill: none;
+                 animation: pathScan 2.6s linear infinite; }
+
+    /* Car icon */
+    .path-car-body  { fill: rgba(235,245,255,0.92); }
+    .path-car-hood  { fill: rgba(190,225,255,0.65); }
+
+    .path-map-lbl {
+      font-family: 'Barlow Condensed', sans-serif; font-size: 8px;
+      letter-spacing: 0.22em; text-transform: uppercase; fill: rgba(191,215,234,0.35);
+    }
   </style>
 </head>
 <body>
@@ -1403,6 +1457,60 @@
     <!-- ══ RIGHT PANEL ══ -->
     <div class="panel">
 
+      <!-- Path Preview / Mini Map -->
+      <div class="card" style="overflow:visible;">
+        <div class="card-head">Path Preview
+          <span class="card-head-muted" id="path-status-label">—</span>
+        </div>
+        <div class="path-map-wrap">
+          <svg class="path-map-svg" id="path-map-svg" viewBox="0 0 230 162" preserveAspectRatio="xMidYMid meet">
+            <defs>
+              <linearGradient id="road-grad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%"   stop-color="rgba(8,22,40,0.92)"/>
+                <stop offset="100%" stop-color="rgba(20,44,68,0.65)"/>
+              </linearGradient>
+              <linearGradient id="pred-grad" x1="0" y1="1" x2="0" y2="0">
+                <stop offset="0%"   stop-color="rgba(78,205,196,0.0)"/>
+                <stop offset="100%" stop-color="rgba(78,205,196,1.0)"/>
+              </linearGradient>
+            </defs>
+            <!-- Depth grid -->
+            <line class="path-grid-line" x1="0" y1="120" x2="230" y2="120"/>
+            <line class="path-grid-line" x1="0" y1="85"  x2="230" y2="85"/>
+            <line class="path-grid-line" x1="0" y1="52"  x2="230" y2="52"/>
+            <!-- Road surface -->
+            <polygon id="path-road" fill="url(#road-grad)" points="55,162 175,162 138,10 92,10"/>
+            <!-- Horizon -->
+            <line class="path-horizon" x1="0" y1="10" x2="230" y2="10"/>
+            <!-- Lane edges (animated dashes) -->
+            <path class="path-lane"   id="path-lane-l" d="M 70,155 Q 82,82 95,10"/>
+            <path class="path-lane"   id="path-lane-r" d="M 160,155 Q 148,82 135,10"/>
+            <!-- Center dashes -->
+            <path class="path-center" id="path-center-l" d="M 115,155 L 115,10"/>
+            <!-- Scan line sweeping top→bottom -->
+            <line class="path-scan" x1="18" y1="0" x2="212" y2="0"/>
+            <!-- Predicted path -->
+            <path class="path-pred" id="path-pred" d="M 115,142 C 115,115 115,65 115,15"/>
+            <!-- Car — top-down arrow icon, rotates with steering -->
+            <g id="path-car-g">
+              <!-- Body -->
+              <rect class="path-car-body" x="109" y="139" width="12" height="11" rx="2.5"/>
+              <!-- Hood / forward arrow -->
+              <path class="path-car-hood" d="M 110.5,139 L 115,131 L 119.5,139 Z"/>
+              <!-- Headlights -->
+              <rect fill="rgba(255,248,160,0.95)" x="110" y="137" width="3" height="2" rx="0.8"/>
+              <rect fill="rgba(255,248,160,0.95)" x="117" y="137" width="3" height="2" rx="0.8"/>
+              <!-- Tail lights -->
+              <rect fill="rgba(255,70,70,0.90)"   x="110" y="149" width="3" height="2" rx="0.8"/>
+              <rect fill="rgba(255,70,70,0.90)"   x="117" y="149" width="3" height="2" rx="0.8"/>
+            </g>
+            <!-- Labels -->
+            <text class="path-map-lbl" x="4"  y="13">ahead</text>
+            <text class="path-map-lbl" x="4"  y="158">you</text>
+          </svg>
+        </div>
+      </div>
+
       <!-- Sign Detections -->
       <div class="card">
         <div class="card-head">AI Detections</div>
@@ -1766,9 +1874,85 @@
     updateKeyVisual();
     updateTrackUI(d);
     updateSentryUI(d);
+    updatePathMap(d);
+    updateCameraGlow(d);
 
     if (d.status && d.status !== lastStatus) { lastStatus = d.status; addLog(d.status); }
   }
+
+  function updateCameraGlow(d) {
+    const vw = document.getElementById('video-wrapper');
+    if (!vw) return;
+    const danger  = d.dnn_danger   || 'CLEAR';
+    const sentry  = d.sentry_armed;
+    const motion  = d.sentry_motion || d.sentry_person || d.sentry_fire;
+    let cls = '';
+    if      (danger === 'STOP')    cls = 'glow-stop';
+    else if (danger === 'DANGER')  cls = 'glow-danger';
+    else if (danger === 'CAUTION') cls = 'glow-caution';
+    else if (sentry && motion)     cls = 'glow-sentry';
+    else if (sentry)               cls = 'glow-motion';
+    vw.className = vw.className.replace(/\bglow-\S+/g, '').trim();
+    if (cls) vw.classList.add(cls);
+  }
+
+  /* ── Path Preview / Mini Map ── */
+  function updatePathMap(d) {
+    const err    = d.steering_error ?? 0;
+    const pid    = d.pid_output     ?? 0;
+    const danger = d.dnn_danger     || 'CLEAR';
+    const state  = d.car_state      || '';
+    const carX   = 115;
+
+    // Lane shift: positive error = car right of center → road drifts left
+    const shift = -(err / 180) * 28;
+
+    // Road trapezoid
+    const road = document.getElementById('path-road');
+    if (road) road.setAttribute('points',
+      `${carX-60+shift},162 ${carX+60+shift},162 ${carX+23},10 ${carX-23},10`);
+
+    // Lane beziers — weighted mid-point gives natural perspective taper
+    function laneD(bx, tx) {
+      const mx = bx * 0.52 + tx * 0.48;
+      return `M ${bx.toFixed(1)} 155 Q ${mx.toFixed(1)} 82 ${tx.toFixed(1)} 10`;
+    }
+    const ll = document.getElementById('path-lane-l');
+    const lr = document.getElementById('path-lane-r');
+    const lc = document.getElementById('path-center-l');
+    if (ll) ll.setAttribute('d', laneD(carX - 48 + shift, carX - 20));
+    if (lr) lr.setAttribute('d', laneD(carX + 48 + shift, carX + 20));
+    if (lc) lc.setAttribute('d', laneD(carX + shift,      carX));
+
+    // Predicted path — cubic bezier produces a natural S-curve under steering
+    const cp1X = carX + pid * 42;
+    const cp2X = carX + pid * 72;
+    const endX = carX + pid * 44;
+    const pred = document.getElementById('path-pred');
+    if (pred) {
+      pred.setAttribute('d',
+        `M ${carX} 142 C ${cp1X.toFixed(1)} 112 ${cp2X.toFixed(1)} 62 ${endX.toFixed(1)} 15`);
+      pred.style.stroke  = danger === 'STOP'   ? 'var(--red)'
+        : danger === 'DANGER'  ? 'var(--orange)'
+        : danger === 'CAUTION' ? 'var(--yellow)'
+        : state  === 'ARRIVED' ? 'var(--green)'
+        : 'var(--cyan)';
+      pred.style.filter  = danger === 'STOP'   ? 'drop-shadow(0 0 7px rgba(255,90,95,0.80))'
+        : danger === 'DANGER'  ? 'drop-shadow(0 0 7px rgba(255,139,142,0.70))'
+        : 'drop-shadow(0 0 5px rgba(78,205,196,0.62))';
+    }
+
+    // Rotate car icon to reflect steering heading
+    const carG = document.getElementById('path-car-g');
+    if (carG) carG.setAttribute('transform', `rotate(${(pid * 20).toFixed(1)}, 115, 143)`);
+
+    // Header label
+    const lbl = document.getElementById('path-status-label');
+    if (lbl) lbl.textContent = danger !== 'CLEAR' ? danger
+      : state ? state.replace(/_/g, ' ') : '—';
+  }
+
+
 
   /* ── Motor arc gauge ─── */
   function setMotorGauge(id, fraction) {
@@ -2323,6 +2507,55 @@
     });
   }
   initCardTilt();
+
+  /* ── Mouse parallax ── */
+  (function initParallax() {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const bg = document.getElementById('neat-gradient');
+    let txTarget = 0, tyTarget = 0, tx = 0, ty = 0;
+    document.addEventListener('mousemove', e => {
+      // Normalise to -1…1 from center
+      txTarget = ((e.clientX / window.innerWidth)  - 0.5) * -18;
+      tyTarget = ((e.clientY / window.innerHeight) - 0.5) * -10;
+    });
+    // Lerp the background toward mouse target each frame for smoothness
+    function tick() {
+      tx += (txTarget - tx) * 0.06;
+      ty += (tyTarget - ty) * 0.06;
+      if (bg) bg.style.transform = `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) scale(1.04)`;
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  })();
+
+  /* ── Panel float (uses CSS `translate` property so it composes with tilt's `transform`) ── */
+  (function initPanelFloat() {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const cards = [...document.querySelectorAll('.card')];
+    // Each card gets a random phase offset so they bob at different times
+    const phases = cards.map(() => Math.random() * Math.PI * 2);
+    // Flag cards that are currently being hovered (tilt handles their translate)
+    const hovered = new WeakSet();
+    cards.forEach(card => {
+      card.addEventListener('mouseenter', () => hovered.add(card));
+      card.addEventListener('mouseleave', () => {
+        hovered.delete(card);
+        // Let tilt-returning transition finish before resuming float
+        setTimeout(() => { if (!hovered.has(card)) card.style.translate = ''; }, 440);
+      });
+    });
+    function tick(ts) {
+      const t = ts / 1000;
+      cards.forEach((card, i) => {
+        if (hovered.has(card)) return;
+        const y = Math.sin(t * 0.38 + phases[i]) * 3.5;
+        card.style.translate = `0 ${y.toFixed(2)}px`;
+      });
+      requestAnimationFrame(tick);
+    }
+    // Delay start until after entrance animations finish
+    setTimeout(() => requestAnimationFrame(tick), 1000);
+  })();
 
   /* ── Boot ── */
   initSpeech();
