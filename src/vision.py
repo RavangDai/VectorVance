@@ -10,6 +10,9 @@ Usage:
     python vision.py --source traffic.mp4   # video file (loops)
     python vision.py --model yolov8s        # larger = more accurate
     python vision.py --conf 0.40            # raise confidence threshold
+    python vision.py --hd                   # webcam at 1920×1080
+    python vision.py --upscale 1.5          # bicubic upscale display (video files)
+    python vision.py --sharpen              # sharpen blurry footage
     python vision.py --all-classes          # show every COCO class
 
 Keys while running:
@@ -133,10 +136,14 @@ def _draw_hud(frame: np.ndarray,
 
 # ── Main loop ─────────────────────────────────────────────────────────────────
 
-def run(source: str,
-        model_name: str,
-        conf: float,
-        filter_driving: bool) -> None:
+_SHARPEN_KERNEL = np.array([[ 0, -1,  0],
+                             [-1,  5, -1],
+                             [ 0, -1,  0]], dtype=np.float32)
+
+
+def run(source: str, model_name: str, conf: float,
+        filter_driving: bool, hd: bool,
+        upscale: float, sharpen: bool) -> None:
 
     print(f"[vision] Loading {model_name} …  (auto-downloads on first run)")
     model = YOLO(f"{model_name}.pt")
@@ -150,7 +157,16 @@ def run(source: str,
         print(f"[vision] ERROR: cannot open source '{source}'")
         sys.exit(1)
 
-    cv2.namedWindow("Autonomous Vision", cv2.WINDOW_NORMAL)
+    if is_webcam:
+        w, h = (1920, 1080) if hd else (1280, 720)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH,  w)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
+        cap.set(cv2.CAP_PROP_AUTOFOCUS, 1)
+        actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        print(f"[vision] Webcam resolution: {actual_w}×{actual_h}")
+
+    cv2.namedWindow("Autonomous Vision", cv2.WINDOW_KEEPRATIO)
     cv2.resizeWindow("Autonomous Vision", 1280, 720)
     print(f"[vision] Running on '{src_label}'  — Q/ESC quit  P pause  S save  +/- confidence")
 
@@ -170,6 +186,9 @@ def run(source: str,
                     continue
                 break
 
+            if sharpen:
+                frame = cv2.filter2D(frame, -1, _SHARPEN_KERNEL)
+
             results  = model(frame, conf=conf, verbose=False)[0]
             counts: dict[str, int] = {}
 
@@ -182,6 +201,12 @@ def run(source: str,
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
                 _draw_box(frame, label, c_val, x1, y1, x2, y2, _color(label))
                 counts[label] = counts.get(label, 0) + 1
+
+            if upscale != 1.0:
+                h, w = frame.shape[:2]
+                frame = cv2.resize(frame,
+                                   (int(w * upscale), int(h * upscale)),
+                                   interpolation=cv2.INTER_CUBIC)
 
             frame_n += 1
             if frame_n % 15 == 0:
@@ -235,8 +260,14 @@ Examples:
                    default="yolov8s",
                    choices=["yolov8n", "yolov8s", "yolov8m", "yolov8l", "yolov8x"],
                    help="YOLOv8 model size: n=nano (fastest) … x=xlarge (most accurate)")
-    p.add_argument("--conf", type=float, default=0.35,
+    p.add_argument("--conf",    type=float, default=0.35,
                    help="Detection confidence threshold (default 0.35)")
+    p.add_argument("--hd",      action="store_true",
+                   help="Request 1920×1080 from webcam (default: 1280×720)")
+    p.add_argument("--upscale", type=float, default=1.0,
+                   help="Bicubic display upscale factor, e.g. 1.5 (default: 1.0, no upscale)")
+    p.add_argument("--sharpen", action="store_true",
+                   help="Apply sharpening filter to each frame before detection")
     p.add_argument("--all-classes", action="store_true",
                    help="Show all 80 COCO classes (default: driving-relevant only)")
     args = p.parse_args()
@@ -246,6 +277,9 @@ Examples:
         model_name=args.model,
         conf=args.conf,
         filter_driving=not args.all_classes,
+        hd=args.hd,
+        upscale=args.upscale,
+        sharpen=args.sharpen,
     )
 
 
