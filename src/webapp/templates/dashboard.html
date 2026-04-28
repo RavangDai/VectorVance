@@ -205,11 +205,25 @@
     }
     .mode-tab:disabled { cursor: not-allowed; opacity: 0.28; }
     .mode-tab:not(:disabled):hover { color: var(--text); background: rgba(255,255,255,0.08); }
-    .mode-tab.active[data-mode="FSD"]    { background: rgba(78,205,196,0.18);  color: var(--cyan);   border-color: rgba(78,205,196,0.30); }
-    .mode-tab.active[data-mode="LANE"]   { background: rgba(110,231,183,0.18); color: var(--green);  border-color: rgba(110,231,183,0.30); }
-    .mode-tab.active[data-mode="MANUAL"] { background: rgba(255,139,142,0.18); color: var(--orange); border-color: rgba(255,139,142,0.30); }
-    .mode-tab.active[data-mode="TRACK"]  { background: rgba(200,160,60,0.18);  color: var(--gold);   border-color: rgba(200,160,60,0.30); }
-    .mode-tab.active[data-mode="SENTRY"] { background: rgba(255,90,95,0.18);   color: var(--red);    border-color: rgba(255,90,95,0.30); }
+    .mode-tab.active[data-mode="FSD"]    { color: var(--cyan);   border-color: rgba(78,205,196,0.30); }
+    .mode-tab.active[data-mode="LANE"]   { color: var(--green);  border-color: rgba(110,231,183,0.30); }
+    .mode-tab.active[data-mode="MANUAL"] { color: var(--orange); border-color: rgba(255,139,142,0.30); }
+    .mode-tab.active[data-mode="TRACK"]  { color: var(--gold);   border-color: rgba(200,160,60,0.30); }
+    .mode-tab.active[data-mode="SENTRY"] { color: var(--red);    border-color: rgba(255,90,95,0.30); }
+
+    /* Mode tab fill — sweeps in from left on activation */
+    .mode-tab::before {
+      content: ''; position: absolute; inset: 0; border-radius: 20px;
+      clip-path: inset(0 100% 0 0 round 20px);
+      transition: clip-path 0.15s cubic-bezier(0.25,1,0.5,1);
+      pointer-events: none;
+    }
+    .mode-tab[data-mode="FSD"]::before    { background: rgba(78,205,196,0.18); }
+    .mode-tab[data-mode="LANE"]::before   { background: rgba(110,231,183,0.18); }
+    .mode-tab[data-mode="MANUAL"]::before { background: rgba(255,139,142,0.18); }
+    .mode-tab[data-mode="TRACK"]::before  { background: rgba(200,160,60,0.18); }
+    .mode-tab[data-mode="SENTRY"]::before { background: rgba(255,90,95,0.18); }
+    .mode-tab.active::before              { clip-path: inset(0 0% 0 0 round 20px); }
 
     /* Speed slider */
     .speed-wrap { display: flex; align-items: center; gap: 7px; padding: 0 10px; border-left: 1px solid rgba(255,255,255,0.18); margin-left: 4px; }
@@ -217,7 +231,15 @@
     #speed-val  { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--gold); font-weight: 600; min-width: 30px; }
     input[type=range].speed-slider {
       -webkit-appearance: none; width: 88px; height: 3px;
-      background: rgba(255,255,255,0.14); border-radius: 2px; cursor: pointer; outline: none;
+      background: linear-gradient(
+        to right,
+        var(--cyan) 0%,
+        var(--gold) var(--sld-fill, 77.8%),
+        rgba(255,255,255,0.14) var(--sld-fill, 77.8%),
+        rgba(255,255,255,0.14) 100%
+      );
+      border-radius: 2px; cursor: pointer; outline: none;
+      transition: background 0.08s;
     }
     input[type=range].speed-slider::-webkit-slider-thumb {
       -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%;
@@ -443,6 +465,19 @@
     .sd-val.good   { color: var(--green); }
     .sd-val.warn   { color: var(--orange); }
     .sd-val.danger { color: var(--red); }
+
+    /* ── Steering oscilloscope waveform ── */
+    .steer-wave-wrap {
+      width: 100%; height: 40px; position: relative;
+    }
+    .steer-wave-svg { width: 100%; height: 100%; display: block; }
+    .steer-wave-zero  { stroke: rgba(255,255,255,0.12); stroke-width: 1; stroke-dasharray: 3 4; }
+    .steer-wave-bound { stroke: rgba(255,255,255,0.06); stroke-width: 1; }
+    .steer-wave-line  {
+      fill: none; stroke: var(--cyan); stroke-width: 1.5;
+      stroke-linejoin: round; stroke-linecap: round;
+      transition: stroke 0.3s;
+    }
 
     /* ══════════════════════════════════════════════════════════
        HEADER BRAND + STATE PILL
@@ -877,12 +912,16 @@
     }
     .det-item { animation: detSlideIn 0.22s cubic-bezier(0.25, 1, 0.5, 1); }
 
-    /* ── Log newest item flash ── */
+    /* ── Log newest item flash + slide in from bottom ── */
     @keyframes logNewFlash {
       0%   { background: rgba(200,134,26,0.14); }
       100% { background: transparent; }
     }
-    .log-item.new { animation: logNewFlash 1.4s ease-out; }
+    @keyframes logSlideIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .log-item.new { animation: logNewFlash 1.4s ease-out, logSlideIn 0.22s cubic-bezier(0.25,1,0.5,1); }
 
     .mode-tab { position: relative; }
 
@@ -1015,6 +1054,7 @@
       <div class="speed-wrap">
         <span class="speed-lbl">SPD</span>
         <input type="range" class="speed-slider" min="10" max="100" value="80"
+               style="--sld-fill:77.8%"
                oninput="onSpeedChange(this.value)">
         <span id="speed-val">0.80</span>
       </div>
@@ -1053,6 +1093,15 @@
               <div class="steer-needle" id="steer-needle"></div>
             </div>
             <span class="steer-bar-side">R</span>
+          </div>
+          <!-- Oscilloscope waveform -->
+          <div class="steer-wave-wrap">
+            <svg class="steer-wave-svg" id="steer-wave-svg" viewBox="0 0 240 40" preserveAspectRatio="none">
+              <line class="steer-wave-bound" x1="0" y1="8"  x2="240" y2="8"/>
+              <line class="steer-wave-zero"  x1="0" y1="20" x2="240" y2="20"/>
+              <line class="steer-wave-bound" x1="0" y1="32" x2="240" y2="32"/>
+              <polyline class="steer-wave-line" id="steer-wave-line" points=""/>
+            </svg>
           </div>
           <!-- Angle readout -->
           <div class="steer-angle-wrap">
@@ -1518,6 +1567,9 @@
   let currentMode = 'LANE';
   const manualKeys = { w: false, a: false, s: false, d: false };
 
+  const WAVE_N = 60;
+  const steerWaveBuf = new Array(WAVE_N).fill(0);
+
   /* ── Value flash helper ── */
   const _prevVals = {};
   function flashIfChanged(el, key, newVal) {
@@ -1665,6 +1717,7 @@
         ? '0 0 14px rgba(255,90,95,0.80), 0 0 4px rgba(255,90,95,1)'
         : '0 0 10px rgba(78,205,196,0.70), 0 0 3px rgba(78,205,196,1)';
       if (numEl) numEl.style.color = Math.abs(ratio) > 0.6 ? 'var(--red)' : Math.abs(ratio) > 0.3 ? 'var(--orange)' : 'var(--cyan)';
+      updateSteerWave(ratio);
     })(err);
 
     // Steering/PID display
@@ -1733,6 +1786,22 @@
     arcEl.style.strokeDashoffset = maxLen * (1 - f);
     arcEl.style.stroke = f < 0.5 ? 'var(--cyan)' : f < 0.8 ? 'var(--orange)' : 'var(--red)';
     valEl.textContent  = Math.round(f * 100) + '%';
+  }
+
+  function updateSteerWave(ratio) {
+    steerWaveBuf.push(ratio);
+    if (steerWaveBuf.length > WAVE_N) steerWaveBuf.shift();
+    const W = 240, mid = 20, amp = 16;
+    const pts = steerWaveBuf.map((r, i) => {
+      const x = (i / (WAVE_N - 1)) * W;
+      const y = mid - r * amp;
+      return x.toFixed(1) + ',' + y.toFixed(1);
+    }).join(' ');
+    const line = document.getElementById('steer-wave-line');
+    if (!line) return;
+    line.setAttribute('points', pts);
+    const peak = Math.max(...steerWaveBuf.map(Math.abs));
+    line.style.stroke = peak > 0.6 ? 'var(--red)' : peak > 0.3 ? 'var(--orange)' : 'var(--cyan)';
   }
 
   /* ═══════════════════════════════════════════════════════════════
@@ -1864,6 +1933,8 @@
   function onSpeedChange(val) {
     speedValue = val / 100;
     document.getElementById('speed-val').textContent = speedValue.toFixed(2);
+    const pct = ((val - 10) / 90 * 100).toFixed(1) + '%';
+    document.querySelector('input.speed-slider').style.setProperty('--sld-fill', pct);
   }
 
   /* ═══════════════════════════════════════════════════════════════
